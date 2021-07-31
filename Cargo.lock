@@ -376,6 +376,7 @@ dependencies = [
  "chrono",
  "clap",
  "glob",
+ "humantime",
  "humantime-serde",
  "postgres",
  "postgres-types",

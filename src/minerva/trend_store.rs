@@ -6,6 +6,8 @@ use std::convert::From;
 use std::fmt;
 use std::time::Duration;
 
+use humantime::format_duration;
+
 use super::change::Change;
 
 type PostgresName = String;
@@ -169,7 +171,7 @@ impl Change for ModifyTrendDataTypes {
             }
         }
 
-        let timeout_query = "SET SESSION lock_timeout = 10m";
+        let timeout_query = "SET SESSION lock_timeout = '10min'";
 
         let result = transaction.execute(timeout_query, &[]);
 
@@ -473,13 +475,13 @@ pub fn load_trend_store(
         "FROM trend_directory.trend_store ",
         "JOIN directory.data_source ON data_source.id = trend_store.data_source_id ",
         "JOIN directory.entity_type ON entity_type.id = trend_store.entity_type_id ",
-        "WHERE data_source.name = $1 AND entity_type.name = $2 AND EXTRACT(EPOCH FROM granularity)::integer = $3"
+        "WHERE data_source.name = $1 AND entity_type.name = $2 AND granularity = $3::text::interval"
     );
 
-    let granularity_seconds: i32 = granularity.as_secs() as i32;
+    let granularity_str: String = format_duration(granularity.clone()).to_string();
 
     let result = conn
-        .query_one(query, &[&data_source, &entity_type, &granularity_seconds])
+        .query_one(query, &[&data_source, &entity_type, &granularity_str])
         .unwrap();
 
     let parts = load_trend_store_parts(conn, result.get::<usize, i32>(0));
@@ -489,7 +491,7 @@ pub fn load_trend_store(
     Ok(TrendStore {
         data_source: String::from(data_source),
         entity_type: String::from(entity_type),
-        granularity: Duration::from_secs(granularity_seconds as u64),
+        granularity: granularity.clone(),
         partition_size: Duration::from_secs(partition_size_seconds as u64),
         parts: parts,
     })
@@ -594,21 +596,21 @@ impl Change for AddTrendStore {
         let query = concat!(
             "SELECT id ",
             "FROM trend_directory.create_trend_store(",
-            "$1, $2, $3::integer * interval '1 sec', $4::integer * interval '1 sec', ",
+            "$1, $2, $3::text::interval, $4::text::interval, ",
             "$5::trend_directory.trend_store_part_descr[]",
             ")"
         );
 
-        let granularity_seconds: i32 = self.trend_store.granularity.as_secs() as i32;
-        let partition_size_seconds: i32 = self.trend_store.partition_size.as_secs() as i32;
+        let granularity_text = humantime::format_duration(self.trend_store.granularity).to_string();
+        let partition_size_text = humantime::format_duration(self.trend_store.partition_size).to_string();
 
         let result = client.query_one(
             query,
             &[
                 &self.trend_store.data_source,
                 &self.trend_store.entity_type,
-                &granularity_seconds,
-                &partition_size_seconds,
+                &granularity_text,
+                &partition_size_text,
                 &self.trend_store.parts,
             ],
         );
