@@ -7,6 +7,7 @@ use std::fmt;
 use std::time::Duration;
 
 use humantime::format_duration;
+use regex::Regex;
 
 use super::change::Change;
 
@@ -418,7 +419,7 @@ impl fmt::Display for TrendStore {
             "TrendStore({}, {}, {})",
             &self.data_source,
             &self.entity_type,
-            &self.granularity.as_secs()
+            &humantime::format_duration(self.granularity).to_string()
         )
     }
 }
@@ -471,7 +472,7 @@ pub fn load_trend_store(
     granularity: &Duration,
 ) -> Result<TrendStore, String> {
     let query = concat!(
-        "SELECT trend_store.id, EXTRACT(EPOCH FROM partition_size)::integer ",
+        "SELECT trend_store.id, partition_size::text ",
         "FROM trend_directory.trend_store ",
         "JOIN directory.data_source ON data_source.id = trend_store.data_source_id ",
         "JOIN directory.entity_type ON entity_type.id = trend_store.entity_type_id ",
@@ -486,13 +487,14 @@ pub fn load_trend_store(
 
     let parts = load_trend_store_parts(conn, result.get::<usize, i32>(0));
 
-    let partition_size_seconds = result.get::<usize, i32>(1);
+    let partition_size_str = result.get::<usize, String>(1);
+    let partition_size = humantime::parse_duration(&partition_size_str).unwrap();
 
     Ok(TrendStore {
         data_source: String::from(data_source),
         entity_type: String::from(entity_type),
         granularity: granularity.clone(),
-        partition_size: Duration::from_secs(partition_size_seconds as u64),
+        partition_size: partition_size.clone(),
         parts: parts,
     })
 }
@@ -549,11 +551,11 @@ fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<TrendSt
     parts
 }
 
-pub fn load_trend_stores(conn: &mut Client) -> Vec<TrendStore> {
+pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, String> {
     let mut trend_stores: Vec<TrendStore> = Vec::new();
 
     let query = concat!(
-        "SELECT trend_store.id, data_source.name, entity_type.name, EXTRACT(EPOCH FROM granularity)::integer, EXTRACT(EPOCH FROM partition_size)::integer ",
+        "SELECT trend_store.id, data_source.name, entity_type.name, granularity::text, partition_size::text ",
         "FROM trend_directory.trend_store ",
         "JOIN directory.data_source ON data_source.id = trend_store.data_source_id ",
         "JOIN directory.entity_type ON entity_type.id = trend_store.entity_type_id"
@@ -565,20 +567,57 @@ pub fn load_trend_stores(conn: &mut Client) -> Vec<TrendStore> {
         let trend_store_id: i32 = row.get(0);
         let data_source: &str = row.get(1);
         let entity_type: &str = row.get(2);
-        let granularity_seconds: i32 = row.get(3);
-        let partition_size_seconds: i32 = row.get(4);
+        let granularity_str: String = row.get(3);
+        let partition_size_str: String = row.get(4);
         let parts = load_trend_store_parts(conn, trend_store_id);
+
+        // Hack for humankind parsing compatibility with PostgreSQL interval
+        // representation
+        let parse_result = parse_interval(&granularity_str);
+
+        let granularity = match parse_result {
+            Ok(g) => g,
+            Err(e) => {
+                return Err(format!("Error parsing granularity '{}': {}", &granularity_str, e));
+            }
+        };
+
+        let parse_result = parse_interval(&partition_size_str);
+
+        let partition_size = match parse_result {
+            Ok(g) => g,
+            Err(e) => {
+                return Err(format!("Error parsing partition size '{}': {}", &partition_size_str, e));
+            }
+        };
 
         trend_stores.push(TrendStore {
             data_source: String::from(data_source),
             entity_type: String::from(entity_type),
-            granularity: Duration::from_secs(granularity_seconds as u64),
-            partition_size: Duration::from_secs(partition_size_seconds as u64),
+            granularity: granularity,
+            partition_size: partition_size,
             parts: parts,
         });
     }
 
-    trend_stores
+    Ok(trend_stores)
+}
+
+fn parse_interval(interval_str: &str) -> Result<Duration, humantime::DurationError> {
+    let interval_re = Regex::new(r"^(\d{2}):(\d{2}):(\d{2})$").unwrap();
+
+    let capture_result = interval_re.captures(interval_str);
+
+    let interval_str: String = match capture_result {
+        Some(cap) => {
+            format!("{} hours {} minutes {} seconds", &cap[1], &cap[2], &cap[3])
+        },
+        None => {
+            interval_str.replace("mon", "month")
+        }
+    };
+
+    humantime::parse_duration(&interval_str)
 }
 
 pub struct AddTrendStore {

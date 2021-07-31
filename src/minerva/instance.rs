@@ -12,15 +12,20 @@ pub struct MinervaInstance {
 }
 
 impl MinervaInstance {
-    pub fn load_from_db(client: &mut Client) -> MinervaInstance {
+    pub fn load_from_db(client: &mut Client) -> Result<MinervaInstance, String> {
         let attribute_stores = load_attribute_stores(client);
     
-        let trend_stores = load_trend_stores(client);
+        let trend_stores = match load_trend_stores(client) {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(format!("Error loading trend stores: {}", e));
+            }
+        };
        
-        MinervaInstance {
+        Ok(MinervaInstance {
             trend_stores: trend_stores,
             attribute_stores: attribute_stores
-        }
+        })
     }
 
     pub fn load_from(minerva_instance_root: &str) -> MinervaInstance {
@@ -85,7 +90,13 @@ impl MinervaInstance {
 }
 
 pub fn dump(client: &mut Client) {
-    let minerva_instance: MinervaInstance = MinervaInstance::load_from_db(client);
+    let minerva_instance: MinervaInstance = match MinervaInstance::load_from_db(client) {
+        Ok(i) => i,
+        Err(e) => {
+            println!("Error loading instance from database: {}", e);
+            return
+        }
+    };
 
     for attribute_store in minerva_instance.attribute_stores {
         println!("{:?}", &attribute_store);

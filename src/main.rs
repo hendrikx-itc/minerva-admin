@@ -257,7 +257,13 @@ fn run_dump_cmd(_matches: &ArgMatches, conn_params: &str) {
 fn run_diff_cmd(_matches: &ArgMatches, conn_params: &str) {
     let mut client = Client::connect(conn_params, NoTls).unwrap();
 
-    let instance_db = MinervaInstance::load_from_db(&mut client);
+    let instance_db = match MinervaInstance::load_from_db(&mut client) {
+        Ok(i) => i,
+        Err(e) => {
+            println!("Error loading instance from database: {}", e);
+            return
+        }
+    };
 
     let minerva_instance_root = env::var(ENV_MINERVA_INSTANCE_ROOT).unwrap();
 
@@ -279,7 +285,13 @@ fn run_diff_cmd(_matches: &ArgMatches, conn_params: &str) {
 fn run_update_cmd(_matches: &ArgMatches, conn_params: &str) {
     let mut client = Client::connect(conn_params, NoTls).unwrap();
 
-    let instance_db = MinervaInstance::load_from_db(&mut client);
+    let instance_db = match MinervaInstance::load_from_db(&mut client) {
+        Ok(i) => i,
+        Err(e) => {
+            println!("Error loading instance from database: {}", e);
+            return
+        }
+    };
 
     let minerva_instance_root = env::var(ENV_MINERVA_INSTANCE_ROOT).unwrap();
 
