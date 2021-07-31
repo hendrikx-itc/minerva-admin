@@ -137,8 +137,6 @@ fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item
         .expect("Failed to read glob pattern")
         .filter_map(|entry| match entry {
             Ok(path) => {
-                println!("{}", path.display());
-
                 let f = std::fs::File::open(&path).unwrap();
                 let attribute_store: AttributeStore = serde_yaml::from_reader(f).unwrap();
 
