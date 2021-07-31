@@ -116,8 +116,9 @@ impl Change for AddTrends {
 }
 
 pub struct ModifyTrendDataType {
+    pub trend_name: String,
     pub from_type: String,
-    pub trend: Trend,
+    pub to_type: String,
 }
 
 impl fmt::Display for ModifyTrendDataType {
@@ -125,7 +126,7 @@ impl fmt::Display for ModifyTrendDataType {
         write!(
             f,
             "Trend({}, {}->{})",
-            &self.trend.name, &self.from_type, &self.trend.data_type
+            &self.trend_name, &self.from_type, &self.to_type
         )
     }
 }
@@ -196,9 +197,9 @@ impl Change for ModifyTrendDataTypes {
             let result = transaction.execute(
                 query,
                 &[
-                    &modification.trend.data_type,
+                    &modification.to_type,
                     &self.trend_store_part.name,
-                    &modification.trend.name,
+                    &modification.trend_name,
                 ],
             );
 
@@ -218,7 +219,7 @@ impl Change for ModifyTrendDataTypes {
             .map(|m| {
                 format!(
                     "ALTER \"{}\" TYPE {} USING CAST(\"{}\" AS {})",
-                    &m.trend.name, &m.trend.data_type, &m.trend.name, &m.trend.data_type
+                    &m.trend_name, &m.to_type, &m.trend_name, &m.to_type
                 )
             })
             .collect();
@@ -300,8 +301,9 @@ impl TrendStorePart {
                     // The trend already exists, check for changes
                     if my_trend.data_type != other_trend.data_type {
                         alter_trend_data_types.push(ModifyTrendDataType {
+                            trend_name: my_trend.name.clone(),
                             from_type: my_trend.data_type.clone(),
-                            trend: other_trend.clone(),
+                            to_type: other_trend.data_type.clone(),
                         });
                     }
                 }
