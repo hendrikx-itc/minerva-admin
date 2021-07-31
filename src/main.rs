@@ -16,8 +16,6 @@ static ENV_MINERVA_INSTANCE_ROOT: &str = "MINERVA_INSTANCE_ROOT";
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
 
 fn main() {
-    //let conn_params = "host=localhost port=16050 user=postgres password=password dbname=minerva";
-
     let trend_store_list_cmd = SubCommand::with_name("list").about("list existing trend stores");
 
     let trend_store_create_cmd = SubCommand::with_name("create")
@@ -404,7 +402,7 @@ fn run_diff_cmd(matches: &ArgMatches) {
         println!("Differences with database:");
 
         for change in changes {
-            println!("{}", &change);
+            println!("* {}", &change);
         }
     } else {
         println!("Database is up-to-date");

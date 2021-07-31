@@ -18,3 +18,9 @@ parts:
         data_type: numeric
         description: test
         expression: power_kwh / 1000
+  - name: t_1month
+    trends: []
+    generated_trends: []
+  - name: u_1month
+    trends: []
+    generated_trends: []

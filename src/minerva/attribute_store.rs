@@ -29,8 +29,8 @@ impl fmt::Display for AddAttributes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "+ AddAttributes({:?}) in {}",
-            &self.attributes, &self.attribute_store
+            "AddAttributes({}, {:?})",
+            &self.attribute_store, &self.attributes
         )
     }
 }
@@ -116,7 +116,7 @@ pub struct AddAttributeStore {
 
 impl fmt::Display for AddAttributeStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "+ {}", &self.attribute_store)
+        write!(f, "AddAttributeStore({})", &self.attribute_store)
     }
 }
 

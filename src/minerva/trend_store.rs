@@ -93,8 +93,8 @@ impl fmt::Display for AddTrends {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "+ AddTrends({:?}) in {}",
-            &self.trends, &self.trend_store_part
+            "AddTrends({}, {:?})",
+            &self.trend_store_part, &self.trends
         )
     }
 }
@@ -150,9 +150,9 @@ impl fmt::Display for ModifyTrendDataTypes {
 
         write!(
             f,
-            "+ ModifyTrendDataTypes({}) in {}",
+            "ModifyTrendDataTypes({}, {})",
+            &self.trend_store_part,
             &modifications.join(","),
-            &self.trend_store_part
         )
     }
 }
@@ -371,7 +371,7 @@ impl Change for AddTrendStorePart {
 
 impl fmt::Display for AddTrendStorePart {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "+ {} in {}", &self.trend_store_part, &self.trend_store)
+        write!(f, "AddTrendStorePart({}, {})", &self.trend_store, &self.trend_store_part)
     }
 }
 
@@ -630,7 +630,7 @@ pub struct AddTrendStore {
 
 impl fmt::Display for AddTrendStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "+ {}", &self.trend_store)
+        write!(f, "AddTrendStore({})", &self.trend_store)
     }
 }
 
