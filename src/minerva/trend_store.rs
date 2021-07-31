@@ -131,7 +131,7 @@ impl fmt::Display for ModifyTrendDataType {
     }
 }
 
-/// A set of treAddTrendse trend store part for which the data type needs to
+/// A set of trends of a trend store part for which the data type needs to
 /// change.
 ///
 /// The change of data types for multiple trends in a trend store part is
