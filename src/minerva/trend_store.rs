@@ -578,7 +578,10 @@ pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, String> {
         let granularity = match parse_result {
             Ok(g) => g,
             Err(e) => {
-                return Err(format!("Error parsing granularity '{}': {}", &granularity_str, e));
+                return Err(format!(
+                    "Error parsing granularity '{}': {}",
+                    &granularity_str, e
+                ));
             }
         };
 
@@ -587,7 +590,10 @@ pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, String> {
         let partition_size = match parse_result {
             Ok(g) => g,
             Err(e) => {
-                return Err(format!("Error parsing partition size '{}': {}", &partition_size_str, e));
+                return Err(format!(
+                    "Error parsing partition size '{}': {}",
+                    &partition_size_str, e
+                ));
             }
         };
 
@@ -611,10 +617,8 @@ fn parse_interval(interval_str: &str) -> Result<Duration, humantime::DurationErr
     let interval_str: String = match capture_result {
         Some(cap) => {
             format!("{} hours {} minutes {} seconds", &cap[1], &cap[2], &cap[3])
-        },
-        None => {
-            interval_str.replace("mon", "month")
         }
+        None => interval_str.replace("mon", "month"),
     };
 
     humantime::parse_duration(&interval_str)
@@ -641,7 +645,8 @@ impl Change for AddTrendStore {
         );
 
         let granularity_text = humantime::format_duration(self.trend_store.granularity).to_string();
-        let partition_size_text = humantime::format_duration(self.trend_store.partition_size).to_string();
+        let partition_size_text =
+            humantime::format_duration(self.trend_store.partition_size).to_string();
 
         let result = client.query_one(
             query,

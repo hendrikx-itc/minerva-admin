@@ -1,10 +1,10 @@
 use glob::glob;
 
-use postgres::{Client};
+use postgres::Client;
 
-use super::trend_store::{TrendStore, AddTrendStore, load_trend_stores};
-use super::attribute_store::{AttributeStore, create_attribute_store, load_attribute_stores};
+use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
+use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore};
 
 pub struct MinervaInstance {
     pub trend_stores: Vec<TrendStore>,
@@ -14,17 +14,17 @@ pub struct MinervaInstance {
 impl MinervaInstance {
     pub fn load_from_db(client: &mut Client) -> Result<MinervaInstance, String> {
         let attribute_stores = load_attribute_stores(client);
-    
+
         let trend_stores = match load_trend_stores(client) {
             Ok(s) => s,
             Err(e) => {
                 return Err(format!("Error loading trend stores: {}", e));
             }
         };
-       
+
         Ok(MinervaInstance {
             trend_stores: trend_stores,
-            attribute_stores: attribute_stores
+            attribute_stores: attribute_stores,
         })
     }
 
@@ -38,28 +38,51 @@ impl MinervaInstance {
         }
     }
 
-    pub fn initialize_from(client: &mut Client, minerva_instance_root: &str) {    
-        println!("Initializing Minerva instance from {}", minerva_instance_root);
-    
+    pub fn initialize_from(client: &mut Client, minerva_instance_root: &str) {
+        println!(
+            "Initializing Minerva instance from {}",
+            minerva_instance_root
+        );
+
         initialize_attribute_stores(client, &minerva_instance_root);
-    
+
         initialize_trend_stores(client, &minerva_instance_root);
     }
 
     pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change>> {
         let mut changes: Vec<Box<dyn Change>> = Vec::new();
 
+        // Check for changes in trend stores
         for other_trend_store in &other.trend_stores {
-            match self.trend_stores.iter().find(|my_trend_store|{
+            match self.trend_stores.iter().find(|my_trend_store| {
                 my_trend_store.data_source == other_trend_store.data_source
-                && my_trend_store.entity_type == other_trend_store.entity_type
-                && my_trend_store.granularity == other_trend_store.granularity
+                    && my_trend_store.entity_type == other_trend_store.entity_type
+                    && my_trend_store.granularity == other_trend_store.granularity
             }) {
                 Some(my_trend_store) => {
                     changes.append(&mut my_trend_store.diff(other_trend_store));
-                },
+                }
                 None => {
-                    changes.push(Box::new(AddTrendStore{trend_store: other_trend_store.clone()}));
+                    changes.push(Box::new(AddTrendStore {
+                        trend_store: other_trend_store.clone(),
+                    }));
+                }
+            }
+        }
+
+        // Check for changes in attribute stores
+        for other_attribute_store in &other.attribute_stores {
+            match self.attribute_stores.iter().find(|my_attribute_store| {
+                my_attribute_store.data_source == other_attribute_store.data_source
+                    && my_attribute_store.entity_type == other_attribute_store.entity_type
+            }) {
+                Some(my_attribute_store) => {
+                    changes.append(&mut my_attribute_store.diff(other_attribute_store));
+                }
+                None => {
+                    changes.push(Box::new(AddAttributeStore {
+                        attribute_store: other_attribute_store.clone(),
+                    }));
                 }
             }
         }
@@ -78,7 +101,7 @@ impl MinervaInstance {
             let result = change.apply(client);
 
             match result {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     return Err(e);
                 }
@@ -94,7 +117,7 @@ pub fn dump(client: &mut Client) {
         Ok(i) => i,
         Err(e) => {
             println!("Error loading instance from database: {}", e);
-            return
+            return;
         }
     };
 
@@ -107,11 +130,12 @@ pub fn dump(client: &mut Client) {
     }
 }
 
-fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item=AttributeStore> {
+fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = AttributeStore> {
     let glob_path = format!("{}/attribute/*.yaml", minerva_instance_root);
 
-    glob(&glob_path).expect("Failed to read glob pattern").filter_map(|entry| {
-        match entry {
+    glob(&glob_path)
+        .expect("Failed to read glob pattern")
+        .filter_map(|entry| match entry {
             Ok(path) => {
                 println!("{}", path.display());
 
@@ -119,44 +143,50 @@ fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item
                 let attribute_store: AttributeStore = serde_yaml::from_reader(f).unwrap();
 
                 Some(attribute_store)
-            },
-            Err(_) => {
-                None
             }
-        }
-    })
+            Err(_) => None,
+        })
 }
 
 fn initialize_attribute_stores(client: &mut Client, minerva_instance_root: &str) {
     for attribute_store in load_attribute_stores_from(minerva_instance_root) {
-        let value: Option<i32> = create_attribute_store(client, &attribute_store);
+        let change = AddAttributeStore {
+            attribute_store: attribute_store,
+        };
 
-        println!("Created attribute store with Id: {:?}", value);
+        let result = change.apply(client);
+
+        match result {
+            Ok(_) => {
+                println!("Created attribute store");
+            }
+            Err(e) => {
+                println!("Error creating attribute store: {}", e);
+            }
+        }
     }
 }
 
-fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item=TrendStore> {
+fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = TrendStore> {
     let glob_path = format!("{}/trend/*.yaml", minerva_instance_root);
 
-    glob(&glob_path).expect("Failed to read glob pattern").filter_map(|entry|{
-        match entry {
+    glob(&glob_path)
+        .expect("Failed to read glob pattern")
+        .filter_map(|entry| match entry {
             Ok(path) => {
                 let f = std::fs::File::open(&path).unwrap();
                 let trend_store: TrendStore = serde_yaml::from_reader(f).unwrap();
 
                 Some(trend_store)
-            },
-            Err(_) => {
-                None
             }
-        }
-    })
+            Err(_) => None,
+        })
 }
 
 fn initialize_trend_stores(client: &mut Client, minerva_instance_root: &str) {
     for trend_store in load_trend_stores_from(minerva_instance_root) {
         let change = AddTrendStore {
-            trend_store: trend_store
+            trend_store: trend_store,
         };
 
         let result = change.apply(client);
@@ -164,7 +194,7 @@ fn initialize_trend_stores(client: &mut Client, minerva_instance_root: &str) {
         match result {
             Ok(_) => {
                 println!("Created trend store");
-            },
+            }
             Err(e) => {
                 println!("Error creating trend store: {}", e);
             }
