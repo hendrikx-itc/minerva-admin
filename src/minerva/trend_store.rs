@@ -7,9 +7,9 @@ use std::fmt;
 use std::time::Duration;
 
 use humantime::format_duration;
-use regex::Regex;
 
 use super::change::Change;
+use super::interval::parse_interval;
 
 type PostgresName = String;
 
@@ -100,7 +100,7 @@ impl fmt::Display for AddTrends {
 }
 
 impl Change for AddTrends {
-    fn apply(&self, client: &mut Client) -> Result<(), String> {
+    fn apply(&self, client: &mut Client) -> Result<String, String> {
         let query = concat!(
             "SELECT trend_directory.create_table_trends(trend_store_part, $1) ",
             "FROM trend_directory.trend_store_part WHERE name = $2",
@@ -109,7 +109,7 @@ impl Change for AddTrends {
         let result = client.query_one(query, &[&self.trends, &self.trend_store_part.name]);
 
         match result {
-            Ok(_row) => Ok(()),
+            Ok(_row) => Ok(format!("Added {} trends to trend store part '{}'", &self.trends.len(), &self.trend_store_part.name)),
             Err(e) => Err(format!("Error adding trends to trend store part: {}", e)),
         }
     }
@@ -159,7 +159,7 @@ impl fmt::Display for ModifyTrendDataTypes {
 }
 
 impl Change for ModifyTrendDataTypes {
-    fn apply(&self, client: &mut Client) -> Result<(), String> {
+    fn apply(&self, client: &mut Client) -> Result<String, String> {
         let mut transaction = client.transaction().unwrap();
 
         let timeout_query = "SET SESSION statement_timeout = 0";
@@ -241,7 +241,7 @@ impl Change for ModifyTrendDataTypes {
             Ok(_) => {
                 transaction.commit().unwrap();
 
-                Ok(())
+                Ok(format!("Altered trend data types for trend store part '{}'", &self.trend_store_part.name))
             }
             Err(e) => {
                 transaction.rollback().unwrap();
@@ -343,7 +343,7 @@ pub struct AddTrendStorePart {
 }
 
 impl Change for AddTrendStorePart {
-    fn apply(&self, client: &mut Client) -> Result<(), String> {
+    fn apply(&self, client: &mut Client) -> Result<String, String> {
         let query = concat!(
             "SELECT trend_directory.create_trend_store_part(trend_store.id, $1) ",
             "FROM trend_directory.trend_store ",
@@ -365,8 +365,8 @@ impl Change for AddTrendStorePart {
         );
 
         match result {
-            Ok(_row) => Ok(()),
-            Err(e) => Err(format!("Error creating trend store part: {}", e)),
+            Ok(_row) => Ok(format!("Added trend store part '{}' to trend store '{}'", &self.trend_store_part.name, &self.trend_store)),
+            Err(e) => Err(format!("Error creating trend store part '{}': {}", &self.trend_store_part.name, e)),
         }
     }
 }
@@ -490,7 +490,7 @@ pub fn load_trend_store(
     let parts = load_trend_store_parts(conn, result.get::<usize, i32>(0));
 
     let partition_size_str = result.get::<usize, String>(1);
-    let partition_size = humantime::parse_duration(&partition_size_str).unwrap();
+    let partition_size = parse_interval(&partition_size_str).unwrap();
 
     Ok(TrendStore {
         data_source: String::from(data_source),
@@ -611,21 +611,6 @@ pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, String> {
     Ok(trend_stores)
 }
 
-fn parse_interval(interval_str: &str) -> Result<Duration, humantime::DurationError> {
-    let interval_re = Regex::new(r"^(\d{2}):(\d{2}):(\d{2})$").unwrap();
-
-    let capture_result = interval_re.captures(interval_str);
-
-    let interval_str: String = match capture_result {
-        Some(cap) => {
-            format!("{} hours {} minutes {} seconds", &cap[1], &cap[2], &cap[3])
-        }
-        None => interval_str.replace("mon", "month"),
-    };
-
-    humantime::parse_duration(&interval_str)
-}
-
 pub struct AddTrendStore {
     pub trend_store: TrendStore,
 }
@@ -637,7 +622,7 @@ impl fmt::Display for AddTrendStore {
 }
 
 impl Change for AddTrendStore {
-    fn apply(&self, client: &mut Client) -> Result<(), String> {
+    fn apply(&self, client: &mut Client) -> Result<String, String> {
         let query = concat!(
             "SELECT id ",
             "FROM trend_directory.create_trend_store(",
@@ -662,7 +647,7 @@ impl Change for AddTrendStore {
         );
 
         match result {
-            Ok(_row) => Ok(()),
+            Ok(_row) => Ok(format!("Added trend store {}", &self.trend_store)),
             Err(e) => Err(format!("Error creating trend store: {}", e)),
         }
     }

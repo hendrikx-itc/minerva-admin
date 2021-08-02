@@ -36,7 +36,7 @@ impl fmt::Display for AddAttributes {
 }
 
 impl Change for AddAttributes {
-    fn apply(&self, client: &mut Client) -> Result<(), String> {
+    fn apply(&self, client: &mut Client) -> Result<String, String> {
         let query = concat!(
             "SELECT attribute_directory.add_attributes(attribute_store, $1) ",
             "FROM attribute_directory.attribute_store ",
@@ -55,7 +55,7 @@ impl Change for AddAttributes {
         );
 
         match result {
-            Ok(_row) => Ok(()),
+            Ok(_row) => Ok(format!("Added attributes to attribute store '{}'", &self.attribute_store)),
             Err(e) => Err(format!("Error adding trends to trend store part: {}", e)),
         }
     }
@@ -121,7 +121,7 @@ impl fmt::Display for AddAttributeStore {
 }
 
 impl Change for AddAttributeStore {
-    fn apply(&self, client: &mut Client) -> Result<(), String> {
+    fn apply(&self, client: &mut Client) -> Result<String, String> {
         let query = concat!(
             "SELECT id ",
             "FROM attribute_directory.create_attribute_store(",
@@ -140,7 +140,7 @@ impl Change for AddAttributeStore {
         );
 
         match result {
-            Ok(_row) => Ok(()),
+            Ok(_row) => Ok(format!("Created attribute store '{}'", &self.attribute_store)),
             Err(e) => Err(format!("Error creating attribute store: {}", e)),
         }
     }

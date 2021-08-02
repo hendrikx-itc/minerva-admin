@@ -1,9 +1,9 @@
 data_source: hub
 entity_type: node
-granularity: 1month
+granularity: 15m
 partition_size: 1d
 parts:
-  - name: hub_node_main_1month
+  - name: hub_node_main_15m
     trends:
       - name: outside_temp
         data_type: bigint

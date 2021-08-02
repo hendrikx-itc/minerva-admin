@@ -5,10 +5,12 @@ use postgres::Client;
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
 use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore};
+use super::trend_materialization::{TrendMaterialization, AddTrendMaterialization, load_materializations_from, load_materializations};
 
 pub struct MinervaInstance {
     pub trend_stores: Vec<TrendStore>,
     pub attribute_stores: Vec<AttributeStore>,
+    pub trend_materializations: Vec<TrendMaterialization>,
 }
 
 impl MinervaInstance {
@@ -22,19 +24,29 @@ impl MinervaInstance {
             }
         };
 
+        let trend_materializations = match load_materializations(client) {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(format!("Error loading trend materializations: {}", e))
+            }
+        };
+
         Ok(MinervaInstance {
             trend_stores: trend_stores,
             attribute_stores: attribute_stores,
+            trend_materializations: trend_materializations,
         })
     }
 
     pub fn load_from(minerva_instance_root: &str) -> MinervaInstance {
         let trend_stores = load_trend_stores_from(minerva_instance_root).collect();
         let attribute_stores = load_attribute_stores_from(minerva_instance_root).collect();
+        let trend_materializations = load_materializations_from(minerva_instance_root).collect();
 
         MinervaInstance {
             trend_stores: trend_stores,
             attribute_stores: attribute_stores,
+            trend_materializations: trend_materializations,
         }
     }
 
@@ -47,6 +59,15 @@ impl MinervaInstance {
         initialize_attribute_stores(client, &minerva_instance_root);
 
         initialize_trend_stores(client, &minerva_instance_root);
+
+        for materialization in load_materializations_from(minerva_instance_root) {
+            let change = AddTrendMaterialization::from(materialization);
+
+            match change.apply(client) {
+                Ok(_) => println!("Created trend materialization"),
+                Err(e) => println!("Error creating trend materialization: {}", e),
+            }
+        }
     }
 
     pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change>> {
@@ -87,6 +108,20 @@ impl MinervaInstance {
             }
         }
 
+        // Check for changes in trend materializations
+        for other_trend_materialization in &other.trend_materializations {
+            match self.trend_materializations.iter().find(|my_trend_materialization| {
+                my_trend_materialization.name() == other_trend_materialization.name()
+            }) {
+                Some(_my_trend_materialization) => {
+
+                },
+                None => {
+                    changes.push(Box::new(AddTrendMaterialization::from(other_trend_materialization.clone())))
+                }
+            }
+        }
+
         changes
     }
 
@@ -101,11 +136,18 @@ impl MinervaInstance {
             let result = change.apply(client);
 
             match result {
-                Ok(_) => {}
+                Ok(message) => {
+                    println!("{}", &message);
+                }
                 Err(e) => {
                     return Err(e);
                 }
             }
+        }
+
+        // Materializations have no diff mechanism yet, so just update
+        for materialization in &other.trend_materializations {
+            materialization.update(client);
         }
 
         Ok(())
