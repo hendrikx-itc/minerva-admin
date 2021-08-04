@@ -5,11 +5,13 @@ use serde_json::{json, Value};
 use std::convert::From;
 use std::fmt;
 use std::time::Duration;
+use std::path::PathBuf;
 
 use humantime::format_duration;
 
 use super::change::Change;
 use super::interval::parse_interval;
+use super::super::error::{Error, DatabaseError, RuntimeError, ConfigurationError};
 
 type PostgresName = String;
 
@@ -100,18 +102,17 @@ impl fmt::Display for AddTrends {
 }
 
 impl Change for AddTrends {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT trend_directory.create_table_trends(trend_store_part, $1) ",
             "FROM trend_directory.trend_store_part WHERE name = $2",
         );
 
-        let result = client.query_one(query, &[&self.trends, &self.trend_store_part.name]);
+        client.query_one(query, &[&self.trends, &self.trend_store_part.name]).map_err(|e| {
+            DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
+        })?;
 
-        match result {
-            Ok(_row) => Ok(format!("Added {} trends to trend store part '{}'", &self.trends.len(), &self.trend_store_part.name)),
-            Err(e) => Err(format!("Error adding trends to trend store part: {}", e)),
-        }
+        Ok(format!("Added {} trends to trend store part '{}'", &self.trends.len(), &self.trend_store_part.name))
     }
 }
 
@@ -159,29 +160,25 @@ impl fmt::Display for ModifyTrendDataTypes {
 }
 
 impl Change for ModifyTrendDataTypes {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
-        let mut transaction = client.transaction().unwrap();
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        let mut transaction = client.transaction().map_err(|e| {
+            DatabaseError::from_msg(format!("could not start transaction: {}", e))
+        })?;
 
         let timeout_query = "SET SESSION statement_timeout = 0";
 
         let result = transaction.execute(timeout_query, &[]);
-
-        match result {
-            Ok(_) => (),
-            Err(e) => {
-                return Err(format!("Error setting session timeout: {}", e));
-            }
+        
+        if let Err(e) = result {
+            return Err(DatabaseError::from_msg(format!("Error setting session timeout: {}", e)).into())
         }
 
         let timeout_query = "SET SESSION lock_timeout = '10min'";
 
         let result = transaction.execute(timeout_query, &[]);
-
-        match result {
-            Ok(_) => (),
-            Err(e) => {
-                return Err(format!("Error setting lock timeout: {}", e));
-            }
+        
+        if let Err(e) = result {
+            return Err(DatabaseError::from_msg(format!("Error setting lock timeout: {}", e)).into())
         }
 
         let query = concat!(
@@ -202,14 +199,11 @@ impl Change for ModifyTrendDataTypes {
                     &modification.trend_name,
                 ],
             );
+            
+            if let Err(e) = result {
+                transaction.rollback().unwrap();
 
-            match result {
-                Ok(_) => {}
-                Err(e) => {
-                    transaction.rollback().unwrap();
-
-                    return Err(format!("Error changing data types: {}", e));
-                }
+                return Err(DatabaseError::from_msg(format!("Error changing data types: {}", e)).into())
             }
         }
 
@@ -235,20 +229,17 @@ impl Change for ModifyTrendDataTypes {
 
         let alter_query_slice: &str = &alter_query;
 
-        let result = transaction.execute(alter_query_slice, &[]);
+        if let Err(e) = transaction.execute(alter_query_slice, &[]) {
+            transaction.rollback().unwrap();
 
-        match result {
-            Ok(_) => {
-                transaction.commit().unwrap();
-
-                Ok(format!("Altered trend data types for trend store part '{}'", &self.trend_store_part.name))
-            }
-            Err(e) => {
-                transaction.rollback().unwrap();
-
-                Err(format!("Error changing data types: {}", e))
-            }
+            return Err(DatabaseError::from_msg(format!("Error changing data types: {}", e)).into())
         }
+
+        if let Err(e) = transaction.commit() {
+            return Err(DatabaseError::from_msg(format!("Error committing changes: {}", e)).into())
+        }
+
+        Ok(format!("Altered trend data types for trend store part '{}'", &self.trend_store_part.name))
     }
 }
 
@@ -343,7 +334,7 @@ pub struct AddTrendStorePart {
 }
 
 impl Change for AddTrendStorePart {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT trend_directory.create_trend_store_part(trend_store.id, $1) ",
             "FROM trend_directory.trend_store ",
@@ -354,7 +345,7 @@ impl Change for AddTrendStorePart {
 
         let granularity_seconds: i32 = self.trend_store.granularity.as_secs() as i32;
 
-        let result = client.query_one(
+        client.query_one(
             query,
             &[
                 &self.trend_store_part.name,
@@ -362,12 +353,9 @@ impl Change for AddTrendStorePart {
                 &self.trend_store.entity_type,
                 &granularity_seconds,
             ],
-        );
+        ).map_err(|e| DatabaseError::from_msg(format!("Error creating trend store part '{}': {}", &self.trend_store_part.name, e)))?;
 
-        match result {
-            Ok(_row) => Ok(format!("Added trend store part '{}' to trend store '{}'", &self.trend_store_part.name, &self.trend_store)),
-            Err(e) => Err(format!("Error creating trend store part '{}': {}", &self.trend_store_part.name, e)),
-        }
+        Ok(format!("Added trend store part '{}' to trend store '{}'", &self.trend_store_part.name, &self.trend_store))
     }
 }
 
@@ -472,7 +460,7 @@ pub fn load_trend_store(
     data_source: &str,
     entity_type: &str,
     granularity: &Duration,
-) -> Result<TrendStore, String> {
+) -> Result<TrendStore, Error> {
     let query = concat!(
         "SELECT trend_store.id, partition_size::text ",
         "FROM trend_directory.trend_store ",
@@ -484,8 +472,7 @@ pub fn load_trend_store(
     let granularity_str: String = format_duration(granularity.clone()).to_string();
 
     let result = conn
-        .query_one(query, &[&data_source, &entity_type, &granularity_str])
-        .unwrap();
+        .query_one(query, &[&data_source, &entity_type, &granularity_str])?;
 
     let parts = load_trend_store_parts(conn, result.get::<usize, i32>(0));
 
@@ -553,7 +540,7 @@ fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<TrendSt
     parts
 }
 
-pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, String> {
+pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Error> {
     let mut trend_stores: Vec<TrendStore> = Vec::new();
 
     let query = concat!(
@@ -575,29 +562,15 @@ pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, String> {
 
         // Hack for humankind parsing compatibility with PostgreSQL interval
         // representation
-        let parse_result = parse_interval(&granularity_str);
+        let granularity = parse_interval(&granularity_str).map_err(|e| RuntimeError::from_msg(format!(
+            "Error parsing granularity '{}': {}",
+            &granularity_str, e
+        )))?;
 
-        let granularity = match parse_result {
-            Ok(g) => g,
-            Err(e) => {
-                return Err(format!(
-                    "Error parsing granularity '{}': {}",
-                    &granularity_str, e
-                ));
-            }
-        };
-
-        let parse_result = parse_interval(&partition_size_str);
-
-        let partition_size = match parse_result {
-            Ok(g) => g,
-            Err(e) => {
-                return Err(format!(
-                    "Error parsing partition size '{}': {}",
-                    &partition_size_str, e
-                ));
-            }
-        };
+        let partition_size = parse_interval(&partition_size_str).map_err(|e| RuntimeError::from_msg(format!(
+            "Error parsing partition size '{}': {}",
+            &partition_size_str, e
+        )))?;
 
         trend_stores.push(TrendStore {
             data_source: String::from(data_source),
@@ -622,7 +595,7 @@ impl fmt::Display for AddTrendStore {
 }
 
 impl Change for AddTrendStore {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT id ",
             "FROM trend_directory.create_trend_store(",
@@ -635,7 +608,7 @@ impl Change for AddTrendStore {
         let partition_size_text =
             humantime::format_duration(self.trend_store.partition_size).to_string();
 
-        let result = client.query_one(
+        client.query_one(
             query,
             &[
                 &self.trend_store.data_source,
@@ -644,11 +617,20 @@ impl Change for AddTrendStore {
                 &partition_size_text,
                 &self.trend_store.parts,
             ],
-        );
+        ).map_err(|e| DatabaseError::from_msg(format!("Error creating trend store: {}", e)))?;
 
-        match result {
-            Ok(_row) => Ok(format!("Added trend store {}", &self.trend_store)),
-            Err(e) => Err(format!("Error creating trend store: {}", e)),
-        }
+        Ok(format!("Added trend store {}", &self.trend_store))
     }
+}
+
+pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
+    let f = std::fs::File::open(path).map_err(|e| {
+        ConfigurationError::from_msg(format!("Could not open trend store definition file '{}': {}", path.display(), e))
+    })?;
+    
+    let trend_store: TrendStore = serde_yaml::from_reader(f).map_err(|e| {
+        RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
+    })?;
+
+    Ok(trend_store)
 }

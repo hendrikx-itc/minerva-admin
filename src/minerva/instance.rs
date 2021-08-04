@@ -6,6 +6,7 @@ use super::attribute_store::{load_attribute_stores, AddAttributeStore, Attribute
 use super::change::Change;
 use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore};
 use super::trend_materialization::{TrendMaterialization, AddTrendMaterialization, load_materializations_from, load_materializations};
+use super::super::error::{Error};
 
 pub struct MinervaInstance {
     pub trend_stores: Vec<TrendStore>,
@@ -14,22 +15,12 @@ pub struct MinervaInstance {
 }
 
 impl MinervaInstance {
-    pub fn load_from_db(client: &mut Client) -> Result<MinervaInstance, String> {
-        let attribute_stores = load_attribute_stores(client);
+    pub fn load_from_db(client: &mut Client) -> Result<MinervaInstance, Error> {
+        let attribute_stores = load_attribute_stores(client)?;
 
-        let trend_stores = match load_trend_stores(client) {
-            Ok(s) => s,
-            Err(e) => {
-                return Err(format!("Error loading trend stores: {}", e));
-            }
-        };
+        let trend_stores = load_trend_stores(client)?;
 
-        let trend_materializations = match load_materializations(client) {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(format!("Error loading trend materializations: {}", e))
-            }
-        };
+        let trend_materializations = load_materializations(client)?;
 
         Ok(MinervaInstance {
             trend_stores: trend_stores,
@@ -125,7 +116,7 @@ impl MinervaInstance {
         changes
     }
 
-    pub fn update(&self, client: &mut Client, other: &MinervaInstance) -> Result<(), String> {
+    pub fn update(&self, client: &mut Client, other: &MinervaInstance) -> Result<(), Error> {
         let changes = self.diff(other);
 
         println!("Applying changes:");
@@ -133,21 +124,18 @@ impl MinervaInstance {
         for change in changes {
             println!("{}", change);
 
-            let result = change.apply(client);
+            let message = change.apply(client)?;
 
-            match result {
-                Ok(message) => {
-                    println!("{}", &message);
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
+            println!("{}", &message);
         }
 
         // Materializations have no diff mechanism yet, so just update
         for materialization in &other.trend_materializations {
-            materialization.update(client);
+            let result = materialization.update(client);
+
+            if let Err(e) = result {
+                println!("Erro updating trend materialization: {}", e);
+            }
         }
 
         Ok(())

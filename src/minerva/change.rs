@@ -1,7 +1,8 @@
 use std::fmt;
 
 use postgres::Client;
+use super::super::error::Error;
 
 pub trait Change: fmt::Display {
-    fn apply(&self, client: &mut Client) -> Result<String, String>;
+    fn apply(&self, client: &mut Client) -> Result<String, Error>;
 }

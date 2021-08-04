@@ -6,6 +6,7 @@ use std::fmt;
 type PostgresName = String;
 
 use super::change::Change;
+use super::super::error::{Error, DatabaseError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
 #[postgres(name = "attribute_descr")]
@@ -36,7 +37,7 @@ impl fmt::Display for AddAttributes {
 }
 
 impl Change for AddAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT attribute_directory.add_attributes(attribute_store, $1) ",
             "FROM attribute_directory.attribute_store ",
@@ -45,19 +46,18 @@ impl Change for AddAttributes {
             "WHERE data_source.name = $2 AND entity_type.name = $3",
         );
 
-        let result = client.query_one(
+        client.query_one(
             query,
             &[
                 &self.attributes,
                 &self.attribute_store.data_source,
                 &self.attribute_store.entity_type,
             ],
-        );
+        ).map_err(|e| {
+            DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
+        })?;
 
-        match result {
-            Ok(_row) => Ok(format!("Added attributes to attribute store '{}'", &self.attribute_store)),
-            Err(e) => Err(format!("Error adding trends to trend store part: {}", e)),
-        }
+        Ok(format!("Added attributes to attribute store '{}'", &self.attribute_store))
     }
 }
 
@@ -121,7 +121,7 @@ impl fmt::Display for AddAttributeStore {
 }
 
 impl Change for AddAttributeStore {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT id ",
             "FROM attribute_directory.create_attribute_store(",
@@ -130,23 +130,22 @@ impl Change for AddAttributeStore {
             ")"
         );
 
-        let result = client.query_one(
+        client.query_one(
             query,
             &[
                 &self.attribute_store.data_source,
                 &self.attribute_store.entity_type,
                 &self.attribute_store.attributes,
             ],
-        );
+        ).map_err(|e|{
+            DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
+        })?;
 
-        match result {
-            Ok(_row) => Ok(format!("Created attribute store '{}'", &self.attribute_store)),
-            Err(e) => Err(format!("Error creating attribute store: {}", e)),
-        }
+        Ok(format!("Created attribute store '{}'", &self.attribute_store))
     }
 }
 
-pub fn load_attribute_stores(conn: &mut Client) -> Vec<AttributeStore> {
+pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, Error> {
     let mut attribute_stores: Vec<AttributeStore> = Vec::new();
 
     let query = concat!(
@@ -156,7 +155,9 @@ pub fn load_attribute_stores(conn: &mut Client) -> Vec<AttributeStore> {
         "JOIN directory.entity_type ON entity_type.id = attribute_store.entity_type_id"
     );
 
-    let result = conn.query(query, &[]).unwrap();
+    let result = conn.query(query, &[]).map_err(|e|{
+        DatabaseError::from_msg(format!("Error loading attribute stores: {}", e))
+    })?;
 
     for row in result {
         let attribute_store_id: i32 = row.get(0);
@@ -172,14 +173,14 @@ pub fn load_attribute_stores(conn: &mut Client) -> Vec<AttributeStore> {
         });
     }
 
-    attribute_stores
+    Ok(attribute_stores)
 }
 
 pub fn load_attribute_store(
     conn: &mut Client,
     data_source: &str,
     entity_type: &str,
-) -> Result<AttributeStore, String> {
+) -> Result<AttributeStore, Error> {
     let query = concat!(
         "SELECT attribute_store.id ",
         "FROM attribute_directory.attribute_store ",
@@ -190,7 +191,9 @@ pub fn load_attribute_store(
 
     let result = conn
         .query_one(query, &[&data_source, &entity_type])
-        .unwrap();
+        .map_err(|e| {
+            DatabaseError::from_msg(format!("Could not load attribute stores: {}", e))
+        })?;
 
     let attributes = load_attributes(conn, result.get::<usize, i32>(0));
 

@@ -10,6 +10,7 @@ use humantime::format_duration;
 
 use super::change::Change;
 use super::interval::parse_interval;
+use super::super::error::{Error, RuntimeError, DatabaseError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrendMaterializationSource {
@@ -161,7 +162,7 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 impl Change for UpdateTrendViewMaterializationAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, _client: &mut Client) -> Result<String, Error> {
         Ok(String::from(format!("Updated view {}", self.trend_view_materialization.view_name())))
     }
 }
@@ -181,7 +182,7 @@ pub struct UpdateView {
 }
 
 impl Change for UpdateView {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         self.trend_view_materialization.drop_view(client).unwrap();
         self.trend_view_materialization.create_view(client).unwrap();
 
@@ -299,8 +300,8 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    pub fn diff(&self, other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change>> {
-        let mut changes: Vec<Box<dyn Change>> = Vec::new();
+    pub fn diff(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change>> {
+        let changes: Vec<Box<dyn Change>> = Vec::new();
 
         changes
     }
@@ -408,7 +409,7 @@ pub fn load_materializations_from(minerva_instance_root: &str) -> impl Iterator<
         })
 }
 
-pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterialization>, String> {
+pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterialization>, Error> {
     let mut trend_materializations: Vec<TrendMaterialization> = Vec::new();
 
     let query = concat!(
@@ -419,7 +420,9 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
         "LEFT JOIN trend_directory.function_materialization AS fm ON fm.materialization_id = m.id ",
     );
 
-    let result = conn.query(query, &[]).unwrap();
+    let result = conn.query(query, &[]).map_err(|e| {
+        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+    })?;
 
     for row in result {
         let materialization_id: i32 = row.get(0);
@@ -480,10 +483,10 @@ impl fmt::Display for AddTrendMaterialization {
 }
 
 impl Change for AddTrendMaterialization {
-    fn apply(&self, client: &mut Client) -> Result<String, String> {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         match self.trend_materialization.create(client) {
             Ok(_) => Ok(format!("Added trend materialization {}", &self.trend_materialization)),
-            Err(e) => Err(format!("Error adding trend materialization {}: {}", &self.trend_materialization, e))
+            Err(e) => Err(Error::Runtime(RuntimeError { msg: format!("Error adding trend materialization {}: {}", &self.trend_materialization, e) }))
         }
     }
 }
