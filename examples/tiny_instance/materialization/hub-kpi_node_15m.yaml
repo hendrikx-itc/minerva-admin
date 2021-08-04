@@ -6,7 +6,7 @@ reprocessing_period: 3 days
 sources:
 - trend_store_part: hub_node_main_15m
   mapping_function: trend.mapping_id
-view:
+view: |-
   SELECT
     timestamp,
     entity_id, 

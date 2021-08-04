@@ -113,8 +113,8 @@ impl MinervaInstance {
             match self.trend_materializations.iter().find(|my_trend_materialization| {
                 my_trend_materialization.name() == other_trend_materialization.name()
             }) {
-                Some(_my_trend_materialization) => {
-
+                Some(my_trend_materialization) => {
+                    changes.append(&mut my_trend_materialization.diff(other_trend_materialization));
                 },
                 None => {
                     changes.push(Box::new(AddTrendMaterialization::from(other_trend_materialization.clone())))
