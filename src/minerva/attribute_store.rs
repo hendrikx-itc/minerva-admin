@@ -2,11 +2,12 @@ use postgres::types::ToSql;
 use postgres::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::PathBuf;
 
 type PostgresName = String;
 
 use super::change::Change;
-use super::super::error::{Error, DatabaseError};
+use super::super::error::{Error, DatabaseError, ConfigurationError, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
 #[postgres(name = "attribute_descr")]
@@ -223,4 +224,16 @@ fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute>
     }
 
     attributes
+}
+
+pub fn load_attribute_store_from_file(path: &PathBuf) -> Result<AttributeStore, Error> {
+    let f = std::fs::File::open(path).map_err(|e| {
+        ConfigurationError::from_msg(format!("Could not open attribute store definition file '{}': {}", path.display(), e))
+    })?;
+    
+    let trend_store: AttributeStore = serde_yaml::from_reader(f).map_err(|e| {
+        RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
+    })?;
+
+    Ok(trend_store)
 }

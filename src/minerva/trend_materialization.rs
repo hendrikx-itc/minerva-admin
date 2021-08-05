@@ -201,6 +201,12 @@ impl fmt::Display for UpdateView {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TrendMaterializationFunction {
+    pub return_type: String,
+    pub src: String,
+    pub language: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrendFunctionMaterialization {
@@ -213,7 +219,7 @@ pub struct TrendFunctionMaterialization {
     #[serde(with = "humantime_serde")]
     pub reprocessing_period: Duration,
     pub sources: Vec<TrendMaterializationSource>,
-    pub function: String,
+    pub function: TrendMaterializationFunction,
     pub fingerprint_function: String,
 }
 
@@ -242,9 +248,10 @@ impl TrendFunctionMaterialization {
 
     fn create_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "CREATE VIEW {} AS {}",
-            format!("\"trend\".\"{}\"", &self.target_trend_store_part),
-            self.function,
+            "CREATE FUNCTION {} AS $function$\n{}\n$function$ LANGUAGE {}",
+            format!("\"trend\".\"{}\"(timestamp with time zone)", &self.target_trend_store_part),
+            &self.function.src,
+            &self.function.language,
         );
 
         match client.execute(query.as_str(), &[]) {
@@ -339,13 +346,6 @@ impl TrendMaterialization {
         }
     }
 
-    fn fingerprint_function(&self) -> &str {
-        match self {
-            TrendMaterialization::View(m) => &m.fingerprint_function,
-            TrendMaterialization::Function(m) => &m.fingerprint_function,
-        }
-    }
-
     pub fn update(&self, client: &mut Client) -> Result<(), String> {
         match self {
             TrendMaterialization::View(m) => m.update(client),
@@ -436,7 +436,7 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
 
         if let Some(view) = src_view {
             let view_def = get_view_def(conn, &view).unwrap();
-            let sources = Vec::new();
+            let sources = load_sources(conn, materialization_id)?;
 
             let view_materialization = TrendViewMaterialization {
                 target_trend_store_part: target_trend_store_part,
@@ -451,13 +451,42 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
 
             let trend_materialization = TrendMaterialization::View(view_materialization);
 
-            println!("{}", &trend_materialization);
-
             trend_materializations.push(trend_materialization);
+        }
+
+        if let Some(function) =  src_function {
+            println!("{}", function);
         }
     }
 
     Ok(trend_materializations)
+}
+
+fn load_sources(conn: &mut Client, materialization_id: i32) -> Result<Vec<TrendMaterializationSource>, Error> {
+    let mut sources: Vec<TrendMaterializationSource> = Vec::new();
+
+    let query = concat!(
+        "SELECT tsp.name, mtsl.timestamp_mapping_func::text ",
+        "FROM trend_directory.materialization_trend_store_link mtsl ",
+        "JOIN trend_directory.trend_store_part tsp ON tsp.id = mtsl.trend_store_part_id ",
+        "WHERE mtsl.materialization_id = $1"
+    );
+
+    let result = conn.query(query, &[&materialization_id]).map_err(|e| {
+        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+    })?;
+
+    for row in result {
+        let trend_store_part: String = row.get(0);
+        let mapping_function: String = row.get(1);
+
+        sources.push(TrendMaterializationSource {
+            trend_store_part: trend_store_part,
+            mapping_function: mapping_function,
+        });
+    }
+
+    Ok(sources)
 }
 
 // Load the body of a function by specifying it's full name

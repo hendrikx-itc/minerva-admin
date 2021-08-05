@@ -8,7 +8,7 @@ mod minerva;
 mod error;
 use error::{Error, ConfigurationError, RuntimeError};
 
-use minerva::attribute_store::{load_attribute_store, AddAttributeStore, AttributeStore};
+use minerva::attribute_store::{load_attribute_store, AddAttributeStore, AttributeStore, load_attribute_store_from_file};
 use minerva::change::Change;
 use minerva::instance::{dump, MinervaInstance};
 use minerva::trend_store::{
@@ -124,7 +124,7 @@ fn main() {
 
 fn connect_db() -> Result<Client, Error> {
     let conn_params = env::var(ENV_DB_CONN).map_err(|e| {
-        ConfigurationError::from_msg(format!("{}", e))
+        ConfigurationError::from_msg(format!("Could not read environment variable '{}': {}", &ENV_DB_CONN, e))
     })?;
 
     let client = Client::connect(&conn_params, NoTls)?;
@@ -255,8 +255,7 @@ fn run_trend_store_update_cmd(args: &TrendStoreUpdate) -> CmdResult {
 }
 
 fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
-    let f = std::fs::File::open(&args.definition).unwrap();
-    let attribute_store: AttributeStore = serde_yaml::from_reader(f).unwrap();
+    let attribute_store: AttributeStore = load_attribute_store_from_file(&args.definition)?;
 
     println!("Loaded definition, creating attribute store");
 
@@ -281,8 +280,7 @@ fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
 }
 
 fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
-    let f = std::fs::File::open(&args.definition).unwrap();
-    let attribute_store: AttributeStore = serde_yaml::from_reader(f).unwrap();
+    let attribute_store: AttributeStore = load_attribute_store_from_file(&args.definition)?;
 
     println!("Loaded definition, updating attribute store");
 
@@ -319,8 +317,14 @@ fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
 }
 
 fn run_initialize_cmd() -> CmdResult {
+    let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(Error::Configuration(ConfigurationError {msg: format!("Environment variable '{}' could not be read: {}", &ENV_MINERVA_INSTANCE_ROOT, e)}) );
+        }
+    };
+
     let mut client = connect_db()?;
-    let minerva_instance_root = env::var(ENV_MINERVA_INSTANCE_ROOT).unwrap();
 
     MinervaInstance::initialize_from(&mut client, &minerva_instance_root);
 
@@ -336,11 +340,16 @@ fn run_dump_cmd() -> CmdResult {
 }
 
 fn run_diff_cmd() -> CmdResult {
+    let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(Error::Configuration(ConfigurationError {msg: format!("Environment variable '{}' could not be read: {}", &ENV_MINERVA_INSTANCE_ROOT, e)}) );
+        }
+    };
+
     let mut client = connect_db()?;
 
     let instance_db = MinervaInstance::load_from_db(&mut client)?;
-
-    let minerva_instance_root = env::var(ENV_MINERVA_INSTANCE_ROOT).unwrap();
 
     let instance_def = MinervaInstance::load_from(&minerva_instance_root);
 
