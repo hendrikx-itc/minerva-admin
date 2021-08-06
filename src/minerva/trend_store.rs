@@ -634,3 +634,78 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
 
     Ok(trend_store)
 }
+
+/// Create partitions for all the full retention period of all trend stores.
+pub fn create_partitions(client: &mut Client, ahead_interval: Duration) -> Result<(), Error> {
+    let query = concat!(
+        "SELECT id FROM trend_directory.trend_store"
+    );
+
+    let result = client.query(
+        query,
+        &[],
+    ).map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
+
+    for row in result {
+        let trend_store_id: i32 = row.get(0);
+
+        create_partitions_for_trend_store(client, trend_store_id, ahead_interval)?;
+
+        println!("Trend store {}", &trend_store_id);
+    }
+
+    Ok(())
+}
+
+pub fn create_partitions_for_trend_store(client: &mut Client, trend_store_id: i32, ahead_interval: Duration) -> Result<(), Error> {
+    println!("Creating partitions for trend store {}", &trend_store_id);
+
+    let query = concat!(
+        "WITH partition_indexes AS (",
+        "SELECT trend_directory.timestamp_to_index(partition_size, t) AS i, p.id AS part_id, p.name AS part_name ",
+        "FROM trend_directory.trend_store ",
+        "JOIN trend_directory.trend_store_part p ON p.trend_store_id = trend_store.id ",
+        "JOIN generate_series(now() - partition_size - trend_store.retention_period, now() + partition_size + $2::text::interval, partition_size) t ON true ",
+        "WHERE trend_store.id = $1",
+        ") ",
+        "SELECT partition_indexes.part_id, partition_indexes.part_name, partition_indexes.i FROM partition_indexes ",
+        "LEFT JOIN trend_directory.partition ON partition.index = i AND partition.trend_store_part_id = partition_indexes.part_id ",
+        "WHERE partition.id IS NULL",
+    );
+
+    let ahead_interval_str = humantime::format_duration(ahead_interval).to_string();
+
+    let result = client.query(
+        query,
+        &[&trend_store_id, &ahead_interval_str],
+    ).map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
+
+    for row in result {
+        let trend_store_part_id: i32 = row.get(0);
+        let part_name: String = row.get(1);
+        let partition_index: i32 = row.get(2);
+
+        let partition_name = create_partition_for_trend_store_part(client, trend_store_part_id, partition_index)?;
+
+        println!("Created partition for '{}': '{}'", &part_name, &partition_name);
+    }
+
+    Ok(())
+}
+
+fn create_partition_for_trend_store_part(client: &mut Client, trend_store_part_id: i32, partition_index: i32) -> Result<String, Error> {
+    let query = concat!(
+        "SELECT p.name, trend_directory.create_partition(p, $2::integer) ",
+        "FROM trend_directory.trend_store_part p ",
+        "WHERE p.id = $1",
+    );
+
+    let result = client.query_one(
+        query,
+        &[&trend_store_part_id, &partition_index],
+    ).map_err(|e| DatabaseError::from_msg(format!("Error creating partition: {}", e)))?;
+
+    let partition_name = result.get(0);
+
+    Ok(partition_name)
+}

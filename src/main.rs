@@ -1,5 +1,6 @@
 use std::env;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use structopt::StructOpt;
 use postgres::{Client, NoTls};
@@ -12,7 +13,7 @@ use minerva::attribute_store::{load_attribute_store, AddAttributeStore, Attribut
 use minerva::change::Change;
 use minerva::instance::{dump, MinervaInstance};
 use minerva::trend_store::{
-    delete_trend_store, list_trend_stores, load_trend_store, AddTrendStore, load_trend_store_from_file
+    delete_trend_store, list_trend_stores, load_trend_store, AddTrendStore, load_trend_store_from_file, create_partitions
 };
 
 static ENV_MINERVA_INSTANCE_ROOT: &str = "MINERVA_INSTANCE_ROOT";
@@ -44,6 +45,22 @@ struct TrendStoreUpdate {
 }
 
 #[derive(Debug, StructOpt)]
+struct TrendStorePartitionCreate {
+    #[structopt(
+        help="period for which to create partitions",
+        long="--ahead-interval",
+        parse(try_from_str = humantime::parse_duration)
+    )]
+    ahead_interval: Option<Duration>,
+}
+
+#[derive(Debug, StructOpt)]
+enum TrendStorePartition {
+    #[structopt(about="create partitions")]
+    Create(TrendStorePartitionCreate),
+}
+
+#[derive(Debug, StructOpt)]
 enum TrendStoreOpt {
     #[structopt(about="list existing trend stores")]
     List,
@@ -55,6 +72,8 @@ enum TrendStoreOpt {
     Update(TrendStoreUpdate),
     #[structopt(about="delete a trend store")]
     Delete(DeleteOpt),
+    #[structopt(about="partition management commands")]
+    Partition(TrendStorePartition),
 }
 
 #[derive(Debug, StructOpt)]
@@ -107,6 +126,11 @@ fn main() {
                 TrendStoreOpt::Diff(diff) => run_trend_store_diff_cmd(&diff),
                 TrendStoreOpt::Update(update) => run_trend_store_update_cmd(&update),
                 TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(&delete),
+                TrendStoreOpt::Partition(partition) => {
+                    match partition {
+                        TrendStorePartition::Create(create) => run_trend_store_partition_create_cmd(&create),
+                    }
+                }
             }
         },
         Opt::AttributeStore(attribute_store) => {
@@ -383,4 +407,18 @@ fn run_update_cmd() -> CmdResult {
     let instance_def = MinervaInstance::load_from(&minerva_instance_root);
 
     instance_db.update(&mut client, &instance_def)
+}
+
+fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) -> CmdResult {
+    let ahead_interval = match args.ahead_interval {
+        Some(i) => i,
+        None => humantime::parse_duration("3days").unwrap(),
+    };
+
+    let mut client = connect_db()?;
+
+    create_partitions(&mut client, ahead_interval)?;
+
+    println!("Created partitions");
+    Ok(())
 }
