@@ -81,6 +81,7 @@ struct AttributeStoreCreate {
     #[structopt(help="attribute store definition file")]
     definition: PathBuf
 }
+
 #[derive(Debug, StructOpt)]
 struct AttributeStoreUpdate {
     #[structopt(help="attribute store definition file")]
@@ -96,6 +97,12 @@ enum AttributeStoreOpt {
 }
 
 #[derive(Debug, StructOpt)]
+struct InitializeOpt {
+    #[structopt(long="--create-partitions", help="create partitions")]
+    create_partitions: bool,
+}
+
+#[derive(Debug, StructOpt)]
 enum Opt {
     #[structopt(about="command for complete dump of a Minerva instance")]
     Dump,
@@ -104,7 +111,7 @@ enum Opt {
     #[structopt(about="command for updating a Minerva database from an instance definition")]
     Update,
     #[structopt(about="command for complete initialization of a Minerva instance")]
-    Initialize,
+    Initialize(InitializeOpt),
     #[structopt(about="manage trend stores")]
     TrendStore(TrendStoreOpt),
     #[structopt(about="manage attribute stores")]
@@ -118,7 +125,7 @@ fn main() {
         Opt::Dump => run_dump_cmd(),
         Opt::Diff => run_diff_cmd(),
         Opt::Update => run_update_cmd(),
-        Opt::Initialize => run_initialize_cmd(),
+        Opt::Initialize(initialize) => run_initialize_cmd(&initialize),
         Opt::TrendStore(trend_store) => {
             match trend_store {
                 TrendStoreOpt::List => run_trend_store_list_cmd(),
@@ -340,7 +347,7 @@ fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
     Ok(())
 }
 
-fn run_initialize_cmd() -> CmdResult {
+fn run_initialize_cmd(args: &InitializeOpt) -> CmdResult {
     let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
         Ok(v) => v,
         Err(e) => {
@@ -351,6 +358,10 @@ fn run_initialize_cmd() -> CmdResult {
     let mut client = connect_db()?;
 
     MinervaInstance::initialize_from(&mut client, &minerva_instance_root);
+
+    if args.create_partitions {
+        create_partitions(&mut client, None)?;
+    }
 
     Ok(())
 }
@@ -410,14 +421,9 @@ fn run_update_cmd() -> CmdResult {
 }
 
 fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) -> CmdResult {
-    let ahead_interval = match args.ahead_interval {
-        Some(i) => i,
-        None => humantime::parse_duration("3days").unwrap(),
-    };
-
     let mut client = connect_db()?;
 
-    create_partitions(&mut client, ahead_interval)?;
+    create_partitions(&mut client, args.ahead_interval)?;
 
     println!("Created partitions");
     Ok(())

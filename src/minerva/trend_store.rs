@@ -636,7 +636,12 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
 }
 
 /// Create partitions for all the full retention period of all trend stores.
-pub fn create_partitions(client: &mut Client, ahead_interval: Duration) -> Result<(), Error> {
+pub fn create_partitions(client: &mut Client, ahead_interval: Option<Duration>) -> Result<(), Error> {
+    let ahead_interval = match ahead_interval {
+        Some(i) => i,
+        None => humantime::parse_duration("3days").unwrap(),
+    };
+
     let query = concat!(
         "SELECT id FROM trend_directory.trend_store"
     );
