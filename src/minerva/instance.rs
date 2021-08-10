@@ -4,7 +4,7 @@ use postgres::Client;
 
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
-use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore};
+use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore, load_trend_store_from_file};
 use super::trend_materialization::{TrendMaterialization, AddTrendMaterialization, load_materializations_from, load_materializations};
 use super::super::error::{Error};
 
@@ -196,16 +196,24 @@ fn initialize_attribute_stores(client: &mut Client, minerva_instance_root: &str)
 }
 
 fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = TrendStore> {
-    let glob_path = format!("{}/trend/*.yaml", minerva_instance_root);
+    let yaml_paths = glob(
+        &format!("{}/trend/*.yaml", minerva_instance_root)
+    ).expect("Failed to read glob pattern");
 
-    glob(&glob_path)
-        .expect("Failed to read glob pattern")
+    let json_paths = glob(
+        &format!("{}/trend/*.json", minerva_instance_root)
+    ).expect("Failed to read glob pattern");
+
+    yaml_paths.chain(json_paths)
         .filter_map(|entry| match entry {
             Ok(path) => {
-                let f = std::fs::File::open(&path).unwrap();
-                let trend_store: TrendStore = serde_yaml::from_reader(f).unwrap();
-
-                Some(trend_store)
+                match load_trend_store_from_file(&path) {
+                    Ok(trend_store) => Some(trend_store),
+                    Err(e) => {
+                        println!("Error loading trend store definition: {}", e);
+                        None
+                    }
+                }
             }
             Err(_) => None,
         })

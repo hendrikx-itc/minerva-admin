@@ -627,12 +627,24 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
     let f = std::fs::File::open(path).map_err(|e| {
         ConfigurationError::from_msg(format!("Could not open trend store definition file '{}': {}", path.display(), e))
     })?;
-    
-    let trend_store: TrendStore = serde_yaml::from_reader(f).map_err(|e| {
-        RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
-    })?;
 
-    Ok(trend_store)
+    if path.extension() == Some(std::ffi::OsStr::new("yaml")) {
+        let trend_store: TrendStore = serde_yaml::from_reader(f).map_err(|e| {
+            RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
+        })?;
+
+        return Ok(trend_store);
+    } else if path.extension() == Some(std::ffi::OsStr::new("json")) {
+        let trend_store: TrendStore = serde_json::from_reader(f).map_err(|e| {
+            RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
+        })?;
+
+        return Ok(trend_store);
+    } else {
+        return Err(ConfigurationError::from_msg(
+            format!("Unsupported trend store definition format '{}'", path.extension().unwrap().to_string_lossy())
+        ).into());
+    }
 }
 
 /// Create partitions for all the full retention period of all trend stores.
