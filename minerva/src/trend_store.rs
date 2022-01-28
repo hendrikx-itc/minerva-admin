@@ -11,7 +11,7 @@ use humantime::format_duration;
 
 use super::change::Change;
 use super::interval::parse_interval;
-use super::super::error::{Error, DatabaseError, RuntimeError, ConfigurationError};
+use super::error::{Error, DatabaseError, RuntimeError, ConfigurationError};
 
 type PostgresName = String;
 

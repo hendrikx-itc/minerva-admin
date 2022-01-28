@@ -6,7 +6,7 @@ use super::attribute_store::{load_attribute_stores, AddAttributeStore, Attribute
 use super::change::Change;
 use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore, load_trend_store_from_file};
 use super::trend_materialization::{TrendMaterialization, AddTrendMaterialization, load_materializations_from, load_materializations};
-use super::super::error::{Error};
+use super::error::{Error};
 
 pub struct MinervaInstance {
     pub trend_stores: Vec<TrendStore>,

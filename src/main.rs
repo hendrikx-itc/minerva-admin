@@ -5,10 +5,7 @@ use std::time::Duration;
 use structopt::StructOpt;
 use postgres::{Client, NoTls};
 
-mod minerva;
-mod error;
-use error::{Error, ConfigurationError, RuntimeError};
-
+use minerva::error::{Error, ConfigurationError, RuntimeError};
 use minerva::attribute_store::{load_attribute_store, AddAttributeStore, AttributeStore, load_attribute_store_from_file};
 use minerva::change::Change;
 use minerva::instance::{dump, MinervaInstance};

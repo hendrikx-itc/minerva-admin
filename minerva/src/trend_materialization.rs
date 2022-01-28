@@ -10,7 +10,7 @@ use humantime::format_duration;
 
 use super::change::Change;
 use super::interval::parse_interval;
-use super::super::error::{Error, RuntimeError, DatabaseError};
+use super::error::{Error, RuntimeError, DatabaseError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrendMaterializationSource {

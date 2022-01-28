@@ -7,7 +7,7 @@ use std::path::PathBuf;
 type PostgresName = String;
 
 use super::change::Change;
-use super::super::error::{Error, DatabaseError, ConfigurationError, RuntimeError};
+use super::error::{Error, DatabaseError, ConfigurationError, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
 #[postgres(name = "attribute_descr")]
