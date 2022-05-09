@@ -15,6 +15,10 @@ use super::error::{Error, DatabaseError, RuntimeError, ConfigurationError};
 
 type PostgresName = String;
 
+trait SanityCheck {
+    fn check(&self) -> Result<(), String>;
+}
+
 pub struct DeleteTrendStoreError {
     original: String,
     kind: DeleteTrendStoreErrorKind,
@@ -325,6 +329,12 @@ impl TrendStorePart {
 impl fmt::Display for TrendStorePart {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "TrendStorePart({})", &self.name)
+    }
+}
+
+impl SanityCheck for TrendStorePart {
+    fn check(&self) -> Result<(), String> {
+        Ok(())
     }
 }
 

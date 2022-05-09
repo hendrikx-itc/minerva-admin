@@ -58,6 +58,12 @@ enum TrendStorePartition {
 }
 
 #[derive(Debug, StructOpt)]
+struct TrendStoreCheck {
+    #[structopt(help="trend store definition file")]
+    definition: PathBuf
+}
+
+#[derive(Debug, StructOpt)]
 enum TrendStoreOpt {
     #[structopt(about="list existing trend stores")]
     List,
@@ -71,6 +77,8 @@ enum TrendStoreOpt {
     Delete(DeleteOpt),
     #[structopt(about="partition management commands")]
     Partition(TrendStorePartition),
+    #[structopt(about="run sanity checks for trend store")]
+    Check(TrendStoreCheck),
 }
 
 #[derive(Debug, StructOpt)]
@@ -134,7 +142,8 @@ fn main() {
                     match partition {
                         TrendStorePartition::Create(create) => run_trend_store_partition_create_cmd(&create),
                     }
-                }
+                },
+                TrendStoreOpt::Check(check) => run_trend_store_check_cmd(&check),
             }
         },
         Opt::AttributeStore(attribute_store) => {
@@ -185,6 +194,20 @@ fn run_trend_store_delete_cmd(args: &DeleteOpt) -> CmdResult {
             Err(Error::Runtime(RuntimeError{ msg: format!("Error deleting trend store: {}", e) } ))
         }
     }
+}
+
+fn run_trend_store_check_cmd(args: &TrendStoreCheck) -> CmdResult {
+    let trend_store = load_trend_store_from_file(&args.definition)?;
+
+    for trend_store_part in &trend_store.parts {
+        let count = trend_store.parts.iter().filter(|&p| p.name == trend_store_part.name).count();
+
+        if count > 1 {
+            println!("Error: {} trend store parts with name '{}'", count, &trend_store_part.name);
+        }
+    }
+
+    Ok(())
 }
 
 fn run_trend_store_create_cmd(args: &TrendStoreCreate) -> CmdResult {

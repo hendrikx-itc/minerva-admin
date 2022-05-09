@@ -12,7 +12,7 @@ license = "GPL-3.0-or-later"
 path = "minerva"
 
 [dependencies]
-clap = "3.0"
+clap = "3.1"
 structopt = "0.3"
 postgres = { version = "0.19", features = ["with-chrono-0_4", "with-serde_json-1"] }
 postgres-types = { version = "0.2", features = ["derive"] }
@@ -20,7 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 humantime = "2.1"
-humantime-serde = "1.0"
+humantime-serde = "1.1"
 serde_json = "1.0"
 glob = "0.3"
 regex = "1.5"
