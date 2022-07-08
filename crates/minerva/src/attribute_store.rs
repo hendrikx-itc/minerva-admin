@@ -3,6 +3,7 @@ use postgres::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
+use std::any::Any;
 
 type PostgresName = String;
 
@@ -64,6 +65,10 @@ impl Change for AddAttributes {
             "Added attributes to attribute store '{}'",
             &self.attribute_store
         ))
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 
@@ -153,6 +158,10 @@ impl Change for AddAttributeStore {
             "Created attribute store '{}'",
             &self.attribute_store
         ))
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 

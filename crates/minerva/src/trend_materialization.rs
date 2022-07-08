@@ -4,7 +4,7 @@ use serde_yaml;
 use std::fmt;
 use std::time::Duration;
 use std::path::Path;
-
+use std::any::Any;
 use postgres::{types::ToSql, Client};
 use postgres_protocol::escape::escape_identifier;
 
@@ -171,6 +171,10 @@ impl Change for UpdateTrendViewMaterializationAttributes {
             self.trend_view_materialization.view_name()
         ))
     }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
+    }
 }
 
 impl fmt::Display for UpdateTrendViewMaterializationAttributes {
@@ -196,6 +200,10 @@ impl Change for UpdateView {
             "Updated view {}",
             self.trend_view_materialization.view_name()
         ))
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 
@@ -535,6 +543,10 @@ impl Change for AddTrendMaterialization {
                 ),
             })),
         }
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 

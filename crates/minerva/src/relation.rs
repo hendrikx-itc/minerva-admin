@@ -1,5 +1,6 @@
 use std::fmt;
 use std::path::PathBuf;
+use std::any::Any;
 
 use postgres::Client;
 use serde::{Deserialize, Serialize};
@@ -85,6 +86,10 @@ impl Change for AddRelation {
             .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {}", e)))?;
 
         Ok(format!("Added relation {}", &self.relation))
+    }
+
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 

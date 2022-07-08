@@ -1,5 +1,6 @@
 use std::fmt;
 use std::{io::Read, path::PathBuf};
+use std::any::Any;
 
 use postgres::Client;
 use serde::{Deserialize, Serialize};
@@ -63,6 +64,10 @@ impl Change for AddVirtualEntity {
             })?;
 
         Ok(format!("Added virtual entity {}", &self.virtual_entity))
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 
