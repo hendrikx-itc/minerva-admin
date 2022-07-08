@@ -3,6 +3,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use glob::glob;
+use std::any::Any;
 
 use postgres::{Client, types::ToSql};
 
@@ -165,6 +166,10 @@ impl Change for UpdateTrendViewMaterializationAttributes {
     fn apply(&self, _client: &mut Client) -> Result<String, Error> {
         Ok(String::from(format!("Updated view {}", self.trend_view_materialization.view_name())))
     }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
+    }
 }
 
 impl fmt::Display for UpdateTrendViewMaterializationAttributes {
@@ -187,6 +192,10 @@ impl Change for UpdateView {
         self.trend_view_materialization.create_view(client).unwrap();
 
         Ok(String::from(format!("Updated view {}", self.trend_view_materialization.view_name())))
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 
@@ -517,6 +526,10 @@ impl Change for AddTrendMaterialization {
             Ok(_) => Ok(format!("Added trend materialization {}", &self.trend_materialization)),
             Err(e) => Err(Error::Runtime(RuntimeError { msg: format!("Error adding trend materialization {}: {}", &self.trend_materialization, e) }))
         }
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 

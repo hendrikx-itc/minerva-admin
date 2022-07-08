@@ -6,6 +6,7 @@ use std::convert::From;
 use std::fmt;
 use std::time::Duration;
 use std::path::PathBuf;
+use std::any::Any;
 
 use humantime::format_duration;
 
@@ -117,6 +118,10 @@ impl Change for AddTrends {
         })?;
 
         Ok(format!("Added {} trends to trend store part '{}'", &self.trends.len(), &self.trend_store_part.name))
+    }
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 
@@ -245,6 +250,10 @@ impl Change for ModifyTrendDataTypes {
 
         Ok(format!("Altered trend data types for trend store part '{}'", &self.trend_store_part.name))
     }
+
+    fn as_any(&self) -> &dyn Any{
+        self
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
@@ -366,6 +375,11 @@ impl Change for AddTrendStorePart {
         ).map_err(|e| DatabaseError::from_msg(format!("Error creating trend store part '{}': {}", &self.trend_store_part.name, e)))?;
 
         Ok(format!("Added trend store part '{}' to trend store '{}'", &self.trend_store_part.name, &self.trend_store))
+    }
+
+    
+    fn as_any(&self) -> &dyn Any{
+        self
     }
 }
 
@@ -631,6 +645,10 @@ impl Change for AddTrendStore {
 
         Ok(format!("Added trend store {}", &self.trend_store))
     }
+
+    fn as_any(&self) -> &dyn Any{
+        self
+    }
 }
 
 pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
@@ -735,4 +753,67 @@ fn create_partition_for_trend_store_part(client: &mut Client, trend_store_part_i
     let partition_name = result.get(0);
 
     Ok(partition_name)
+}
+
+#[cfg(test)]
+mod test{
+    use super::*;
+    #[test]
+    fn test_diff() {
+        let test_vec1: TrendStorePart = TrendStorePart{
+            name: PostgresName::from("Part_A"),
+            trends: Vec::new(),
+            generated_trends: Vec::new()
+        };
+        
+        let test_vec2: TrendStorePart = TrendStorePart{
+            name: PostgresName::from("Part_A"),
+            trends: vec![Trend{
+                name: PostgresName::from("New"),
+                data_type: "Wow".to_string(),
+                description: String::new(),
+                time_aggregation: String::new(),
+                entity_aggregation: String::new(),
+                extra_data: json!(null)
+            }],
+            generated_trends: Vec::new()
+        };
+       
+        let test_result: Vec<Box<dyn Change>> = TrendStorePart::diff(&test_vec1, &test_vec2);
+        let test_expect = AddTrends {
+            trend_store_part: test_vec1.clone(),
+            trends: vec![Trend{
+                name: PostgresName::from("New"),
+                data_type: "Wow".to_string(),
+                description: String::new(),
+                time_aggregation: String::new(),
+                entity_aggregation: String::new(),
+                extra_data: json!(null)
+            }],
+        };
+
+        assert_eq!(test_result.len(),1);
+
+        let result_first_change =  &test_result[0];
+
+
+        let result_cast_trends = &result_first_change
+            .as_ref()
+            .as_any()
+            .downcast_ref::<AddTrends>()
+            .unwrap()
+            .trends;
+        
+
+        let result_trend_store_part = &result_first_change
+            .as_ref()
+            .as_any()
+            .downcast_ref::<AddTrends>()
+            .unwrap()
+            .trend_store_part;
+            
+            assert_eq!(result_trend_store_part.name, test_expect.trend_store_part.name);
+
+        assert_eq!(result_cast_trends[0].name, test_expect.trends[0].name);
+    }
 }
