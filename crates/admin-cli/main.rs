@@ -377,7 +377,12 @@ fn run_initialize_cmd(args: &InitializeOpt) -> CmdResult {
 
     let mut client = connect_db()?;
 
-    MinervaInstance::initialize_from(&mut client, &minerva_instance_root);
+    println!(
+        "Initializing Minerva instance from {}",
+        minerva_instance_root
+    );
+
+    MinervaInstance::load_from(&minerva_instance_root).initialize(&mut client);
 
     if args.create_partitions {
         create_partitions(&mut client, None)?;

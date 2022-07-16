@@ -13,6 +13,8 @@ use super::error::{Error};
 pub struct MinervaInstance {
     pub trend_stores: Vec<TrendStore>,
     pub attribute_stores: Vec<AttributeStore>,
+    pub virtual_entities: Vec<VirtualEntity>,
+    pub relations: Vec<Relation>,
     pub trend_materializations: Vec<TrendMaterialization>,
 }
 
@@ -22,11 +24,21 @@ impl MinervaInstance {
 
         let trend_stores = load_trend_stores(client)?;
 
+        //let virtual_entities = load_virtual_entities(client)?;
+
+        let virtual_entities = Vec::new();
+
+        //let relations = load_relations(client)?;
+
+        let relations = Vec::new();
+
         let trend_materializations = load_materializations(client)?;
 
         Ok(MinervaInstance {
             trend_stores,
             attribute_stores,
+            virtual_entities,
+            relations,
             trend_materializations,
         })
     }
@@ -34,30 +46,29 @@ impl MinervaInstance {
     pub fn load_from(minerva_instance_root: &str) -> MinervaInstance {
         let trend_stores = load_trend_stores_from(minerva_instance_root).collect();
         let attribute_stores = load_attribute_stores_from(minerva_instance_root).collect();
+        let virtual_entities = load_virtual_entities_from(minerva_instance_root).collect();
+        let relations = load_relations_from(minerva_instance_root).collect();
         let trend_materializations = load_materializations_from(minerva_instance_root).collect();
 
         MinervaInstance {
             trend_stores,
             attribute_stores,
+            virtual_entities,
+            relations,
             trend_materializations,
         }
     }
 
-    pub fn initialize_from(client: &mut Client, minerva_instance_root: &str) {
-        println!(
-            "Initializing Minerva instance from {}",
-            minerva_instance_root
-        );
+    pub fn initialize(&self, client: &mut Client) {
+        initialize_attribute_stores(client, &self.attribute_stores);
 
-        initialize_attribute_stores(client, minerva_instance_root);
+        initialize_trend_stores(client, &self.trend_stores);
 
-        initialize_trend_stores(client, minerva_instance_root);
+        initialize_virtual_entities(client, &self.virtual_entities);
 
-        initialize_virtual_entities(client, minerva_instance_root);
+        initialize_relations(client, &self.relations);
 
-        initialize_relations(client, minerva_instance_root);
-
-        initialize_trend_materializations(client, minerva_instance_root);
+        initialize_trend_materializations(client, &self.trend_materializations);
     }
 
     pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change>> {
@@ -175,10 +186,10 @@ fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item
         })
 }
 
-fn initialize_attribute_stores(client: &mut Client, minerva_instance_root: &str) {
-    for attribute_store in load_attribute_stores_from(minerva_instance_root) {
+fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec<AttributeStore>) {
+    for attribute_store in attribute_stores {
         let change = AddAttributeStore {
-            attribute_store,
+            attribute_store: attribute_store.clone(),
         };
 
         let result = change.apply(client);
@@ -218,10 +229,10 @@ fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = T
         })
 }
 
-fn initialize_trend_stores(client: &mut Client, minerva_instance_root: &str) {
-    for trend_store in load_trend_stores_from(minerva_instance_root) {
+fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendStore>) {
+    for trend_store in trend_stores {
         let change = AddTrendStore {
-            trend_store,
+            trend_store: trend_store.clone(),
         };
 
         let result = change.apply(client);
@@ -280,9 +291,9 @@ fn load_relations_from(minerva_instance_root: &str) -> impl Iterator<Item = Rela
         })
 }
 
-fn initialize_virtual_entities(client: &mut Client, minerva_instance_root: &str) {
-    for virtual_entity in load_virtual_entities_from(minerva_instance_root) {
-        let change: AddVirtualEntity = AddVirtualEntity::from(virtual_entity);
+fn initialize_virtual_entities(client: &mut Client, virtual_entities: &Vec<VirtualEntity>) {
+    for virtual_entity in virtual_entities {
+        let change: AddVirtualEntity = AddVirtualEntity::from(virtual_entity.clone());
 
         match change.apply(client) {
             Ok(message) => println!("{}", message),
@@ -291,9 +302,9 @@ fn initialize_virtual_entities(client: &mut Client, minerva_instance_root: &str)
     }
 }
 
-fn initialize_relations(client: &mut Client, minerva_instance_root: &str) {
-    for relation in load_relations_from(minerva_instance_root) {
-        let change: AddRelation = AddRelation::from(relation);
+fn initialize_relations(client: &mut Client, relations: &Vec<Relation>) {
+    for relation in relations {
+        let change: AddRelation = AddRelation::from(relation.clone());
 
         match change.apply(client) {
             Ok(message) => println!("{}", message),
@@ -302,9 +313,9 @@ fn initialize_relations(client: &mut Client, minerva_instance_root: &str) {
     }
 }
 
-fn initialize_trend_materializations(client: &mut Client, minerva_instance_root: &str) {
-    for materialization in load_materializations_from(minerva_instance_root) {
-        let change = AddTrendMaterialization::from(materialization);
+fn initialize_trend_materializations(client: &mut Client, trend_materializations: &Vec<TrendMaterialization>) {
+    for materialization in trend_materializations {
+        let change = AddTrendMaterialization::from(materialization.clone());
 
         match change.apply(client) {
             Ok(message) => println!("{}", message),
