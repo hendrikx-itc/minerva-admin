@@ -6,6 +6,8 @@ use super::attribute_store::{load_attribute_stores, AddAttributeStore, Attribute
 use super::change::Change;
 use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore, load_trend_store_from_file};
 use super::trend_materialization::{TrendMaterialization, AddTrendMaterialization, load_materializations_from, load_materializations};
+use super::virtual_entity::{VirtualEntity, load_virtual_entity_from_file, AddVirtualEntity};
+use super::relation::{Relation, load_relation_from_file, AddRelation};
 use super::error::{Error};
 
 pub struct MinervaInstance {
@@ -51,14 +53,11 @@ impl MinervaInstance {
 
         initialize_trend_stores(client, &minerva_instance_root);
 
-        for materialization in load_materializations_from(minerva_instance_root) {
-            let change = AddTrendMaterialization::from(materialization);
+        initialize_virtual_entities(client, &minerva_instance_root);
 
-            match change.apply(client) {
-                Ok(_) => println!("Created trend materialization"),
-                Err(e) => println!("Error creating trend materialization: {}", e),
-            }
-        }
+        initialize_relations(client, &minerva_instance_root);
+
+        initialize_trend_materializations(client, &minerva_instance_root);
     }
 
     pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change>> {
@@ -185,8 +184,8 @@ fn initialize_attribute_stores(client: &mut Client, minerva_instance_root: &str)
         let result = change.apply(client);
 
         match result {
-            Ok(_) => {
-                println!("Created attribute store");
+            Ok(message) => {
+                println!("{}", message);
             }
             Err(e) => {
                 println!("Error creating attribute store: {}", e);
@@ -228,12 +227,88 @@ fn initialize_trend_stores(client: &mut Client, minerva_instance_root: &str) {
         let result = change.apply(client);
 
         match result {
-            Ok(_) => {
-                println!("Created trend store");
+            Ok(message) => {
+                println!("{}", message);
             }
             Err(e) => {
                 println!("Error creating trend store: {}", e);
             }
+        }
+    }
+}
+
+fn load_virtual_entities_from(minerva_instance_root: &str) -> impl Iterator<Item = VirtualEntity> {
+    let sql_paths = glob(
+        &format!("{}/virtual-entity/*.sql", minerva_instance_root)
+    ).expect("Failed to read glob pattern");
+
+    sql_paths.filter_map(|entry| match entry {
+        Ok(path) => {
+            match load_virtual_entity_from_file(&path) {
+                Ok(virtual_entity) => Some(virtual_entity),
+                Err(e) => {
+                    println!("Error loading virtual entity definition: {}", e);
+                    None
+                }
+            }
+        },
+        Err(_) => None,
+    })  
+}
+
+fn load_relations_from(minerva_instance_root: &str) -> impl Iterator<Item = Relation> {
+    let yaml_paths = glob(
+        &format!("{}/relation/*.yaml", minerva_instance_root)
+    ).expect("Failed to read glob pattern");
+
+    let json_paths = glob(
+        &format!("{}/relation/*.json", minerva_instance_root)
+    ).expect("Failed to read glob pattern");
+
+    yaml_paths.chain(json_paths)
+        .filter_map(|entry| match entry {
+            Ok(path) => {
+                match load_relation_from_file(&path) {
+                    Ok(trend_store) => Some(trend_store),
+                    Err(e) => {
+                        println!("Error loading relation definition: {}", e);
+                        None
+                    }
+                }
+            }
+            Err(_) => None,
+        })
+}
+
+fn initialize_virtual_entities(client: &mut Client, minerva_instance_root: &str) {
+    for virtual_entity in load_virtual_entities_from(minerva_instance_root) {
+        let change: AddVirtualEntity = AddVirtualEntity::from(virtual_entity);
+
+        match change.apply(client) {
+            Ok(message) => println!("{}", message),
+            Err(e) => print!("Error creating virtual entity: {}", e),
+        }
+    }
+}
+
+fn initialize_relations(client: &mut Client, minerva_instance_root: &str) {
+    for relation in load_relations_from(minerva_instance_root) {
+        let change: AddRelation = AddRelation::from(relation);
+
+        match change.apply(client) {
+            Ok(message) => println!("{}", message),
+            Err(e) => print!("Error creating relation: {}", e),
+        }
+    }
+}
+
+fn initialize_trend_materializations(client: &mut Client, minerva_instance_root: &str) {
+    for materialization in load_materializations_from(minerva_instance_root) {
+        let change = AddTrendMaterialization::from(materialization);
+
+        match change.apply(client) {
+            Ok(message) => println!("{}", message),
+            Err(e) => println!("Error creating trend materialization: {}", e),
         }
     }
 }

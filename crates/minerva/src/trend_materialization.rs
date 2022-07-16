@@ -5,6 +5,7 @@ use serde_yaml;
 use glob::glob;
 
 use postgres::{Client, types::ToSql};
+use postgres_protocol::escape::escape_identifier;
 
 use humantime::format_duration;
 
@@ -63,7 +64,7 @@ impl TrendViewMaterialization {
     pub fn drop_view(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
             "DROP VIEW IF EXISTS {}",
-            format!("\"trend\".\"{}\"", &self.view_name()),
+            format!("\"trend\".{}", &escape_identifier(&self.view_name())),
         );
 
         match client.execute(query.as_str(), &[]) {
@@ -76,7 +77,7 @@ impl TrendViewMaterialization {
     pub fn create_view(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
             "CREATE VIEW {} AS {}",
-            format!("\"trend\".\"{}\"", &self.view_name()),
+            format!("\"trend\".{}", &escape_identifier(&self.view_name())),
             self.view,
         );
 
@@ -227,7 +228,7 @@ impl TrendFunctionMaterialization {
     fn define_materialization(&self, client: &mut Client) -> Result<(), String> {
         let query = concat!(
             "SELECT trend_directory.define_function_materialization(",
-            "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::regprocedure",
+            "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure",
             ") ",
             "FROM trend_directory.trend_store_part WHERE name = $5",
         );
@@ -236,7 +237,7 @@ impl TrendFunctionMaterialization {
             &format_duration(self.processing_delay).to_string(),
             &format_duration(self.stability_delay).to_string(),
             &format_duration(self.reprocessing_period).to_string(),
-            &format!("trend.\"{}\"(timestamp with time zone)", &self.target_trend_store_part),
+            &format!("trend.{}(timestamp with time zone)", escape_identifier(&self.target_trend_store_part)),
             &self.target_trend_store_part
         ];
 
@@ -248,15 +249,16 @@ impl TrendFunctionMaterialization {
 
     fn create_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "CREATE FUNCTION {} AS $function$\n{}\n$function$ LANGUAGE {}",
-            format!("\"trend\".\"{}\"(timestamp with time zone)", &self.target_trend_store_part),
+            "CREATE FUNCTION {} RETURNS {} AS $function$\n{}\n$function$ LANGUAGE {}",
+            format!("trend.{}(timestamp with time zone)", &escape_identifier(&self.target_trend_store_part)),
+            &self.function.return_type,
             &self.function.src,
             &self.function.language,
         );
 
         match client.execute(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error creating view: {}", e))
+            Err(e) => Err(format!("Error creating function: {}", e))
         }
     }
 

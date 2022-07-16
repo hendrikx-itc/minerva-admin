@@ -5,3 +5,5 @@ pub mod change;
 pub mod error;
 pub mod interval;
 pub mod trend_materialization;
+pub mod relation;
+pub mod virtual_entity;
