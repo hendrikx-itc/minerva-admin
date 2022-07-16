@@ -30,13 +30,13 @@ pub fn load_relation_from_file(path: &PathBuf) -> Result<Relation, Error> {
             RuntimeError::from_msg(format!("Could not read relation definition from file '{}': {}", path.display(), e))
         })?;
 
-        return Ok(relation);
+        Ok(relation)
     } else if path.extension() == Some(std::ffi::OsStr::new("json")) {
         let relation: Relation = serde_json::from_reader(f).map_err(|e| {
             RuntimeError::from_msg(format!("Could not read relation definition from file '{}': {}", path.display(), e))
         })?;
 
-        return Ok(relation);
+        Ok(relation)
     } else {
         return Err(ConfigurationError::from_msg(
             format!("Unsupported relation definition format '{}'", path.extension().unwrap().to_string_lossy())
@@ -77,7 +77,7 @@ impl Change for AddRelation {
 impl From<Relation> for AddRelation {
     fn from(relation: Relation) -> Self {
         AddRelation {
-            relation: relation
+            relation
         }
     }
 }

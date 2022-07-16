@@ -25,9 +25,9 @@ impl MinervaInstance {
         let trend_materializations = load_materializations(client)?;
 
         Ok(MinervaInstance {
-            trend_stores: trend_stores,
-            attribute_stores: attribute_stores,
-            trend_materializations: trend_materializations,
+            trend_stores,
+            attribute_stores,
+            trend_materializations,
         })
     }
 
@@ -37,9 +37,9 @@ impl MinervaInstance {
         let trend_materializations = load_materializations_from(minerva_instance_root).collect();
 
         MinervaInstance {
-            trend_stores: trend_stores,
-            attribute_stores: attribute_stores,
-            trend_materializations: trend_materializations,
+            trend_stores,
+            attribute_stores,
+            trend_materializations,
         }
     }
 
@@ -49,15 +49,15 @@ impl MinervaInstance {
             minerva_instance_root
         );
 
-        initialize_attribute_stores(client, &minerva_instance_root);
+        initialize_attribute_stores(client, minerva_instance_root);
 
-        initialize_trend_stores(client, &minerva_instance_root);
+        initialize_trend_stores(client, minerva_instance_root);
 
-        initialize_virtual_entities(client, &minerva_instance_root);
+        initialize_virtual_entities(client, minerva_instance_root);
 
-        initialize_relations(client, &minerva_instance_root);
+        initialize_relations(client, minerva_instance_root);
 
-        initialize_trend_materializations(client, &minerva_instance_root);
+        initialize_trend_materializations(client, minerva_instance_root);
     }
 
     pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change>> {
@@ -178,7 +178,7 @@ fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item
 fn initialize_attribute_stores(client: &mut Client, minerva_instance_root: &str) {
     for attribute_store in load_attribute_stores_from(minerva_instance_root) {
         let change = AddAttributeStore {
-            attribute_store: attribute_store,
+            attribute_store,
         };
 
         let result = change.apply(client);
@@ -221,7 +221,7 @@ fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = T
 fn initialize_trend_stores(client: &mut Client, minerva_instance_root: &str) {
     for trend_store in load_trend_stores_from(minerva_instance_root) {
         let change = AddTrendStore {
-            trend_store: trend_store,
+            trend_store,
         };
 
         let result = change.apply(client);

@@ -218,7 +218,7 @@ fn run_trend_store_create_cmd(args: &TrendStoreCreate) -> CmdResult {
     let mut client = connect_db()?;
 
     let change = AddTrendStore {
-        trend_store: trend_store,
+        trend_store,
     };
 
     change.apply(&mut client)?;
@@ -244,7 +244,7 @@ fn run_trend_store_diff_cmd(args: &TrendStoreDiff) -> CmdResult {
         Ok(trend_store_db) => {
             let changes = trend_store_db.diff(&trend_store);
 
-            if changes.len() > 0 {
+            if !changes.is_empty() {
                 println!("Differences with the database");
 
                 for change in changes {
@@ -278,7 +278,7 @@ fn run_trend_store_update_cmd(args: &TrendStoreUpdate) -> CmdResult {
         Ok(trend_store_db) => {
             let changes = trend_store_db.diff(&trend_store);
 
-            if changes.len() > 0 {
+            if !changes.is_empty() {
                 println!("Updating trend store");
 
                 for change in changes {
@@ -313,7 +313,7 @@ fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
     let mut client = connect_db()?;
 
     let change = AddAttributeStore {
-        attribute_store: attribute_store,
+        attribute_store,
     };
 
     let result = change.apply(&mut client);
@@ -345,7 +345,7 @@ fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
 
     let changes = attribute_store_db.diff(&attribute_store);
 
-    if changes.len() > 0 {
+    if !changes.is_empty() {
         println!("Updating attribute store");
 
         for change in changes {
@@ -410,7 +410,7 @@ fn run_diff_cmd() -> CmdResult {
 
     let changes = instance_db.diff(&instance_def);
 
-    if changes.len() > 0 {
+    if !changes.is_empty() {
         println!("Differences with database:");
 
         for change in changes {

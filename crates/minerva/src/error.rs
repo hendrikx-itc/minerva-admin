@@ -8,7 +8,7 @@ pub struct DatabaseError {
 
 impl DatabaseError {
     pub fn from_msg(msg: String) -> DatabaseError {
-        DatabaseError { msg: msg }
+        DatabaseError { msg }
     }
 }
 
@@ -24,7 +24,7 @@ pub struct ConfigurationError {
 
 impl ConfigurationError {
     pub fn from_msg(msg: String) -> ConfigurationError {
-        ConfigurationError { msg: msg }
+        ConfigurationError { msg }
     }
 }
 
@@ -34,7 +34,7 @@ pub struct RuntimeError {
 
 impl RuntimeError {
     pub fn from_msg(msg: String) -> RuntimeError {
-        RuntimeError { msg: msg }
+        RuntimeError { msg }
     }
 }
 

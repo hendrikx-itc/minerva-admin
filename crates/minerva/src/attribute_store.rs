@@ -90,7 +90,7 @@ impl AttributeStore {
             }
         }
 
-        if new_attributes.len() > 0 {
+        if !new_attributes.is_empty() {
             changes.push(Box::new(AddAttributes {
                 attribute_store: self.clone(),
                 attributes: new_attributes,
@@ -170,7 +170,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
         attribute_stores.push(AttributeStore {
             data_source: String::from(data_source),
             entity_type: String::from(entity_type),
-            attributes: attributes,
+            attributes,
         });
     }
 
@@ -201,7 +201,7 @@ pub fn load_attribute_store(
     Ok(AttributeStore {
         data_source: String::from(data_source),
         entity_type: String::from(entity_type),
-        attributes: attributes,
+        attributes,
     })
 }
 

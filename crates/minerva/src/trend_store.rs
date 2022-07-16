@@ -308,14 +308,14 @@ impl TrendStorePart {
             }
         }
 
-        if new_trends.len() > 0 {
+        if !new_trends.is_empty() {
             changes.push(Box::new(AddTrends {
                 trend_store_part: self.clone(),
                 trends: new_trends,
             }));
         }
 
-        if alter_trend_data_types.len() > 0 {
+        if !alter_trend_data_types.is_empty() {
             changes.push(Box::new(ModifyTrendDataTypes {
                 trend_store_part: self.clone(),
                 modifications: alter_trend_data_types,
@@ -479,7 +479,7 @@ pub fn load_trend_store(
         "WHERE data_source.name = $1 AND entity_type.name = $2 AND granularity = $3::text::interval"
     );
 
-    let granularity_str: String = format_duration(granularity.clone()).to_string();
+    let granularity_str: String = format_duration(*granularity).to_string();
 
     let result = conn
         .query_one(query, &[&data_source, &entity_type, &granularity_str])?;
@@ -492,9 +492,9 @@ pub fn load_trend_store(
     Ok(TrendStore {
         data_source: String::from(data_source),
         entity_type: String::from(entity_type),
-        granularity: granularity.clone(),
-        partition_size: partition_size.clone(),
-        parts: parts,
+        granularity: *granularity,
+        partition_size,
+        parts,
     })
 }
 
@@ -542,7 +542,7 @@ fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<TrendSt
 
         parts.push(TrendStorePart {
             name: String::from(trend_store_part_name),
-            trends: trends,
+            trends,
             generated_trends: Vec::new(),
         });
     }
@@ -585,9 +585,9 @@ pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Error> {
         trend_stores.push(TrendStore {
             data_source: String::from(data_source),
             entity_type: String::from(entity_type),
-            granularity: granularity,
-            partition_size: partition_size,
-            parts: parts,
+            granularity,
+            partition_size,
+            parts,
         });
     }
 
@@ -643,13 +643,13 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
             RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
         })?;
 
-        return Ok(trend_store);
+        Ok(trend_store)
     } else if path.extension() == Some(std::ffi::OsStr::new("json")) {
         let trend_store: TrendStore = serde_json::from_reader(f).map_err(|e| {
             RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
         })?;
 
-        return Ok(trend_store);
+        Ok(trend_store)
     } else {
         return Err(ConfigurationError::from_msg(
             format!("Unsupported trend store definition format '{}'", path.extension().unwrap().to_string_lossy())

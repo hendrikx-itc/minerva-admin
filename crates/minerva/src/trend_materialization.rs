@@ -47,11 +47,11 @@ impl TrendViewMaterialization {
             &format_duration(self.processing_delay).to_string(),
             &format_duration(self.stability_delay).to_string(),
             &format_duration(self.reprocessing_period).to_string(),
-            &format!("trend.\"{}\"", &self.view_name()),
+            &format!("trend.{}", escape_identifier(&self.view_name())),
             &self.target_trend_store_part
         ];
 
-        match client.query(query, &query_args) {
+        match client.query(query, query_args) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Error defining view materialization: {}", e))
         }
@@ -63,8 +63,8 @@ impl TrendViewMaterialization {
 
     pub fn drop_view(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "DROP VIEW IF EXISTS {}",
-            format!("\"trend\".{}", &escape_identifier(&self.view_name())),
+            "DROP VIEW IF EXISTS trend.{}",
+            &escape_identifier(&self.view_name()),
         );
 
         match client.execute(query.as_str(), &[]) {
@@ -76,8 +76,8 @@ impl TrendViewMaterialization {
 
     pub fn create_view(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "CREATE VIEW {} AS {}",
-            format!("\"trend\".{}", &escape_identifier(&self.view_name())),
+            "CREATE VIEW trend.{} AS {}",
+            &escape_identifier(&self.view_name()),
             self.view,
         );
 
@@ -163,8 +163,8 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 impl Change for UpdateTrendViewMaterializationAttributes {
-    fn apply(&self, _client: &mut Client) -> Result<String, Error> {
-        Ok(String::from(format!("Updated view {}", self.trend_view_materialization.view_name())))
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        Ok(format!("Updated view {}", self.trend_view_materialization.view_name()))
     }
 }
 
@@ -187,7 +187,7 @@ impl Change for UpdateView {
         self.trend_view_materialization.drop_view(client).unwrap();
         self.trend_view_materialization.create_view(client).unwrap();
 
-        Ok(String::from(format!("Updated view {}", self.trend_view_materialization.view_name())))
+        Ok(format!("Updated view {}", self.trend_view_materialization.view_name()))
     }
 }
 
@@ -241,7 +241,7 @@ impl TrendFunctionMaterialization {
             &self.target_trend_store_part
         ];
 
-        match client.query(query, &query_args) {
+        match client.query(query, query_args) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Error defining function materialization: {}", e))
         }
@@ -249,8 +249,8 @@ impl TrendFunctionMaterialization {
 
     fn create_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "CREATE FUNCTION {} RETURNS {} AS $function$\n{}\n$function$ LANGUAGE {}",
-            format!("trend.{}(timestamp with time zone)", &escape_identifier(&self.target_trend_store_part)),
+            "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS {} AS $function$\n{}\n$function$ LANGUAGE {}",
+            &escape_identifier(&self.target_trend_store_part),
             &self.function.return_type,
             &self.function.src,
             &self.function.language,
@@ -441,12 +441,12 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
             let sources = load_sources(conn, materialization_id)?;
 
             let view_materialization = TrendViewMaterialization {
-                target_trend_store_part: target_trend_store_part,
-                enabled: enabled,
+                target_trend_store_part,
+                enabled,
                 fingerprint_function: String::from(""),
                 processing_delay: parse_interval(&processing_delay).unwrap(),
                 reprocessing_period: parse_interval(&reprocessing_period).unwrap(),
-                sources: sources,
+                sources,
                 stability_delay: parse_interval(&stability_delay).unwrap(),
                 view: view_def,
             };
@@ -483,8 +483,8 @@ fn load_sources(conn: &mut Client, materialization_id: i32) -> Result<Vec<TrendM
         let mapping_function: String = row.get(1);
 
         sources.push(TrendMaterializationSource {
-            trend_store_part: trend_store_part,
-            mapping_function: mapping_function,
+            trend_store_part,
+            mapping_function,
         });
     }
 
@@ -525,7 +525,7 @@ impl Change for AddTrendMaterialization {
 impl From<TrendMaterialization> for AddTrendMaterialization {
     fn from(trend_materialization: TrendMaterialization) -> Self {
         AddTrendMaterialization {
-            trend_materialization: trend_materialization
+            trend_materialization
         }
     }
 }
