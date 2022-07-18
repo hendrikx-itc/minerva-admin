@@ -1,0 +1,123 @@
+swagger: '2.0'
+info:
+  title: Minerva API
+  description: API for Minerva system management
+  version: "1.0.0"
+host: localhost
+schemes:
+  - https
+  - http
+# will be prefixed to all paths
+basePath: /v1
+produces:
+  - application/json
+paths:
+  /trend-view-materializations:
+    get:
+      summary: Trend View Materializations
+      description: |
+        This endpoint returns the full list of trend view materializations.
+      tags:
+        - Materializations
+      responses:
+        200:
+          description: An array of trend view materializations
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/TrendViewMaterialization'
+        default:
+          description: Unexpected error
+          schema:
+            $ref: '#/definitions/Error'
+  /trend-function-materializations:
+    get:
+      summary: Trend Function Materializations
+      description: |
+        This endpoint returns the full list of trend function materializations.
+      tags:
+        - Materializations
+      responses:
+        200:
+          description: An array of trend function materializations
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/TrendFunctionMaterialization'
+        default:
+          description: Unexpected error
+          schema:
+            $ref: '#/definitions/Error'
+definitions:
+  TrendViewMaterialization:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Unique identifier representing a specific trend view materialization
+      target_trend_store_part:
+        type: string
+      processing_delay:
+        type: string
+        description: Period to wait after the timestamp of the calculation
+      stability_delay:
+        type: string
+      reprocessing_period:
+        type: string
+      sources:
+        type: array
+        items:
+          $ref: '#/definitions/TrendMaterializationSource'
+      view:
+        type: string
+      fingerprint_function:
+        type: string
+  TrendFunctionMaterialization:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Unique identifier representing a specific trend function materialization
+      target_trend_store_part:
+        type: string
+      processing_delay:
+        type: string
+        description: Period to wait after the timestamp of the calculation
+      stability_delay:
+        type: string
+      reprocessing_period:
+        type: string
+      sources:
+        type: array
+        items:
+          $ref: '#/definitions/TrendMaterializationSource'
+      function:
+        $ref: '#/definitions/TrendMaterializationFunction'
+  TrendMaterializationSource:
+    type: object
+    properties:
+      trend_store_part:
+        type: string
+        description: Name of the source trend store part.
+      mapping_function:
+        type: string
+        description: Name of the timestamp mapping function.
+  TrendMaterializationFunction:
+    type: object
+    properties:
+      return_type:
+        type: string
+      src:
+        type: string
+      language:
+        type: string
+  Error:
+    type: object
+    properties:
+      code:
+        type: integer
+        format: int32
+      message:
+        type: string
+      fields:
+        type: string
