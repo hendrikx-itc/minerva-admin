@@ -12,9 +12,14 @@ license = "GPL-3.0-or-later"
 path = "crates/admin-cli/main.rs"
 name = "minerva-admin"
 
+[[bin]]
+path = "crates/admin-service/main.rs"
+name = "minerva-service"
+
 [workspace]
 members = [
-    "crates/minerva"
+    "crates/minerva",
+    "crates/admin-service"
 ]
 
 [dependencies]
@@ -31,3 +36,6 @@ humantime-serde = "1.1"
 serde_json = "1.0"
 glob = "0.3"
 regex = "1.5"
+actix-web = "4.1"
+bb8 = "0.8"
+bb8-postgres = "0.8"

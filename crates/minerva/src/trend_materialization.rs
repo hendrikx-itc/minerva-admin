@@ -163,7 +163,7 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 impl Change for UpdateTrendViewMaterializationAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+    fn apply(&self, _client: &mut Client) -> Result<String, Error> {
         Ok(format!("Updated view {}", self.trend_view_materialization.view_name()))
     }
 }
