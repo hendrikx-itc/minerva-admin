@@ -16,3 +16,6 @@ humantime-serde = "1.0"
 serde_json = "1.0"
 glob = "0.3"
 regex = "1.5"
+utoipa = { version = "1.1", features = ["actix_extras", "chrono"] }
+utoipa-swagger-ui = { version = "1.1", features = ["actix-web"] }
+env_logger = "0.9"

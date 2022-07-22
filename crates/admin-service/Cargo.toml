@@ -10,3 +10,4 @@ path = "main.rs"
 
 [dependencies]
 actix-web = "4.1"
+utoipa = "1.1"
