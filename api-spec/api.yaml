@@ -272,16 +272,220 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /trend-store:
+    get:
+      summary: Trend Stores
+      description: |
+        This endpoint returns the full list of trend stores.
+      responses:
+        200:
+          description: An array of trend stores
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/TrendStore'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /trend-store/{trendStoreId}:
+    get:
+      summary: Get a specific trend store
+      responses:
+        200:
+          description: The trend store with the specified Id
+          schema:
+            $ref: '#/components/schemas/TrendStore'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend store does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /trend-store-part:
+    get:
+      summary: Trend Store Parts
+      description: |
+        This endpoint returns the full list of trend store parts.
+      responses:
+        200:
+          description: An array of trend store parts
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/TrendStorePart'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /trend-store-part/{trendStorePartId}:
+    get:
+      summary: Get a specific trend store part
+      responses:
+        200:
+          description: The trend store part with the specified Id
+          schema:
+            $ref: '#/components/schemas/TrendStorePart'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend store part does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /data-source:
+    get:
+      summary: Data Sources
+      description: |
+        This endpoint returns the full list of data sources.
+      tags:
+        - Materializations
+      responses:
+        200:
+          description: An array of data sources
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DataSource'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /data-source/{dataSourceId}:
+    get:
+      summary: Get a specific data source
+      responses:
+        200:
+          description: The data source with the specified Id
+          schema:
+            $ref: '#/components/schemas/DataSource'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The data source does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /entity-type:
+    get:
+      summary: Entity Types
+      description: |
+        This endpoint returns the full list of entity types.
+      tags:
+        - Materializations
+      responses:
+        200:
+          description: An array of entity types
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/EntityType'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /entity-type/{entityTypeId}:
+    get:
+      summary: Get a specific entity type
+      responses:
+        200:
+          description: The entity type with the specified Id
+          schema:
+            $ref: '#/components/schemas/EntityType'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The entity type does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     TrendViewMaterialization:
       type: object
       properties:
         id:
-          type: string
+          type: integer
           description: Unique identifier representing a specific trend view materialization
         target_trend_store_part:
-          type: string
+          type: integer
         processing_delay:
           type: string
           description: Period to wait after the timestamp of the calculation
@@ -301,10 +505,10 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
           description: Unique identifier representing a specific trend function materialization
         target_trend_store_part:
-          type: string
+          type: integer
         processing_delay:
           type: string
           description: Period to wait after the timestamp of the calculation
@@ -322,8 +526,8 @@ components:
       type: object
       properties:
         trend_store_part:
-          type: string
-          description: Name of the source trend store part.
+          type: integer
+          description: Identifier of the source trend store part.
         mapping_function:
           type: string
           description: Name of the timestamp mapping function.
@@ -335,6 +539,59 @@ components:
         src:
           type: string
         language:
+          type: string
+    TrendStorePart:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the trend store part
+        name:
+          type: string
+          description: Name of the trend store part
+        trend_store:
+          type: integer
+          description: Id of the trend store to which the trend store part to which the trend store belongs
+    TrendStore:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the trend store
+        name:
+          type: string
+          description: The name of the trend store
+        entity_type:
+          type: integer
+          description: Id of the entity type that the trend store is based on
+        data_source:
+          type: integer
+          description: Id of the data source that the trend store is based on
+        granularity:
+          type: string
+        partition_size:
+          type: string
+        retention_period:
+          type: string
+    DataSource:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the data source
+        name:
+          type: string
+        description:
+          type: string
+    EntityType:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the entity type
+        name:
+          type: string
+        description:
           type: string
     Error:
       type: object
