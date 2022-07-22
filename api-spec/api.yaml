@@ -1,4 +1,4 @@
-swagger: '2.0'
+swagger: '3.0.3'
 info:
   title: Minerva API
   description: API for Minerva system management
@@ -25,11 +25,123 @@ paths:
           schema:
             type: array
             items:
-              $ref: '#/definitions/TrendViewMaterialization'
+              $ref: '#/components/schemas/TrendViewMaterialization'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/TrendViewMaterialization'
+      responses:
+        200:
+          description: Trend view materialization successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendViewMaterialization'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /trend-view-materializations/{materializationId}:
+    get:
+      summary: Get a specific trend view materialization
+      responses:
+        200:
+          description: The trend view materialization with the specified Id
           schema:
-            $ref: '#/definitions/Error'
+            $ref: '#/components/schemas/TrendViewMaterialization'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend view materialization does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update a specific trend view materialization
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/TrendViewMaterialization'
+      responses:
+        200:
+          description: The updated trend view materialization with the specified Id
+          schema:
+            $ref: '#/components/schemas/TrendViewMaterialization'
+        401:
+          description: User is not allowed to perform this operation on this trend view materialization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend view materialization does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete a specific trend view materialization
+      responses:
+        200:
+          description: The trend view materialization was successfully deleted
+        401:
+          description: User is not allowed to perform this operation on this trend view materialization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend view materialization does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /trend-function-materializations:
     get:
       summary: Trend Function Materializations
@@ -43,81 +155,192 @@ paths:
           schema:
             type: array
             items:
-              $ref: '#/definitions/TrendFunctionMaterialization'
+              $ref: '#/components/schemas/TrendFunctionMaterialization'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/TrendFunctionMaterialization'
+      responses:
+        200:
+          description: Trend function materialization successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendFunctionMaterialization'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /trend-function-materializations/{materializationId}:
+    get:
+      summary: Get a specific trend function materialization
+      responses:
+        200:
+          description: The trend function materialization with the specified Id
           schema:
-            $ref: '#/definitions/Error'
-definitions:
-  TrendViewMaterialization:
-    type: object
-    properties:
-      id:
-        type: string
-        description: Unique identifier representing a specific trend view materialization
-      target_trend_store_part:
-        type: string
-      processing_delay:
-        type: string
-        description: Period to wait after the timestamp of the calculation
-      stability_delay:
-        type: string
-      reprocessing_period:
-        type: string
-      sources:
-        type: array
-        items:
-          $ref: '#/definitions/TrendMaterializationSource'
-      view:
-        type: string
-      fingerprint_function:
-        type: string
-  TrendFunctionMaterialization:
-    type: object
-    properties:
-      id:
-        type: string
-        description: Unique identifier representing a specific trend function materialization
-      target_trend_store_part:
-        type: string
-      processing_delay:
-        type: string
-        description: Period to wait after the timestamp of the calculation
-      stability_delay:
-        type: string
-      reprocessing_period:
-        type: string
-      sources:
-        type: array
-        items:
-          $ref: '#/definitions/TrendMaterializationSource'
-      function:
-        $ref: '#/definitions/TrendMaterializationFunction'
-  TrendMaterializationSource:
-    type: object
-    properties:
-      trend_store_part:
-        type: string
-        description: Name of the source trend store part.
-      mapping_function:
-        type: string
-        description: Name of the timestamp mapping function.
-  TrendMaterializationFunction:
-    type: object
-    properties:
-      return_type:
-        type: string
-      src:
-        type: string
-      language:
-        type: string
-  Error:
-    type: object
-    properties:
-      code:
-        type: integer
-        format: int32
-      message:
-        type: string
-      fields:
-        type: string
+            $ref: '#/components/schemas/TrendFunctionMaterialization'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend function materialization does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update a specific trend function materialization
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/TrendFunctionMaterialization'
+      responses:
+        200:
+          description: The updated trend function materialization with the specified Id
+          schema:
+            $ref: '#/components/schemas/TrendFunctionMaterialization'
+        401:
+          description: User is not allowed to perform this operation on this trend function materialization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend function materialization does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete a specific trend function materialization
+      responses:
+        200:
+          description: The trend function materialization was successfully deleted
+        401:
+          description: User is not allowed to perform this operation on this trend function materialization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: The trend function materialization does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    TrendViewMaterialization:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier representing a specific trend view materialization
+        target_trend_store_part:
+          type: string
+        processing_delay:
+          type: string
+          description: Period to wait after the timestamp of the calculation
+        stability_delay:
+          type: string
+        reprocessing_period:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/definitions/TrendMaterializationSource'
+        view:
+          type: string
+        fingerprint_function:
+          type: string
+    TrendFunctionMaterialization:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier representing a specific trend function materialization
+        target_trend_store_part:
+          type: string
+        processing_delay:
+          type: string
+          description: Period to wait after the timestamp of the calculation
+        stability_delay:
+          type: string
+        reprocessing_period:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/definitions/TrendMaterializationSource'
+        function:
+          $ref: '#/definitions/TrendMaterializationFunction'
+    TrendMaterializationSource:
+      type: object
+      properties:
+        trend_store_part:
+          type: string
+          description: Name of the source trend store part.
+        mapping_function:
+          type: string
+          description: Name of the timestamp mapping function.
+    TrendMaterializationFunction:
+      type: object
+      properties:
+        return_type:
+          type: string
+        src:
+          type: string
+        language:
+          type: string
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
