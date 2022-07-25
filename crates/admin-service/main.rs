@@ -19,7 +19,7 @@ use trendstore::{TrendStorePart, get_trend_store_parts};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init();
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     #[derive(OpenApi)]
     #[openapi(
