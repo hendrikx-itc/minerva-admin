@@ -13,6 +13,10 @@ mod trendviewmaterialization;
 
 use trendviewmaterialization::{TrendMaterializationSource, TrendViewMaterialization, get_trend_view_materializations};
 
+mod trendstore;
+
+use trendstore::{Trend, GeneratedTrend, TrendStorePart, get_trend_store_parts};
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -21,6 +25,7 @@ async fn main() -> std::io::Result<()> {
     #[openapi(
         handlers(
             trendviewmaterialization::get_trend_view_materializations,
+	    trendstore::get_trend_store_parts,
         ),
         components(TrendMaterializationSource, TrendViewMaterialization),
         tags(
@@ -30,7 +35,7 @@ async fn main() -> std::io::Result<()> {
     struct ApiDoc;
 
     let manager = PostgresConnectionManager::new(
-        "host=127.0.0.1 user=postgres".parse().unwrap(),
+        "host=127.0.0.1 user=postgres database=minerva".parse().unwrap(),
         NoTls,
     );
     let pool = bb8::Pool::builder().build(manager).await.unwrap();
