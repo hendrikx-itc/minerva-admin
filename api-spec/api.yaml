@@ -576,10 +576,6 @@ components:
           type: string
         data_type:
           type: string
-        time_aggregation:
-          type: string
-        entity_aggregation:
-          type: string
         expression:
           type: string
         extra_data:
