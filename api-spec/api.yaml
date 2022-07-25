@@ -540,6 +540,54 @@ components:
           type: string
         language:
           type: string
+    Trend:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the trend
+        trend_store_part:
+          type: integer
+          description: Id of the trend store part to which the trend belongs
+        name:
+          type: string
+        data_type:
+          type: string
+        time_aggregation:
+          type: string
+        entity_aggregation:
+          type: string
+        extra_data:
+          type: object
+          additionalProperties: true
+          description: additional JSON data
+        description:
+          type: string
+    GeneratedTrend:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the generated trend
+        trend_store_part:
+          type: integer
+          description: Id of the trend store part to which the trend belongs
+        name:
+          type: string
+        data_type:
+          type: string
+        time_aggregation:
+          type: string
+        entity_aggregation:
+          type: string
+        expression:
+          type: string
+        extra_data:
+          type: object
+          additionalProperties: true
+          description: additional JSON data
+        description:
+          type: string
     TrendStorePart:
       type: object
       properties:
@@ -552,27 +600,36 @@ components:
         trend_store:
           type: integer
           description: Id of the trend store to which the trend store part to which the trend store belongs
+        trends:
+          type: array
+          items:
+            $ref: '#/definition/Trend'
+        generated_trends:
+          type: array
+          items:
+            $ref: '#/definition/GeneratedTrend'
     TrendStore:
       type: object
       properties:
         id:
           type: integer
           description: Unique identifier of the trend store
-        name:
-          type: string
-          description: The name of the trend store
         entity_type:
-          type: integer
-          description: Id of the entity type that the trend store is based on
+          type: string
+          description: Name of the entity type that the trend store is based on
         data_source:
-          type: integer
-          description: Id of the data source that the trend store is based on
+          type: string
+          description: Name of the data source that the trend store is based on
         granularity:
           type: string
         partition_size:
           type: string
         retention_period:
           type: string
+        trend_store_parts:
+          type: array
+          items:
+            $ref: '#/definitions/TrendStorePart'          
     DataSource:
       type: object
       properties:
