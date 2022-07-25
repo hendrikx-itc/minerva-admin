@@ -15,7 +15,7 @@ use trendviewmaterialization::{TrendMaterializationSource, TrendViewMaterializat
 
 mod trendstore;
 
-use trendstore::{Trend, GeneratedTrend, TrendStorePart, get_trend_store_parts};
+use trendstore::{TrendStorePart, get_trend_store_parts};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -27,7 +27,7 @@ async fn main() -> std::io::Result<()> {
             trendviewmaterialization::get_trend_view_materializations,
 	    trendstore::get_trend_store_parts,
         ),
-        components(TrendMaterializationSource, TrendViewMaterialization),
+        components(TrendMaterializationSource, TrendViewMaterialization, TrendStorePart),
         tags(
             (name = "Trend Materialization", description = "Trend materialization management endpoints.")
         ),
@@ -35,7 +35,7 @@ async fn main() -> std::io::Result<()> {
     struct ApiDoc;
 
     let manager = PostgresConnectionManager::new(
-        "host=127.0.0.1 user=postgres database=minerva".parse().unwrap(),
+        "host=127.0.0.1 user=postgres dbname=minerva".parse().unwrap(),
         NoTls,
     );
     let pool = bb8::Pool::builder().build(manager).await.unwrap();
@@ -48,6 +48,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(pool.clone()))
             .service(SwaggerUi::new("/swagger-ui/{_:.*}").url("/api-doc/openapi.json", openapi.clone()))
             .service(get_trend_view_materializations)
+	    .service(get_trend_store_parts)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
