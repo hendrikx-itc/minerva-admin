@@ -160,9 +160,22 @@ fn main() {
 }
 
 fn connect_db() -> Result<Client, Error> {
-    let conn_params = env::var(ENV_DB_CONN).map_err(|e| {
-        ConfigurationError::from_msg(format!("Could not read environment variable '{}': {}", &ENV_DB_CONN, e))
-    })?;
+    let conn_params = match env::var(ENV_DB_CONN) {
+        Ok(value) => String::from(value),
+        Err(_) => {
+            // No single environment variable set, let's check for psql settings
+            let pg_host = env::var("PGHOST").unwrap_or("localhost".into());
+            let pg_port = env::var("PGPORT").unwrap_or("5432".into());
+            let pg_user = env::var("PGUSER").unwrap_or("postgres".into());
+            let pg_password = env::var("PGPASSWORD");
+            let pg_database = env::var("PGDATABASE").unwrap_or("postgres".into());
+
+            match pg_password {
+                Ok(password) => format!("postgresql://{}:{}@{}:{}/{}", pg_user, password, pg_host, pg_port, pg_database),
+                Err(_) => format!("postgresql://{}@{}:{}/{}", pg_user, pg_host, pg_port, pg_database),
+            }
+        }
+    };
 
     let client = Client::connect(&conn_params, NoTls)?;
 

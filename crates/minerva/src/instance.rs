@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::io::Read;
+
 use glob::glob;
 
 use postgres::Client;
@@ -11,6 +14,7 @@ use super::relation::{Relation, load_relation_from_file, AddRelation};
 use super::error::{Error};
 
 pub struct MinervaInstance {
+    pub instance_root: Option<PathBuf>,
     pub trend_stores: Vec<TrendStore>,
     pub attribute_stores: Vec<AttributeStore>,
     pub virtual_entities: Vec<VirtualEntity>,
@@ -35,6 +39,7 @@ impl MinervaInstance {
         let trend_materializations = load_materializations(client)?;
 
         Ok(MinervaInstance {
+            instance_root: None,
             trend_stores,
             attribute_stores,
             virtual_entities,
@@ -51,6 +56,7 @@ impl MinervaInstance {
         let trend_materializations = load_materializations_from(minerva_instance_root).collect();
 
         MinervaInstance {
+            instance_root: Some(PathBuf::from(minerva_instance_root)),
             trend_stores,
             attribute_stores,
             virtual_entities,
@@ -69,6 +75,17 @@ impl MinervaInstance {
         initialize_relations(client, &self.relations);
 
         initialize_trend_materializations(client, &self.trend_materializations);
+
+        if let Some(instance_root) = &self.instance_root {
+            match initialize_custom(client, &instance_root) {
+                Ok(steps) => {
+                    for step in steps {
+                        println!("{}", step);
+                    }
+                },
+                Err(e) => println!("Error running custom post-init steps: {}", e)
+            }
+        }
     }
 
     pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change>> {
@@ -132,11 +149,11 @@ impl MinervaInstance {
         println!("Applying changes:");
 
         for change in changes {
-            println!("{}", change);
+            println!("* {}", change);
 
             let message = change.apply(client)?;
 
-            println!("{}", &message);
+            println!("> {}", &message);
         }
 
         // Materializations have no diff mechanism yet, so just update
@@ -322,4 +339,34 @@ fn initialize_trend_materializations(client: &mut Client, trend_materializations
             Err(e) => println!("Error creating trend materialization: {}", e),
         }
     }
+}
+
+fn initialize_custom<'a>(client: &'a mut Client, instance_root: &'a PathBuf) -> Result<Box<impl Iterator<Item = String> + 'a>, Error> {
+    let sql_paths = glob(
+        &format!("{}/custom/post-init/*.sql", instance_root.to_string_lossy())
+    ).expect("Failed to read glob pattern");
+
+    let iter = Box::new(sql_paths.map(|entry| match entry {
+        Ok(path) => {
+            let mut f = match std::fs::File::open(&path) {
+                Ok(file) => file,
+                Err(e) => return format!("Could not open sql file '{}': {}", &path.to_string_lossy(), e),
+            };
+
+            let mut sql = String::new();
+        
+            if let Err(e) = f.read_to_string(&mut sql) {
+                return format!("Could not read virtual entity definition file: {}", e);
+            }
+        
+            if let Err(e) = client.batch_execute(&sql,) {
+                return format!("Error creating relation materialized view: {}", e);
+            }
+
+            format!("Executed sql {}", &path.to_string_lossy())
+        },
+        Err(_) => format!("No path"),
+    }));
+
+    Ok(iter)
 }

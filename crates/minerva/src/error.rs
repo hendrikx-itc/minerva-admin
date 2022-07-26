@@ -2,6 +2,7 @@ use std::fmt;
 
 use postgres;
 
+#[derive(Debug)]
 pub struct DatabaseError {
     pub msg: String,
 }
@@ -18,6 +19,7 @@ impl From<postgres::Error> for DatabaseError {
     }
 }
 
+#[derive(Debug)]
 pub struct ConfigurationError {
     pub msg: String,
 }
@@ -28,6 +30,7 @@ impl ConfigurationError {
     }
 }
 
+#[derive(Debug)]
 pub struct RuntimeError {
     pub msg: String,
 }
@@ -38,6 +41,7 @@ impl RuntimeError {
     }
 }
 
+#[derive(Debug)]
 pub enum Error {
     Database(DatabaseError),
     Configuration(ConfigurationError),
