@@ -4,11 +4,16 @@ use postgres::Client;
 
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
-use super::trend_store::{load_trend_stores, AddTrendStore, TrendStore, load_trend_store_from_file};
-use super::trend_materialization::{TrendMaterialization, AddTrendMaterialization, load_materializations_from, load_materializations};
-use super::virtual_entity::{VirtualEntity, load_virtual_entity_from_file, AddVirtualEntity};
-use super::relation::{Relation, load_relation_from_file, AddRelation};
-use super::error::{Error};
+use super::error::Error;
+use super::relation::{load_relation_from_file, AddRelation, Relation};
+use super::trend_materialization::{
+    load_materializations, load_materializations_from, AddTrendMaterialization,
+    TrendMaterialization,
+};
+use super::trend_store::{
+    load_trend_store_from_file, load_trend_stores, AddTrendStore, TrendStore,
+};
+use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 
 pub struct MinervaInstance {
     pub trend_stores: Vec<TrendStore>,
@@ -111,15 +116,18 @@ impl MinervaInstance {
 
         // Check for changes in trend materializations
         for other_trend_materialization in &other.trend_materializations {
-            match self.trend_materializations.iter().find(|my_trend_materialization| {
-                my_trend_materialization.name() == other_trend_materialization.name()
-            }) {
+            match self
+                .trend_materializations
+                .iter()
+                .find(|my_trend_materialization| {
+                    my_trend_materialization.name() == other_trend_materialization.name()
+                }) {
                 Some(my_trend_materialization) => {
                     changes.append(&mut my_trend_materialization.diff(other_trend_materialization));
-                },
-                None => {
-                    changes.push(Box::new(AddTrendMaterialization::from(other_trend_materialization.clone())))
                 }
+                None => changes.push(Box::new(AddTrendMaterialization::from(
+                    other_trend_materialization.clone(),
+                ))),
             }
         }
 
@@ -206,25 +214,22 @@ fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec<Attri
 }
 
 fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = TrendStore> {
-    let yaml_paths = glob(
-        &format!("{}/trend/*.yaml", minerva_instance_root)
-    ).expect("Failed to read glob pattern");
+    let yaml_paths = glob(&format!("{}/trend/*.yaml", minerva_instance_root))
+        .expect("Failed to read glob pattern");
 
-    let json_paths = glob(
-        &format!("{}/trend/*.json", minerva_instance_root)
-    ).expect("Failed to read glob pattern");
+    let json_paths = glob(&format!("{}/trend/*.json", minerva_instance_root))
+        .expect("Failed to read glob pattern");
 
-    yaml_paths.chain(json_paths)
+    yaml_paths
+        .chain(json_paths)
         .filter_map(|entry| match entry {
-            Ok(path) => {
-                match load_trend_store_from_file(&path) {
-                    Ok(trend_store) => Some(trend_store),
-                    Err(e) => {
-                        println!("Error loading trend store definition: {}", e);
-                        None
-                    }
+            Ok(path) => match load_trend_store_from_file(&path) {
+                Ok(trend_store) => Some(trend_store),
+                Err(e) => {
+                    println!("Error loading trend store definition: {}", e);
+                    None
                 }
-            }
+            },
             Err(_) => None,
         })
 }
@@ -249,44 +254,38 @@ fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendStore>) 
 }
 
 fn load_virtual_entities_from(minerva_instance_root: &str) -> impl Iterator<Item = VirtualEntity> {
-    let sql_paths = glob(
-        &format!("{}/virtual-entity/*.sql", minerva_instance_root)
-    ).expect("Failed to read glob pattern");
+    let sql_paths = glob(&format!("{}/virtual-entity/*.sql", minerva_instance_root))
+        .expect("Failed to read glob pattern");
 
     sql_paths.filter_map(|entry| match entry {
-        Ok(path) => {
-            match load_virtual_entity_from_file(&path) {
-                Ok(virtual_entity) => Some(virtual_entity),
-                Err(e) => {
-                    println!("Error loading virtual entity definition: {}", e);
-                    None
-                }
+        Ok(path) => match load_virtual_entity_from_file(&path) {
+            Ok(virtual_entity) => Some(virtual_entity),
+            Err(e) => {
+                println!("Error loading virtual entity definition: {}", e);
+                None
             }
         },
         Err(_) => None,
-    })  
+    })
 }
 
 fn load_relations_from(minerva_instance_root: &str) -> impl Iterator<Item = Relation> {
-    let yaml_paths = glob(
-        &format!("{}/relation/*.yaml", minerva_instance_root)
-    ).expect("Failed to read glob pattern");
+    let yaml_paths = glob(&format!("{}/relation/*.yaml", minerva_instance_root))
+        .expect("Failed to read glob pattern");
 
-    let json_paths = glob(
-        &format!("{}/relation/*.json", minerva_instance_root)
-    ).expect("Failed to read glob pattern");
+    let json_paths = glob(&format!("{}/relation/*.json", minerva_instance_root))
+        .expect("Failed to read glob pattern");
 
-    yaml_paths.chain(json_paths)
+    yaml_paths
+        .chain(json_paths)
         .filter_map(|entry| match entry {
-            Ok(path) => {
-                match load_relation_from_file(&path) {
-                    Ok(trend_store) => Some(trend_store),
-                    Err(e) => {
-                        println!("Error loading relation definition: {}", e);
-                        None
-                    }
+            Ok(path) => match load_relation_from_file(&path) {
+                Ok(trend_store) => Some(trend_store),
+                Err(e) => {
+                    println!("Error loading relation definition: {}", e);
+                    None
                 }
-            }
+            },
             Err(_) => None,
         })
 }
@@ -313,7 +312,10 @@ fn initialize_relations(client: &mut Client, relations: &Vec<Relation>) {
     }
 }
 
-fn initialize_trend_materializations(client: &mut Client, trend_materializations: &Vec<TrendMaterialization>) {
+fn initialize_trend_materializations(
+    client: &mut Client,
+    trend_materializations: &Vec<TrendMaterialization>,
+) {
     for materialization in trend_materializations {
         let change = AddTrendMaterialization::from(materialization.clone());
 

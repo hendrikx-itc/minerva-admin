@@ -2,15 +2,18 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use structopt::StructOpt;
 use postgres::{Client, NoTls};
+use structopt::StructOpt;
 
-use minerva::error::{Error, ConfigurationError, RuntimeError};
-use minerva::attribute_store::{load_attribute_store, AddAttributeStore, AttributeStore, load_attribute_store_from_file};
+use minerva::attribute_store::{
+    load_attribute_store, load_attribute_store_from_file, AddAttributeStore, AttributeStore,
+};
 use minerva::change::Change;
+use minerva::error::{ConfigurationError, Error, RuntimeError};
 use minerva::instance::{dump, MinervaInstance};
 use minerva::trend_store::{
-    delete_trend_store, list_trend_stores, load_trend_store, AddTrendStore, load_trend_store_from_file, create_partitions
+    create_partitions, delete_trend_store, list_trend_stores, load_trend_store,
+    load_trend_store_from_file, AddTrendStore,
 };
 
 static ENV_MINERVA_INSTANCE_ROOT: &str = "MINERVA_INSTANCE_ROOT";
@@ -20,25 +23,25 @@ type CmdResult = Result<(), Error>;
 
 #[derive(Debug, StructOpt)]
 struct DeleteOpt {
-    id: i32
+    id: i32,
 }
 
 #[derive(Debug, StructOpt)]
 struct TrendStoreCreate {
-    #[structopt(help="trend store definition file")]
-    definition: PathBuf
+    #[structopt(help = "trend store definition file")]
+    definition: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]
 struct TrendStoreDiff {
-    #[structopt(help="trend store definition file")]
-    definition: PathBuf
+    #[structopt(help = "trend store definition file")]
+    definition: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]
 struct TrendStoreUpdate {
-    #[structopt(help="trend store definition file")]
-    definition: PathBuf
+    #[structopt(help = "trend store definition file")]
+    definition: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]
@@ -53,73 +56,75 @@ struct TrendStorePartitionCreate {
 
 #[derive(Debug, StructOpt)]
 enum TrendStorePartition {
-    #[structopt(about="create partitions")]
+    #[structopt(about = "create partitions")]
     Create(TrendStorePartitionCreate),
 }
 
 #[derive(Debug, StructOpt)]
 struct TrendStoreCheck {
-    #[structopt(help="trend store definition file")]
-    definition: PathBuf
+    #[structopt(help = "trend store definition file")]
+    definition: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]
 enum TrendStoreOpt {
-    #[structopt(about="list existing trend stores")]
+    #[structopt(about = "list existing trend stores")]
     List,
-    #[structopt(about="create a trend store")]
+    #[structopt(about = "create a trend store")]
     Create(TrendStoreCreate),
-    #[structopt(about="show differences for a trend store")]
+    #[structopt(about = "show differences for a trend store")]
     Diff(TrendStoreDiff),
-    #[structopt(about="update a trend store")]
+    #[structopt(about = "update a trend store")]
     Update(TrendStoreUpdate),
-    #[structopt(about="delete a trend store")]
+    #[structopt(about = "delete a trend store")]
     Delete(DeleteOpt),
-    #[structopt(about="partition management commands")]
+    #[structopt(about = "partition management commands")]
     Partition(TrendStorePartition),
-    #[structopt(about="run sanity checks for trend store")]
+    #[structopt(about = "run sanity checks for trend store")]
     Check(TrendStoreCheck),
 }
 
 #[derive(Debug, StructOpt)]
 struct AttributeStoreCreate {
-    #[structopt(help="attribute store definition file")]
-    definition: PathBuf
+    #[structopt(help = "attribute store definition file")]
+    definition: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]
 struct AttributeStoreUpdate {
-    #[structopt(help="attribute store definition file")]
-    definition: PathBuf
+    #[structopt(help = "attribute store definition file")]
+    definition: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]
 enum AttributeStoreOpt {
-    #[structopt(about="create an attribute store")]
+    #[structopt(about = "create an attribute store")]
     Create(AttributeStoreCreate),
-    #[structopt(about="update an attribute store")]
+    #[structopt(about = "update an attribute store")]
     Update(AttributeStoreUpdate),
 }
 
 #[derive(Debug, StructOpt)]
 struct InitializeOpt {
-    #[structopt(long="--create-partitions", help="create partitions")]
+    #[structopt(long = "--create-partitions", help = "create partitions")]
     create_partitions: bool,
 }
 
 #[derive(Debug, StructOpt)]
 enum Opt {
-    #[structopt(about="command for complete dump of a Minerva instance")]
+    #[structopt(about = "command for complete dump of a Minerva instance")]
     Dump,
-    #[structopt(about="command for creating a diff between Minerva instance definition and database")]
+    #[structopt(
+        about = "command for creating a diff between Minerva instance definition and database"
+    )]
     Diff,
-    #[structopt(about="command for updating a Minerva database from an instance definition")]
+    #[structopt(about = "command for updating a Minerva database from an instance definition")]
     Update,
-    #[structopt(about="command for complete initialization of a Minerva instance")]
+    #[structopt(about = "command for complete initialization of a Minerva instance")]
     Initialize(InitializeOpt),
-    #[structopt(about="manage trend stores")]
+    #[structopt(about = "manage trend stores")]
     TrendStore(TrendStoreOpt),
-    #[structopt(about="manage attribute stores")]
+    #[structopt(about = "manage attribute stores")]
     AttributeStore(AttributeStoreOpt),
 }
 
@@ -131,27 +136,23 @@ fn main() {
         Opt::Diff => run_diff_cmd(),
         Opt::Update => run_update_cmd(),
         Opt::Initialize(initialize) => run_initialize_cmd(&initialize),
-        Opt::TrendStore(trend_store) => {
-            match trend_store {
-                TrendStoreOpt::List => run_trend_store_list_cmd(),
-                TrendStoreOpt::Create(create) => run_trend_store_create_cmd(&create),
-                TrendStoreOpt::Diff(diff) => run_trend_store_diff_cmd(&diff),
-                TrendStoreOpt::Update(update) => run_trend_store_update_cmd(&update),
-                TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(&delete),
-                TrendStoreOpt::Partition(partition) => {
-                    match partition {
-                        TrendStorePartition::Create(create) => run_trend_store_partition_create_cmd(&create),
-                    }
-                },
-                TrendStoreOpt::Check(check) => run_trend_store_check_cmd(&check),
-            }
+        Opt::TrendStore(trend_store) => match trend_store {
+            TrendStoreOpt::List => run_trend_store_list_cmd(),
+            TrendStoreOpt::Create(create) => run_trend_store_create_cmd(&create),
+            TrendStoreOpt::Diff(diff) => run_trend_store_diff_cmd(&diff),
+            TrendStoreOpt::Update(update) => run_trend_store_update_cmd(&update),
+            TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(&delete),
+            TrendStoreOpt::Partition(partition) => match partition {
+                TrendStorePartition::Create(create) => {
+                    run_trend_store_partition_create_cmd(&create)
+                }
+            },
+            TrendStoreOpt::Check(check) => run_trend_store_check_cmd(&check),
         },
-        Opt::AttributeStore(attribute_store) => {
-            match attribute_store {
-                AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(&args),
-                AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(&args),
-            }
-        }
+        Opt::AttributeStore(attribute_store) => match attribute_store {
+            AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(&args),
+            AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(&args),
+        },
     };
 
     if let Err(e) = result {
@@ -161,7 +162,10 @@ fn main() {
 
 fn connect_db() -> Result<Client, Error> {
     let conn_params = env::var(ENV_DB_CONN).map_err(|e| {
-        ConfigurationError::from_msg(format!("Could not read environment variable '{}': {}", &ENV_DB_CONN, e))
+        ConfigurationError::from_msg(format!(
+            "Could not read environment variable '{}': {}",
+            &ENV_DB_CONN, e
+        ))
     })?;
 
     let client = Client::connect(&conn_params, NoTls)?;
@@ -190,9 +194,9 @@ fn run_trend_store_delete_cmd(args: &DeleteOpt) -> CmdResult {
 
     match result {
         Ok(_) => Ok(()),
-        Err(e) => {
-            Err(Error::Runtime(RuntimeError{ msg: format!("Error deleting trend store: {}", e) } ))
-        }
+        Err(e) => Err(Error::Runtime(RuntimeError {
+            msg: format!("Error deleting trend store: {}", e),
+        })),
     }
 }
 
@@ -200,10 +204,17 @@ fn run_trend_store_check_cmd(args: &TrendStoreCheck) -> CmdResult {
     let trend_store = load_trend_store_from_file(&args.definition)?;
 
     for trend_store_part in &trend_store.parts {
-        let count = trend_store.parts.iter().filter(|&p| p.name == trend_store_part.name).count();
+        let count = trend_store
+            .parts
+            .iter()
+            .filter(|&p| p.name == trend_store_part.name)
+            .count();
 
         if count > 1 {
-            println!("Error: {} trend store parts with name '{}'", count, &trend_store_part.name);
+            println!(
+                "Error: {} trend store parts with name '{}'",
+                count, &trend_store_part.name
+            );
         }
     }
 
@@ -217,9 +228,7 @@ fn run_trend_store_create_cmd(args: &TrendStoreCreate) -> CmdResult {
 
     let mut client = connect_db()?;
 
-    let change = AddTrendStore {
-        trend_store,
-    };
+    let change = AddTrendStore { trend_store };
 
     change.apply(&mut client)?;
 
@@ -256,9 +265,9 @@ fn run_trend_store_diff_cmd(args: &TrendStoreDiff) -> CmdResult {
 
             Ok(())
         }
-        Err(e) => {
-            Err(Error::Runtime(RuntimeError { msg: format!("Error loading trend store: {}", e)}))
-        }
+        Err(e) => Err(Error::Runtime(RuntimeError {
+            msg: format!("Error loading trend store: {}", e),
+        })),
     }
 }
 
@@ -299,9 +308,9 @@ fn run_trend_store_update_cmd(args: &TrendStoreUpdate) -> CmdResult {
 
             Ok(())
         }
-        Err(e) => {
-            Err(Error::Runtime(RuntimeError { msg: format!("Error loading trend store: {}", e)}))
-        }
+        Err(e) => Err(Error::Runtime(RuntimeError {
+            msg: format!("Error loading trend store: {}", e),
+        })),
     }
 }
 
@@ -312,9 +321,7 @@ fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
 
     let mut client = connect_db()?;
 
-    let change = AddAttributeStore {
-        attribute_store,
-    };
+    let change = AddAttributeStore { attribute_store };
 
     let result = change.apply(&mut client);
 
@@ -324,9 +331,9 @@ fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
 
             Ok(())
         }
-        Err(e) => {
-            Err(Error::Runtime(RuntimeError { msg: format!("Error creating attribute store: {}", e) }))
-        }
+        Err(e) => Err(Error::Runtime(RuntimeError {
+            msg: format!("Error creating attribute store: {}", e),
+        })),
     }
 }
 
@@ -371,7 +378,12 @@ fn run_initialize_cmd(args: &InitializeOpt) -> CmdResult {
     let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
         Ok(v) => v,
         Err(e) => {
-            return Err(Error::Configuration(ConfigurationError {msg: format!("Environment variable '{}' could not be read: {}", &ENV_MINERVA_INSTANCE_ROOT, e)}) );
+            return Err(Error::Configuration(ConfigurationError {
+                msg: format!(
+                    "Environment variable '{}' could not be read: {}",
+                    &ENV_MINERVA_INSTANCE_ROOT, e
+                ),
+            }));
         }
     };
 
@@ -403,7 +415,12 @@ fn run_diff_cmd() -> CmdResult {
     let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
         Ok(v) => v,
         Err(e) => {
-            return Err(Error::Configuration(ConfigurationError {msg: format!("Environment variable '{}' could not be read: {}", &ENV_MINERVA_INSTANCE_ROOT, e)}) );
+            return Err(Error::Configuration(ConfigurationError {
+                msg: format!(
+                    "Environment variable '{}' could not be read: {}",
+                    &ENV_MINERVA_INSTANCE_ROOT, e
+                ),
+            }));
         }
     };
 
@@ -436,7 +453,12 @@ fn run_update_cmd() -> CmdResult {
     let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
         Ok(v) => v,
         Err(e) => {
-            return Err(Error::Configuration(ConfigurationError {msg: format!("Environment variable '{}' could not be read: {}", &ENV_MINERVA_INSTANCE_ROOT, e)}) );
+            return Err(Error::Configuration(ConfigurationError {
+                msg: format!(
+                    "Environment variable '{}' could not be read: {}",
+                    &ENV_MINERVA_INSTANCE_ROOT, e
+                ),
+            }));
         }
     };
 
