@@ -3,21 +3,17 @@ use std::time::Duration;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{
-    get,
-    web::Data,
-    HttpResponse, Responder,
-};
+use actix_web::{get, web::Data, HttpResponse, Responder};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use utoipa::{Component};
+use utoipa::Component;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
 pub struct TrendMaterializationSource {
     pub trend_store_part: String,
     pub mapping_function: String,
-} 
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
 pub struct TrendViewMaterialization {
@@ -48,8 +44,10 @@ pub struct TrendViewMaterialization {
     )
 )]
 #[get("/trend-view-materializations")]
-pub(super) async fn get_trend_view_materializations(_pool: Data<Pool<PostgresConnectionManager<NoTls>>>) -> impl Responder {
-    let m = vec!(TrendViewMaterialization {
+pub(super) async fn get_trend_view_materializations(
+    _pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+) -> impl Responder {
+    let m = vec![TrendViewMaterialization {
         target_trend_store_part: "some_trend_store_part".to_string(),
         enabled: true,
         processing_delay: Duration::default(),
@@ -58,7 +56,7 @@ pub(super) async fn get_trend_view_materializations(_pool: Data<Pool<PostgresCon
         sources: Vec::new(),
         view: "".to_string(),
         fingerprint_function: "".to_string(),
-    });
+    }];
 
     HttpResponse::Ok().json(m)
 }

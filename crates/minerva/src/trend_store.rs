@@ -1,19 +1,15 @@
+use postgres::types::ToSql;
+use postgres::{Client, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::From;
 use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio_postgres::types::ToSql;
-use tokio_postgres::{Client, Row};
 
 use humantime::format_duration;
 
-use chrono::{DateTime, FixedOffset};
-
-use async_trait::async_trait;
-
-use super::change::{Change, ChangeResult};
+use super::change::Change;
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
 
@@ -29,7 +25,7 @@ pub struct DeleteTrendStoreError {
 }
 
 impl DeleteTrendStoreError {
-    fn database_error(e: tokio_postgres::Error) -> DeleteTrendStoreError {
+    fn database_error(e: postgres::Error) -> DeleteTrendStoreError {
         DeleteTrendStoreError {
             original: format!("{}", e),
             kind: DeleteTrendStoreErrorKind::DatabaseError,
@@ -37,8 +33,8 @@ impl DeleteTrendStoreError {
     }
 }
 
-impl From<tokio_postgres::Error> for DeleteTrendStoreError {
-    fn from(e: tokio_postgres::Error) -> DeleteTrendStoreError {
+impl From<postgres::Error> for DeleteTrendStoreError {
+    fn from(e: postgres::Error) -> DeleteTrendStoreError {
         DeleteTrendStoreError::database_error(e)
     }
 }
@@ -94,57 +90,6 @@ impl fmt::Display for Trend {
     }
 }
 
-pub struct RemoveTrends {
-    pub trend_store_part: TrendStorePart,
-    pub trends: Vec<String>,
-}
-
-impl fmt::Display for RemoveTrends {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "RemoveTrends({}, {})",
-            &self.trend_store_part,
-            &self
-                .trends
-                .iter()
-                .map(|t| format!("'{}'", &t))
-                .collect::<Vec<String>>()
-                .join(", ")
-        )
-    }
-}
-
-#[async_trait]
-impl Change for RemoveTrends {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
-        let query = concat!(
-            "SELECT trend_directory.remove_table_trend(table_trend) ",
-            "FROM trend_directory.table_trend ",
-            "JOIN trend_directory.trend_store_part ON trend_store_part.id = table_trend.trend_store_part_id ",
-            "WHERE trend_store_part.name = $1 AND table_trend.name = $2",
-        );
-
-        for trend_name in &self.trends {
-            client
-                .query_one(query, &[&self.trend_store_part.name, &trend_name])
-                .await
-                .map_err(|e| {
-                    DatabaseError::from_msg(format!(
-                        "Error removing trend '{}' from trend store part: {}",
-                        &trend_name, e
-                    ))
-                })?;
-        }
-
-        Ok(format!(
-            "Removed {} trends from trend store part '{}'",
-            &self.trends.len(),
-            &self.trend_store_part.name
-        ))
-    }
-}
-
 pub struct AddTrends {
     pub trend_store_part: TrendStorePart,
     pub trends: Vec<Trend>,
@@ -154,21 +99,14 @@ impl fmt::Display for AddTrends {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "AddTrends({}, {})",
-            &self.trend_store_part,
-            &self
-                .trends
-                .iter()
-                .map(|t| format!("{}", &t))
-                .collect::<Vec<String>>()
-                .join(", ")
+            "AddTrends({}, {:?})",
+            &self.trend_store_part, &self.trends
         )
     }
 }
 
-#[async_trait]
 impl Change for AddTrends {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT trend_directory.create_table_trends(trend_store_part, $1) ",
             "FROM trend_directory.trend_store_part WHERE name = $2",
@@ -176,7 +114,6 @@ impl Change for AddTrends {
 
         client
             .query_one(query, &[&self.trends, &self.trend_store_part.name])
-            .await
             .map_err(|e| {
                 DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
             })?;
@@ -227,22 +164,20 @@ impl fmt::Display for ModifyTrendDataTypes {
             f,
             "ModifyTrendDataTypes({}, {})",
             &self.trend_store_part,
-            &modifications.join(", "),
+            &modifications.join(","),
         )
     }
 }
 
-#[async_trait]
 impl Change for ModifyTrendDataTypes {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
-        let transaction = client
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        let mut transaction = client
             .transaction()
-            .await
             .map_err(|e| DatabaseError::from_msg(format!("could not start transaction: {}", e)))?;
 
         let timeout_query = "SET SESSION statement_timeout = 0";
 
-        let result = transaction.execute(timeout_query, &[]).await;
+        let result = transaction.execute(timeout_query, &[]);
 
         if let Err(e) = result {
             return Err(
@@ -252,7 +187,7 @@ impl Change for ModifyTrendDataTypes {
 
         let timeout_query = "SET SESSION lock_timeout = '10min'";
 
-        let result = transaction.execute(timeout_query, &[]).await;
+        let result = transaction.execute(timeout_query, &[]);
 
         if let Err(e) = result {
             return Err(
@@ -267,20 +202,20 @@ impl Change for ModifyTrendDataTypes {
             "WHERE tsp.id = tt.trend_store_part_id AND tsp.name = $2 AND tt.name = $3"
         );
 
+        println!("{}", &query);
+
         for modification in &self.modifications {
-            let result = transaction
-                .execute(
-                    query,
-                    &[
-                        &modification.to_type,
-                        &self.trend_store_part.name,
-                        &modification.trend_name,
-                    ],
-                )
-                .await;
+            let result = transaction.execute(
+                query,
+                &[
+                    &modification.to_type,
+                    &self.trend_store_part.name,
+                    &modification.trend_name,
+                ],
+            );
 
             if let Err(e) = result {
-                transaction.rollback().await.unwrap();
+                transaction.rollback().unwrap();
 
                 return Err(
                     DatabaseError::from_msg(format!("Error changing data types: {}", e)).into(),
@@ -306,23 +241,17 @@ impl Change for ModifyTrendDataTypes {
             &self.trend_store_part.name, &alter_type_parts_str
         );
 
+        println!("{}", alter_query);
+
         let alter_query_slice: &str = &alter_query;
 
-        if let Err(e) = transaction.execute(alter_query_slice, &[]).await {
-            transaction.rollback().await.unwrap();
+        if let Err(e) = transaction.execute(alter_query_slice, &[]) {
+            transaction.rollback().unwrap();
 
-            return Err(match e.code() {
-                Some(code) => DatabaseError::from_msg(format!(
-                    "Error changing data types: {} - {}",
-                    code.code(),
-                    e
-                ))
-                .into(),
-                None => DatabaseError::from_msg(format!("Error changing data types: {}", e)).into(),
-            });
+            return Err(DatabaseError::from_msg(format!("Error changing data types: {}", e)).into());
         }
 
-        if let Err(e) = transaction.commit().await {
+        if let Err(e) = transaction.commit() {
             return Err(DatabaseError::from_msg(format!("Error committing changes: {}", e)).into());
         }
 
@@ -366,11 +295,10 @@ fn default_generated_trends() -> Vec<GeneratedTrend> {
 }
 
 impl TrendStorePart {
-    pub fn diff<'a>(&self, other: &TrendStorePart) -> Vec<Box<dyn Change + Send>> {
-        let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
+    pub fn diff(&self, other: &TrendStorePart) -> Vec<Box<dyn Change>> {
+        let mut changes: Vec<Box<dyn Change>> = Vec::new();
 
         let mut new_trends: Vec<Trend> = Vec::new();
-        let mut removed_trends: Vec<String> = Vec::new();
         let mut alter_trend_data_types: Vec<ModifyTrendDataType> = Vec::new();
 
         for other_trend in &other.trends {
@@ -402,28 +330,6 @@ impl TrendStorePart {
             }));
         }
 
-        for my_trend in &self.trends {
-            match other
-                .trends
-                .iter()
-                .find(|other_trend| other_trend.name == my_trend.name)
-            {
-                Some(_) => {
-                    // Ok, the trend still exists
-                }
-                None => {
-                    removed_trends.push(my_trend.name.clone());
-                }
-            }
-        }
-
-        if !removed_trends.is_empty() {
-            changes.push(Box::new(RemoveTrends {
-                trend_store_part: self.clone(),
-                trends: removed_trends,
-            }))
-        }
-
         if !alter_trend_data_types.is_empty() {
             changes.push(Box::new(ModifyTrendDataTypes {
                 trend_store_part: self.clone(),
@@ -452,9 +358,8 @@ pub struct AddTrendStorePart {
     trend_store_part: TrendStorePart,
 }
 
-#[async_trait]
 impl Change for AddTrendStorePart {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT trend_directory.create_trend_store_part(trend_store.id, $1) ",
             "FROM trend_directory.trend_store ",
@@ -475,7 +380,6 @@ impl Change for AddTrendStorePart {
                     &granularity_seconds,
                 ],
             )
-            .await
             .map_err(|e| {
                 DatabaseError::from_msg(format!(
                     "Error creating trend store part '{}': {}",
@@ -512,8 +416,8 @@ pub struct TrendStore {
 }
 
 impl TrendStore {
-    pub fn diff<'a>(&self, other: &TrendStore) -> Vec<Box<dyn Change + Send>> {
-        let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
+    pub fn diff(&self, other: &TrendStore) -> Vec<Box<dyn Change>> {
+        let mut changes: Vec<Box<dyn Change>> = Vec::new();
 
         for other_part in &other.parts {
             match self
@@ -549,7 +453,7 @@ impl fmt::Display for TrendStore {
     }
 }
 
-pub async fn list_trend_stores(conn: &mut Client) -> Result<Vec<String>, String> {
+pub fn list_trend_stores(conn: &mut Client) -> Result<Vec<String>, String> {
     let query = concat!(
         "SELECT ts.id, ds.name, et.name, ts.granularity::text ",
         "FROM trend_directory.trend_store ts ",
@@ -557,7 +461,7 @@ pub async fn list_trend_stores(conn: &mut Client) -> Result<Vec<String>, String>
         "JOIN directory.entity_type et ON et.id = ts.entity_type_id"
     );
 
-    let result = conn.query(query, &[]).await.unwrap();
+    let result = conn.query(query, &[]).unwrap();
 
     let trend_stores = result
         .into_iter()
@@ -575,10 +479,10 @@ pub async fn list_trend_stores(conn: &mut Client) -> Result<Vec<String>, String>
     Ok(trend_stores)
 }
 
-pub async fn delete_trend_store(conn: &mut Client, id: i32) -> Result<(), DeleteTrendStoreError> {
+pub fn delete_trend_store(conn: &mut Client, id: i32) -> Result<(), DeleteTrendStoreError> {
     let query = "SELECT trend_directory.delete_trend_store($1)";
 
-    let deleted = conn.execute(query, &[&id]).await?;
+    let deleted = conn.execute(query, &[&id])?;
 
     if deleted == 0 {
         Err(DeleteTrendStoreError {
@@ -590,7 +494,7 @@ pub async fn delete_trend_store(conn: &mut Client, id: i32) -> Result<(), Delete
     }
 }
 
-pub async fn load_trend_store(
+pub fn load_trend_store(
     conn: &mut Client,
     data_source: &str,
     entity_type: &str,
@@ -606,11 +510,9 @@ pub async fn load_trend_store(
 
     let granularity_str: String = format_duration(*granularity).to_string();
 
-    let result = conn
-        .query_one(query, &[&data_source, &entity_type, &granularity_str])
-        .await?;
+    let result = conn.query_one(query, &[&data_source, &entity_type, &granularity_str])?;
 
-    let parts = load_trend_store_parts(conn, result.get::<usize, i32>(0)).await;
+    let parts = load_trend_store_parts(conn, result.get::<usize, i32>(0));
 
     let partition_size_str = result.get::<usize, String>(1);
     let partition_size = parse_interval(&partition_size_str).unwrap();
@@ -624,13 +526,12 @@ pub async fn load_trend_store(
     })
 }
 
-async fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<TrendStorePart> {
+fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<TrendStorePart> {
     let trend_store_part_query =
         "SELECT id, name FROM trend_directory.trend_store_part WHERE trend_store_id = $1";
 
     let trend_store_part_result = conn
         .query(trend_store_part_query, &[&trend_store_id])
-        .await
         .unwrap();
 
     let mut parts: Vec<TrendStorePart> = Vec::new();
@@ -645,10 +546,7 @@ async fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<T
             "WHERE trend_store_part_id = $1",
         );
 
-        let trend_result = conn
-            .query(trend_query, &[&trend_store_part_id])
-            .await
-            .unwrap();
+        let trend_result = conn.query(trend_query, &[&trend_store_part_id]).unwrap();
 
         let mut trends = Vec::new();
 
@@ -680,7 +578,7 @@ async fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<T
     parts
 }
 
-pub async fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Error> {
+pub fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Error> {
     let mut trend_stores: Vec<TrendStore> = Vec::new();
 
     let query = concat!(
@@ -690,7 +588,7 @@ pub async fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Err
         "JOIN directory.entity_type ON entity_type.id = trend_store.entity_type_id"
     );
 
-    let result = conn.query(query, &[]).await.unwrap();
+    let result = conn.query(query, &[]).unwrap();
 
     for row in result {
         let trend_store_id: i32 = row.get(0);
@@ -698,7 +596,7 @@ pub async fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Err
         let entity_type: &str = row.get(2);
         let granularity_str: String = row.get(3);
         let partition_size_str: String = row.get(4);
-        let parts = load_trend_store_parts(conn, trend_store_id).await;
+        let parts = load_trend_store_parts(conn, trend_store_id);
 
         // Hack for humankind parsing compatibility with PostgreSQL interval
         // representation
@@ -738,9 +636,8 @@ impl fmt::Display for AddTrendStore {
     }
 }
 
-#[async_trait]
 impl Change for AddTrendStore {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
         let query = concat!(
             "SELECT id ",
             "FROM trend_directory.create_trend_store(",
@@ -764,7 +661,6 @@ impl Change for AddTrendStore {
                     &self.trend_store.parts,
                 ],
             )
-            .await
             .map_err(|e| DatabaseError::from_msg(format!("Error creating trend store: {}", e)))?;
 
         Ok(format!("Added trend store {}", &self.trend_store))
@@ -809,8 +705,8 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
     }
 }
 
-/// Create partitions for the full retention period of all trend stores.
-pub async fn create_partitions(
+/// Create partitions for all the full retention period of all trend stores.
+pub fn create_partitions(
     client: &mut Client,
     ahead_interval: Option<Duration>,
 ) -> Result<(), Error> {
@@ -823,39 +719,20 @@ pub async fn create_partitions(
 
     let result = client
         .query(query, &[])
-        .await
         .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
 
     for row in result {
         let trend_store_id: i32 = row.get(0);
 
-        create_partitions_for_trend_store(client, trend_store_id, ahead_interval).await?;
+        create_partitions_for_trend_store(client, trend_store_id, ahead_interval)?;
+
+        println!("Trend store {}", &trend_store_id);
     }
 
     Ok(())
 }
 
-pub async fn create_partitions_for_timestamp(
-    client: &mut Client,
-    timestamp: DateTime<FixedOffset>,
-) -> Result<(), Error> {
-    let query = concat!("SELECT id FROM trend_directory.trend_store");
-
-    let result = client
-        .query(query, &[])
-        .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
-
-    for row in result {
-        let trend_store_id: i32 = row.get(0);
-
-        create_partitions_for_trend_store_and_timestamp(client, trend_store_id, timestamp).await?;
-    }
-
-    Ok(())
-}
-
-pub async fn create_partitions_for_trend_store(
+pub fn create_partitions_for_trend_store(
     client: &mut Client,
     trend_store_id: i32,
     ahead_interval: Duration,
@@ -879,7 +756,6 @@ pub async fn create_partitions_for_trend_store(
 
     let result = client
         .query(query, &[&trend_store_id, &ahead_interval_str])
-        .await
         .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
 
     for row in result {
@@ -888,8 +764,7 @@ pub async fn create_partitions_for_trend_store(
         let partition_index: i32 = row.get(2);
 
         let partition_name =
-            create_partition_for_trend_store_part(client, trend_store_part_id, partition_index)
-                .await?;
+            create_partition_for_trend_store_part(client, trend_store_part_id, partition_index)?;
 
         println!(
             "Created partition for '{}': '{}'",
@@ -900,126 +775,22 @@ pub async fn create_partitions_for_trend_store(
     Ok(())
 }
 
-pub async fn create_partitions_for_trend_store_and_timestamp(
-    client: &mut Client,
-    trend_store_id: i32,
-    timestamp: DateTime<FixedOffset>,
-) -> Result<(), Error> {
-    println!("Creating partitions for trend store {}", &trend_store_id);
-
-    let query = concat!(
-        "WITH partition_indexes AS (",
-        "SELECT trend_directory.timestamp_to_index(partition_size, $2) AS i, p.id AS part_id, p.name AS part_name ",
-        "FROM trend_directory.trend_store ",
-        "JOIN trend_directory.trend_store_part p ON p.trend_store_id = trend_store.id ",
-        "WHERE trend_store.id = $1",
-        ") ",
-        "SELECT partition_indexes.part_id, partition_indexes.part_name, partition_indexes.i FROM partition_indexes ",
-        "LEFT JOIN trend_directory.partition ON partition.index = i AND partition.trend_store_part_id = partition_indexes.part_id ",
-        "WHERE partition.id IS NULL",
-    );
-
-    let result = client
-        .query(query, &[&trend_store_id, &timestamp])
-        .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
-
-    for row in result {
-        let trend_store_part_id: i32 = row.get(0);
-        let part_name: String = row.get(1);
-        let partition_index: i32 = row.get(2);
-
-        let partition_name =
-            create_partition_for_trend_store_part(client, trend_store_part_id, partition_index)
-                .await?;
-
-        println!(
-            "Created partition for '{}': '{}'",
-            &part_name, &partition_name
-        );
-    }
-
-    Ok(())
-}
-
-async fn create_partition_for_trend_store_part(
+fn create_partition_for_trend_store_part(
     client: &mut Client,
     trend_store_part_id: i32,
     partition_index: i32,
 ) -> Result<String, Error> {
     let query = concat!(
-        "SELECT p.name, (trend_directory.create_partition(p, $2::integer)).name ",
+        "SELECT p.name, trend_directory.create_partition(p, $2::integer) ",
         "FROM trend_directory.trend_store_part p ",
         "WHERE p.id = $1",
     );
 
     let result = client
         .query_one(query, &[&trend_store_part_id, &partition_index])
-        .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating partition: {}", e)))?;
 
-    let partition_name = result.get(1);
+    let partition_name = result.get(0);
 
     Ok(partition_name)
-}
-
-pub struct TrendStat {
-    pub name: String,
-    pub max_value: Option<String>,
-    pub min_value: Option<String>,
-}
-
-pub struct AnalyzeResult {
-    pub trend_stats: Vec<TrendStat>,
-}
-
-pub async fn analyze_trend_store_part(
-    client: &mut Client,
-    name: &str,
-) -> Result<AnalyzeResult, Error> {
-    let query = "SELECT tt.name FROM trend_directory.trend_store_part tsp JOIN trend_directory.table_trend tt ON tt.trend_store_part_id = tsp.id WHERE tsp.name = $1";
-
-    let result = client.query(query, &[&name]).await.map_err(|e| {
-        DatabaseError::from_msg(format!(
-            "Could read trends for trend store part '{}': {}",
-            name, e
-        ))
-    })?;
-
-    let trend_names: Vec<String> = result.iter().map(|row| row.get(0)).collect();
-
-    let max_expressions: Vec<String> = trend_names
-        .iter()
-        .map(|name| format!("max(\"{}\")::text", name))
-        .collect();
-
-    let max_expressions_part = max_expressions.join(", ");
-
-    let query = format!(
-        "SELECT {} FROM trend.\"{}\" p ",
-        &max_expressions_part, name
-    );
-
-    let row = client.query_one(&query, &[]).await.map_err(|e| {
-        DatabaseError::from_msg(format!(
-            "Could not analyze trend store part '{}': {}",
-            name, e
-        ))
-    })?;
-
-    let trend_stats = trend_names
-        .iter()
-        .enumerate()
-        .map(|(i, name)| TrendStat {
-            name: name.clone(),
-            max_value: row.get(i),
-            min_value: None,
-        })
-        .collect();
-
-    let result = AnalyzeResult {
-        trend_stats: trend_stats,
-    };
-
-    Ok(result)
 }
