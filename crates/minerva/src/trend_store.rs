@@ -248,7 +248,9 @@ impl Change for ModifyTrendDataTypes {
         if let Err(e) = transaction.execute(alter_query_slice, &[]) {
             transaction.rollback().unwrap();
 
-            return Err(DatabaseError::from_msg(format!("Error changing data types: {}", e)).into());
+            return Err(
+                DatabaseError::from_msg(format!("Error changing data types: {}", e)).into(),
+            );
         }
 
         if let Err(e) = transaction.commit() {

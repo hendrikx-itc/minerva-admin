@@ -14,7 +14,9 @@ use trendviewmaterialization::{
 
 mod trendstore;
 
-use trendstore::{get_trend_store_parts, GeneratedTrend, Trend, TrendStorePart};
+use trendstore::{
+    get_trend_store_part, get_trend_store_parts, GeneratedTrend, Trend, TrendStorePart,
+};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -25,6 +27,7 @@ async fn main() -> std::io::Result<()> {
         handlers(
             trendviewmaterialization::get_trend_view_materializations,
 	    trendstore::get_trend_store_parts,
+	    trendstore::get_trend_store_part,
         ),
         components(TrendMaterializationSource, TrendViewMaterialization, Trend, GeneratedTrend, TrendStorePart),
         tags(
@@ -52,6 +55,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(get_trend_view_materializations)
             .service(get_trend_store_parts)
+            .service(get_trend_store_part)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
