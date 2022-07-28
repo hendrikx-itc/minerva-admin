@@ -37,6 +37,23 @@ struct DeleteOpt {
     id: i32,
 }
 
+impl Cmd for DeleteOpt {
+    fn run(&self) -> CmdResult {
+        println!("Deleting trend store {}", self.id);
+
+        let mut client = connect_db()?;
+
+        let result = delete_trend_store(&mut client, self.id);
+
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                Err(Error::Runtime(RuntimeError{ msg: format!("Error deleting trend store: {}", e) } ))
+            }
+        }
+    }    
+}
+
 #[derive(Debug, StructOpt)]
 struct TrendStoreCreate {
     #[structopt(help = "trend store definition file")]
@@ -277,7 +294,7 @@ struct InitializeOpt {
 impl Cmd for InitializeOpt {
     fn run(&self) -> CmdResult {
         let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
-            Ok(v) => v,
+            Ok(v) => PathBuf::from(v),
             Err(e) => {
                 return Err(Error::Configuration(ConfigurationError {
                     msg: format!(
@@ -292,7 +309,7 @@ impl Cmd for InitializeOpt {
 
         println!(
             "Initializing Minerva instance from {}",
-            minerva_instance_root
+            minerva_instance_root.to_string_lossy()
         );
 
         MinervaInstance::load_from(&minerva_instance_root).initialize(&mut client);
@@ -304,15 +321,64 @@ impl Cmd for InitializeOpt {
         Ok(())
     }
 }
+#[derive(Debug, StructOpt)]
+struct DiffOpt {
+    #[structopt(long = "--with-dir", help = "compare with other Minerva instance directory")]
+    with_dir: Option<PathBuf>
+}
+
+impl Cmd for DiffOpt {
+    fn run(&self) -> CmdResult {
+        let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
+            Ok(v) => PathBuf::from(v),
+            Err(e) => {
+                return Err(Error::Configuration(ConfigurationError {
+                    msg: format!(
+                        "Environment variable '{}' could not be read: {}",
+                        &ENV_MINERVA_INSTANCE_ROOT, e
+                    ),
+                }));
+            }
+        };
+
+        let instance_def = MinervaInstance::load_from(&minerva_instance_root);
+
+        let other_instance = match &self.with_dir {
+            Some(with_dir) => {
+                MinervaInstance::load_from(&with_dir)
+            },
+            None => {
+                let mut client = connect_db()?;
+
+                MinervaInstance::load_from_db(&mut client)?
+            }
+        };
+
+        let changes = other_instance.diff(&instance_def);
+
+        if !changes.is_empty() {
+            println!("Differences with database:");
+
+            for change in changes {
+                println!("* {}", &change);
+            }
+        } else {
+            println!("Database is up-to-date");
+        }
+
+        Ok(())
+    }
+
+}
 
 #[derive(Debug, StructOpt)]
 enum Opt {
     #[structopt(about = "command for complete dump of a Minerva instance")]
     Dump,
     #[structopt(
-        about = "command for creating a diff between Minerva instance definition and database"
+        about = "command for creating a diff between Minerva instance definitions"
     )]
-    Diff,
+    Diff(DiffOpt),
     #[structopt(about = "command for updating a Minerva database from an instance definition")]
     Update,
     #[structopt(about = "command for complete initialization of a Minerva instance")]
@@ -328,7 +394,7 @@ fn main() {
 
     let result = match opt {
         Opt::Dump => run_dump_cmd(),
-        Opt::Diff => run_diff_cmd(),
+        Opt::Diff(diff) => diff.run(),
         Opt::Update => run_update_cmd(),
         Opt::Initialize(initialize) => initialize.run(),
         Opt::TrendStore(trend_store) => match trend_store {
@@ -503,47 +569,13 @@ fn run_dump_cmd() -> CmdResult {
     Ok(())
 }
 
-fn run_diff_cmd() -> CmdResult {
-    let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(Error::Configuration(ConfigurationError {
-                msg: format!(
-                    "Environment variable '{}' could not be read: {}",
-                    &ENV_MINERVA_INSTANCE_ROOT, e
-                ),
-            }));
-        }
-    };
-
-    let mut client = connect_db()?;
-
-    let instance_db = MinervaInstance::load_from_db(&mut client)?;
-
-    let instance_def = MinervaInstance::load_from(&minerva_instance_root);
-
-    let changes = instance_db.diff(&instance_def);
-
-    if !changes.is_empty() {
-        println!("Differences with database:");
-
-        for change in changes {
-            println!("* {}", &change);
-        }
-    } else {
-        println!("Database is up-to-date");
-    }
-
-    Ok(())
-}
-
 fn run_update_cmd() -> CmdResult {
     let mut client = connect_db()?;
 
     let instance_db = MinervaInstance::load_from_db(&mut client)?;
 
     let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
-        Ok(v) => v,
+        Ok(v) => PathBuf::from(v),
         Err(e) => {
             return Err(Error::Configuration(ConfigurationError {
                 msg: format!(

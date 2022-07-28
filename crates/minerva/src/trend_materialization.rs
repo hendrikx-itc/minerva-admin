@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::fmt;
 use std::time::Duration;
+use std::path::Path;
 
 use postgres::{types::ToSql, Client};
 use postgres_protocol::escape::escape_identifier;
@@ -339,8 +340,8 @@ pub enum TrendMaterialization {
 impl fmt::Display for TrendMaterialization {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TrendMaterialization::View(_) => write!(f, "TrendMaterialization(View)"),
-            TrendMaterialization::Function(_) => write!(f, "TrendMaterialization(Function)"),
+            TrendMaterialization::View(view_materialization) => write!(f, "TrendViewMaterialization('{}')", &view_materialization.target_trend_store_part),
+            TrendMaterialization::Function(function_materialization) => write!(f, "TrendFunctionMaterialization('{}')", &function_materialization.target_trend_store_part),
         }
     }
 }
@@ -395,9 +396,9 @@ pub fn trend_materialization_from_config(
 }
 
 pub fn load_materializations_from(
-    minerva_instance_root: &str,
+    minerva_instance_root: &Path,
 ) -> impl Iterator<Item = TrendMaterialization> {
-    let glob_path = format!("{}/materialization/*.yaml", minerva_instance_root);
+    let glob_path = format!("{}/materialization/*.yaml", minerva_instance_root.to_string_lossy());
 
     glob(&glob_path)
         .expect("Failed to read glob pattern")

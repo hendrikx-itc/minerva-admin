@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 
 use glob::glob;
 
@@ -53,7 +53,7 @@ impl MinervaInstance {
         })
     }
 
-    pub fn load_from(minerva_instance_root: &str) -> MinervaInstance {
+    pub fn load_from(minerva_instance_root: &Path) -> MinervaInstance {
         let trend_stores = load_trend_stores_from(minerva_instance_root).collect();
         let attribute_stores = load_attribute_stores_from(minerva_instance_root).collect();
         let virtual_entities = load_virtual_entities_from(minerva_instance_root).collect();
@@ -195,8 +195,8 @@ pub fn dump(client: &mut Client) {
     }
 }
 
-fn load_attribute_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = AttributeStore> {
-    let glob_path = format!("{}/attribute/*.yaml", minerva_instance_root);
+fn load_attribute_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = AttributeStore> {
+    let glob_path = format!("{}/attribute/*.yaml", minerva_instance_root.to_string_lossy());
 
     glob(&glob_path)
         .expect("Failed to read glob pattern")
@@ -230,11 +230,11 @@ fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec<Attri
     }
 }
 
-fn load_trend_stores_from(minerva_instance_root: &str) -> impl Iterator<Item = TrendStore> {
-    let yaml_paths = glob(&format!("{}/trend/*.yaml", minerva_instance_root))
+fn load_trend_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = TrendStore> {
+    let yaml_paths = glob(&format!("{}/trend/*.yaml", minerva_instance_root.to_string_lossy()))
         .expect("Failed to read glob pattern");
 
-    let json_paths = glob(&format!("{}/trend/*.json", minerva_instance_root))
+    let json_paths = glob(&format!("{}/trend/*.json", minerva_instance_root.to_string_lossy()))
         .expect("Failed to read glob pattern");
 
     yaml_paths
@@ -270,8 +270,8 @@ fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendStore>) 
     }
 }
 
-fn load_virtual_entities_from(minerva_instance_root: &str) -> impl Iterator<Item = VirtualEntity> {
-    let sql_paths = glob(&format!("{}/virtual-entity/*.sql", minerva_instance_root))
+fn load_virtual_entities_from(minerva_instance_root: &Path) -> impl Iterator<Item = VirtualEntity> {
+    let sql_paths = glob(&format!("{}/virtual-entity/*.sql", minerva_instance_root.to_string_lossy()))
         .expect("Failed to read glob pattern");
 
     sql_paths.filter_map(|entry| match entry {
@@ -286,11 +286,11 @@ fn load_virtual_entities_from(minerva_instance_root: &str) -> impl Iterator<Item
     })
 }
 
-fn load_relations_from(minerva_instance_root: &str) -> impl Iterator<Item = Relation> {
-    let yaml_paths = glob(&format!("{}/relation/*.yaml", minerva_instance_root))
+fn load_relations_from(minerva_instance_root: &Path) -> impl Iterator<Item = Relation> {
+    let yaml_paths = glob(&format!("{}/relation/*.yaml", minerva_instance_root.to_string_lossy()))
         .expect("Failed to read glob pattern");
 
-    let json_paths = glob(&format!("{}/relation/*.json", minerva_instance_root))
+    let json_paths = glob(&format!("{}/relation/*.json", minerva_instance_root.to_string_lossy()))
         .expect("Failed to read glob pattern");
 
     yaml_paths
