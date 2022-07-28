@@ -7,7 +7,7 @@ use std::path::PathBuf;
 type PostgresName = String;
 
 use super::change::Change;
-use super::error::{Error, DatabaseError, ConfigurationError, RuntimeError};
+use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
 #[postgres(name = "attribute_descr")]
@@ -47,18 +47,23 @@ impl Change for AddAttributes {
             "WHERE data_source.name = $2 AND entity_type.name = $3",
         );
 
-        client.query_one(
-            query,
-            &[
-                &self.attributes,
-                &self.attribute_store.data_source,
-                &self.attribute_store.entity_type,
-            ],
-        ).map_err(|e| {
-            DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
-        })?;
+        client
+            .query_one(
+                query,
+                &[
+                    &self.attributes,
+                    &self.attribute_store.data_source,
+                    &self.attribute_store.entity_type,
+                ],
+            )
+            .map_err(|e| {
+                DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
+            })?;
 
-        Ok(format!("Added attributes to attribute store '{}'", &self.attribute_store))
+        Ok(format!(
+            "Added attributes to attribute store '{}'",
+            &self.attribute_store
+        ))
     }
 }
 
@@ -131,18 +136,23 @@ impl Change for AddAttributeStore {
             ")"
         );
 
-        client.query_one(
-            query,
-            &[
-                &self.attribute_store.data_source,
-                &self.attribute_store.entity_type,
-                &self.attribute_store.attributes,
-            ],
-        ).map_err(|e|{
-            DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
-        })?;
+        client
+            .query_one(
+                query,
+                &[
+                    &self.attribute_store.data_source,
+                    &self.attribute_store.entity_type,
+                    &self.attribute_store.attributes,
+                ],
+            )
+            .map_err(|e| {
+                DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
+            })?;
 
-        Ok(format!("Created attribute store '{}'", &self.attribute_store))
+        Ok(format!(
+            "Created attribute store '{}'",
+            &self.attribute_store
+        ))
     }
 }
 
@@ -156,9 +166,9 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
         "JOIN directory.entity_type ON entity_type.id = attribute_store.entity_type_id"
     );
 
-    let result = conn.query(query, &[]).map_err(|e|{
-        DatabaseError::from_msg(format!("Error loading attribute stores: {}", e))
-    })?;
+    let result = conn
+        .query(query, &[])
+        .map_err(|e| DatabaseError::from_msg(format!("Error loading attribute stores: {}", e)))?;
 
     for row in result {
         let attribute_store_id: i32 = row.get(0);
@@ -192,9 +202,7 @@ pub fn load_attribute_store(
 
     let result = conn
         .query_one(query, &[&data_source, &entity_type])
-        .map_err(|e| {
-            DatabaseError::from_msg(format!("Could not load attribute stores: {}", e))
-        })?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load attribute stores: {}", e)))?;
 
     let attributes = load_attributes(conn, result.get::<usize, i32>(0));
 
@@ -228,11 +236,19 @@ fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute>
 
 pub fn load_attribute_store_from_file(path: &PathBuf) -> Result<AttributeStore, Error> {
     let f = std::fs::File::open(path).map_err(|e| {
-        ConfigurationError::from_msg(format!("Could not open attribute store definition file '{}': {}", path.display(), e))
+        ConfigurationError::from_msg(format!(
+            "Could not open attribute store definition file '{}': {}",
+            path.display(),
+            e
+        ))
     })?;
-    
+
     let trend_store: AttributeStore = serde_yaml::from_reader(f).map_err(|e| {
-        RuntimeError::from_msg(format!("Could not read trend store definition from file '{}': {}", path.display(), e))
+        RuntimeError::from_msg(format!(
+            "Could not read trend store definition from file '{}': {}",
+            path.display(),
+            e
+        ))
     })?;
 
     Ok(trend_store)

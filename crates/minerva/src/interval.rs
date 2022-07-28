@@ -11,9 +11,9 @@ pub fn parse_interval(interval_str: &str) -> Result<Duration, humantime::Duratio
         Some(cap) => {
             format!("{} hours {} minutes {} seconds", &cap[1], &cap[2], &cap[3])
         }
-        None => {
-            interval_str.replace("mon", "month").replace("mons", "month")
-        }
+        None => interval_str
+            .replace("mon", "month")
+            .replace("mons", "month"),
     };
 
     humantime::parse_duration(&interval_str)

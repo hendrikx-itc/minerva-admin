@@ -15,7 +15,9 @@ impl DatabaseError {
 
 impl From<postgres::Error> for DatabaseError {
     fn from(err: postgres::Error) -> DatabaseError {
-        DatabaseError { msg: format!("{}", err) }
+        DatabaseError {
+            msg: format!("{}", err),
+        }
     }
 }
 
@@ -78,6 +80,8 @@ impl From<RuntimeError> for Error {
 
 impl From<postgres::Error> for Error {
     fn from(err: postgres::Error) -> Error {
-        Error::Database(DatabaseError { msg: format!("{}", err) })
+        Error::Database(DatabaseError {
+            msg: format!("{}", err),
+        })
     }
 }

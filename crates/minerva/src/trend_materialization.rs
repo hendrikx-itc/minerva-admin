@@ -1,23 +1,23 @@
-use std::fmt;
-use std::time::Duration;
+use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
-use glob::glob;
+use std::fmt;
+use std::time::Duration;
 
-use postgres::{Client, types::ToSql};
+use postgres::{types::ToSql, Client};
 use postgres_protocol::escape::escape_identifier;
 
 use humantime::format_duration;
 
 use super::change::Change;
+use super::error::{DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
-use super::error::{Error, RuntimeError, DatabaseError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrendMaterializationSource {
     pub trend_store_part: String,
     pub mapping_function: String,
-} 
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrendViewMaterialization {
@@ -48,12 +48,12 @@ impl TrendViewMaterialization {
             &format_duration(self.stability_delay).to_string(),
             &format_duration(self.reprocessing_period).to_string(),
             &format!("trend.{}", escape_identifier(&self.view_name())),
-            &self.target_trend_store_part
+            &self.target_trend_store_part,
         ];
 
         match client.query(query, query_args) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error defining view materialization: {}", e))
+            Err(e) => Err(format!("Error defining view materialization: {}", e)),
         }
     }
 
@@ -69,9 +69,8 @@ impl TrendViewMaterialization {
 
         match client.execute(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error dropping view: {}", e))
+            Err(e) => Err(format!("Error dropping view: {}", e)),
         }
-
     }
 
     pub fn create_view(&self, client: &mut Client) -> Result<(), String> {
@@ -83,23 +82,19 @@ impl TrendViewMaterialization {
 
         match client.execute(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error creating view: {}", e))
+            Err(e) => Err(format!("Error creating view: {}", e)),
         }
     }
 
     fn create(&self, client: &mut Client) -> Result<(), String> {
         match self.create_view(client) {
-            Ok(_) => {},
-            Err(e) => {
-                return Err(e)
-            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
         }
 
         match self.define_materialization(client) {
-            Ok(_) => {},
-            Err(e) => {
-                return Err(e)
-            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
         }
 
         Ok(())
@@ -118,7 +113,7 @@ impl TrendViewMaterialization {
 
         match client.query(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error creating fingerprint function: {}", e))
+            Err(e) => Err(format!("Error creating fingerprint function: {}", e)),
         }
     }
 
@@ -127,12 +122,12 @@ impl TrendViewMaterialization {
             "DROP FUNCTION IF EXISTS trend.\"{}\"(timestamp with time zone)",
             self.fingerprint_function_name()
         );
-        
+
         match client.query(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error dropping fingerprint function: {}", e))
+            Err(e) => Err(format!("Error dropping fingerprint function: {}", e)),
         }
-    }   
+    }
 
     pub fn diff(&self, other: &TrendViewMaterialization) -> Vec<Box<dyn Change>> {
         let mut changes: Vec<Box<dyn Change>> = Vec::new();
@@ -143,8 +138,14 @@ impl TrendViewMaterialization {
         //    changes.push(Box::new(UpdateView { trend_view_materialization: self.clone() }));
         //}
 
-        if self.enabled != other.enabled || self.processing_delay != other.processing_delay || self.stability_delay != other.stability_delay || self.reprocessing_period != other.reprocessing_period {
-            changes.push(Box::new(UpdateTrendViewMaterializationAttributes { trend_view_materialization: self.clone() }));
+        if self.enabled != other.enabled
+            || self.processing_delay != other.processing_delay
+            || self.stability_delay != other.stability_delay
+            || self.reprocessing_period != other.reprocessing_period
+        {
+            changes.push(Box::new(UpdateTrendViewMaterializationAttributes {
+                trend_view_materialization: self.clone(),
+            }));
         }
 
         changes
@@ -164,7 +165,10 @@ pub struct UpdateTrendViewMaterializationAttributes {
 
 impl Change for UpdateTrendViewMaterializationAttributes {
     fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        Ok(format!("Updated view {}", self.trend_view_materialization.view_name()))
+        Ok(format!(
+            "Updated view {}",
+            self.trend_view_materialization.view_name()
+        ))
     }
 }
 
@@ -187,7 +191,10 @@ impl Change for UpdateView {
         self.trend_view_materialization.drop_view(client).unwrap();
         self.trend_view_materialization.create_view(client).unwrap();
 
-        Ok(format!("Updated view {}", self.trend_view_materialization.view_name()))
+        Ok(format!(
+            "Updated view {}",
+            self.trend_view_materialization.view_name()
+        ))
     }
 }
 
@@ -237,13 +244,16 @@ impl TrendFunctionMaterialization {
             &format_duration(self.processing_delay).to_string(),
             &format_duration(self.stability_delay).to_string(),
             &format_duration(self.reprocessing_period).to_string(),
-            &format!("trend.{}(timestamp with time zone)", escape_identifier(&self.target_trend_store_part)),
-            &self.target_trend_store_part
+            &format!(
+                "trend.{}(timestamp with time zone)",
+                escape_identifier(&self.target_trend_store_part)
+            ),
+            &self.target_trend_store_part,
         ];
 
         match client.query(query, query_args) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error defining function materialization: {}", e))
+            Err(e) => Err(format!("Error defining function materialization: {}", e)),
         }
     }
 
@@ -258,23 +268,19 @@ impl TrendFunctionMaterialization {
 
         match client.execute(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error creating function: {}", e))
+            Err(e) => Err(format!("Error creating function: {}", e)),
         }
     }
 
     fn create(&self, client: &mut Client) -> Result<(), String> {
         match self.create_function(client) {
-            Ok(_) => {},
-            Err(e) => {
-                return Err(e)
-            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
         }
 
         match self.define_materialization(client) {
-            Ok(_) => {},
-            Err(e) => {
-                return Err(e)
-            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
         }
 
         Ok(())
@@ -293,7 +299,7 @@ impl TrendFunctionMaterialization {
 
         match client.query(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error creating fingerprint function: {}", e))
+            Err(e) => Err(format!("Error creating fingerprint function: {}", e)),
         }
     }
 
@@ -302,10 +308,10 @@ impl TrendFunctionMaterialization {
             "DROP FUNCTION IF EXISTS trend.\"{}\"(timestamp with time zone)",
             self.fingerprint_function_name()
         );
-        
+
         match client.query(query.as_str(), &[]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Error dropping fingerprint function: {}", e))
+            Err(e) => Err(format!("Error dropping fingerprint function: {}", e)),
         }
     }
 
@@ -322,7 +328,6 @@ impl TrendFunctionMaterialization {
         Ok(())
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
@@ -364,49 +369,46 @@ impl TrendMaterialization {
 
     pub fn diff(&self, other: &TrendMaterialization) -> Vec<Box<dyn Change>> {
         match self {
-            TrendMaterialization::View(m) => {
-                match other {
-                    TrendMaterialization::View(other_m) => m.diff(other_m),
-                    TrendMaterialization::Function(_) => panic!("Incompatible materialization types"),
-                }
+            TrendMaterialization::View(m) => match other {
+                TrendMaterialization::View(other_m) => m.diff(other_m),
+                TrendMaterialization::Function(_) => panic!("Incompatible materialization types"),
             },
-            TrendMaterialization::Function(m) => {
-                match other {
-                    TrendMaterialization::View(_) => panic!("Incompatible materialization types"),
-                    TrendMaterialization::Function(other_m) => m.diff(other_m),
-                }
+            TrendMaterialization::Function(m) => match other {
+                TrendMaterialization::View(_) => panic!("Incompatible materialization types"),
+                TrendMaterialization::Function(other_m) => m.diff(other_m),
             },
         }
     }
 }
 
-pub fn trend_materialization_from_config(path: &std::path::PathBuf) -> Result<TrendMaterialization, String> {
+pub fn trend_materialization_from_config(
+    path: &std::path::PathBuf,
+) -> Result<TrendMaterialization, String> {
     let f = std::fs::File::open(&path).unwrap();
-    let deserialize_result: Result<TrendMaterialization, serde_yaml::Error> = serde_yaml::from_reader(f);
+    let deserialize_result: Result<TrendMaterialization, serde_yaml::Error> =
+        serde_yaml::from_reader(f);
 
     match deserialize_result {
         Ok(materialization) => Ok(materialization),
-        Err(e) => {
-            Err(format!("Error deserializing yaml: {}", e))
-        }
+        Err(e) => Err(format!("Error deserializing yaml: {}", e)),
     }
 }
 
-pub fn load_materializations_from(minerva_instance_root: &str) -> impl Iterator<Item = TrendMaterialization> {
+pub fn load_materializations_from(
+    minerva_instance_root: &str,
+) -> impl Iterator<Item = TrendMaterialization> {
     let glob_path = format!("{}/materialization/*.yaml", minerva_instance_root);
 
     glob(&glob_path)
         .expect("Failed to read glob pattern")
         .filter_map(|entry| match entry {
-            Ok(path) => {
-                match trend_materialization_from_config(&path) {
-                    Ok(materialization) => Some(materialization),
-                    Err(e) => {
-                        println!("Error loading materialization '{}': {}", &path.display(), e);
-                        None
-                    }
+            Ok(path) => match trend_materialization_from_config(&path) {
+                Ok(materialization) => Some(materialization),
+                Err(e) => {
+                    println!("Error loading materialization '{}': {}", &path.display(), e);
+                    None
                 }
-            }
+            },
             Err(_) => None,
         })
 }
@@ -456,7 +458,7 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
             trend_materializations.push(trend_materialization);
         }
 
-        if let Some(function) =  src_function {
+        if let Some(function) = src_function {
             println!("{}", function);
         }
     }
@@ -464,7 +466,10 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
     Ok(trend_materializations)
 }
 
-fn load_sources(conn: &mut Client, materialization_id: i32) -> Result<Vec<TrendMaterializationSource>, Error> {
+fn load_sources(
+    conn: &mut Client,
+    materialization_id: i32,
+) -> Result<Vec<TrendMaterializationSource>, Error> {
     let mut sources: Vec<TrendMaterializationSource> = Vec::new();
 
     let query = concat!(
@@ -493,9 +498,7 @@ fn load_sources(conn: &mut Client, materialization_id: i32) -> Result<Vec<TrendM
 
 // Load the body of a function by specifying it's full name
 pub fn get_view_def(client: &mut Client, view: &str) -> Option<String> {
-    let query = format!(concat!(
-        "SELECT pg_get_viewdef('{}'::regclass::oid);"
-    ), view);
+    let query = format!(concat!("SELECT pg_get_viewdef('{}'::regclass::oid);"), view);
 
     match client.query_one(query.as_str(), &[]) {
         Ok(row) => row.get(0),
@@ -509,15 +512,27 @@ pub struct AddTrendMaterialization {
 
 impl fmt::Display for AddTrendMaterialization {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AddTrendMaterialization({})", &self.trend_materialization)
+        write!(
+            f,
+            "AddTrendMaterialization({})",
+            &self.trend_materialization
+        )
     }
 }
 
 impl Change for AddTrendMaterialization {
     fn apply(&self, client: &mut Client) -> Result<String, Error> {
         match self.trend_materialization.create(client) {
-            Ok(_) => Ok(format!("Added trend materialization {}", &self.trend_materialization)),
-            Err(e) => Err(Error::Runtime(RuntimeError { msg: format!("Error adding trend materialization {}: {}", &self.trend_materialization, e) }))
+            Ok(_) => Ok(format!(
+                "Added trend materialization {}",
+                &self.trend_materialization
+            )),
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!(
+                    "Error adding trend materialization {}: {}",
+                    &self.trend_materialization, e
+                ),
+            })),
         }
     }
 }
@@ -525,7 +540,7 @@ impl Change for AddTrendMaterialization {
 impl From<TrendMaterialization> for AddTrendMaterialization {
     fn from(trend_materialization: TrendMaterialization) -> Self {
         AddTrendMaterialization {
-            trend_materialization
+            trend_materialization,
         }
     }
 }
