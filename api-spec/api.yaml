@@ -484,6 +484,9 @@ components:
         id:
           type: integer
           description: Unique identifier representing a specific trend view materialization
+        materialization_id:
+          type: integer
+          description: Unique identifier as a general materialization
         target_trend_store_part:
           type: integer
         processing_delay:
@@ -507,6 +510,9 @@ components:
         id:
           type: integer
           description: Unique identifier representing a specific trend function materialization
+        materialization_id:
+          type: integer
+          description: Unique identifier as a general materialization
         target_trend_store_part:
           type: integer
         processing_delay:
