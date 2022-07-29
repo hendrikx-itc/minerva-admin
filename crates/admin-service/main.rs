@@ -8,8 +8,9 @@ use utoipa_swagger_ui::SwaggerUi;
 
 mod trendmaterialization;
 use trendmaterialization::{
-    get_trend_view_materialization, get_trend_view_materializations, TrendMaterializationSource,
-    TrendViewMaterialization,
+    get_trend_function_materialization, get_trend_function_materializations,
+    get_trend_view_materialization, get_trend_view_materializations, TrendFunctionMaterialization,
+    TrendMaterializationSource, TrendViewMaterialization,
 };
 
 mod trendstore;
@@ -33,6 +34,8 @@ async fn main() -> std::io::Result<()> {
         handlers(
             trendmaterialization::get_trend_view_materializations,
 	    trendmaterialization::get_trend_view_materialization,
+            trendmaterialization::get_trend_function_materializations,
+	    trendmaterialization::get_trend_function_materialization,
 	    trendstore::get_trend_store_parts,
 	    trendstore::get_trend_store_part,
 	    trendstore::get_trend_stores,
@@ -42,7 +45,8 @@ async fn main() -> std::io::Result<()> {
 	    entitytype::get_entity_types,
 	    entitytype::get_entity_type,
         ),
-        components(TrendMaterializationSource, TrendViewMaterialization, Trend, GeneratedTrend, TrendStorePart, TrendStore, DataSource, EntityType),
+        components(TrendMaterializationSource, TrendViewMaterialization, TrendFunctionMaterialization,
+		   Trend, GeneratedTrend, TrendStorePart, TrendStore, DataSource, EntityType),
         tags(
             (name = "Trend Materialization", description = "Trend materialization management endpoints.")
         ),
@@ -68,6 +72,8 @@ async fn main() -> std::io::Result<()> {
             )
             .service(get_trend_view_materializations)
             .service(get_trend_view_materialization)
+            .service(get_trend_function_materializations)
+            .service(get_trend_function_materialization)
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
             .service(get_trend_stores)
