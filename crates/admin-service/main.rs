@@ -6,9 +6,10 @@ use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-mod trendviewmaterialization;
-use trendviewmaterialization::{
-    get_trend_view_materializations, TrendMaterializationSource, TrendViewMaterialization,
+mod trendmaterialization;
+use trendmaterialization::{
+    get_trend_view_materialization, get_trend_view_materializations, TrendMaterializationSource,
+    TrendViewMaterialization,
 };
 
 mod trendstore;
@@ -30,7 +31,8 @@ async fn main() -> std::io::Result<()> {
     #[derive(OpenApi)]
     #[openapi(
         handlers(
-            trendviewmaterialization::get_trend_view_materializations,
+            trendmaterialization::get_trend_view_materializations,
+	    trendmaterialization::get_trend_view_materialization,
 	    trendstore::get_trend_store_parts,
 	    trendstore::get_trend_store_part,
 	    trendstore::get_trend_stores,
@@ -65,6 +67,7 @@ async fn main() -> std::io::Result<()> {
                 SwaggerUi::new("/swagger-ui/{_:.*}").url("/api-doc/openapi.json", openapi.clone()),
             )
             .service(get_trend_view_materializations)
+            .service(get_trend_view_materialization)
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
             .service(get_trend_stores)
