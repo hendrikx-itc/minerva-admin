@@ -10,11 +10,14 @@ use super::change::Change;
 use super::error::Error;
 use super::relation::{load_relation_from_file, AddRelation, Relation};
 use super::trend_materialization::{
-    load_materializations, load_materializations_from, AddTrendMaterialization,
-    TrendMaterialization,
+    load_materializations, AddTrendMaterialization,
+    TrendMaterialization, load_materializations_from
 };
 use super::trend_store::{
     load_trend_store_from_file, load_trend_stores, AddTrendStore, TrendStore,
+};
+use super::notification_store::{
+    NotificationStore, AddNotificationStore, load_notification_stores
 };
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 
@@ -22,6 +25,7 @@ pub struct MinervaInstance {
     pub instance_root: Option<PathBuf>,
     pub trend_stores: Vec<TrendStore>,
     pub attribute_stores: Vec<AttributeStore>,
+    pub notification_stores: Vec<NotificationStore>,
     pub virtual_entities: Vec<VirtualEntity>,
     pub relations: Vec<Relation>,
     pub trend_materializations: Vec<TrendMaterialization>,
@@ -32,6 +36,8 @@ impl MinervaInstance {
         let attribute_stores = load_attribute_stores(client)?;
 
         let trend_stores = load_trend_stores(client)?;
+
+        let notification_stores = load_notification_stores(client)?;
 
         //let virtual_entities = load_virtual_entities(client)?;
 
@@ -47,6 +53,7 @@ impl MinervaInstance {
             instance_root: None,
             trend_stores,
             attribute_stores,
+            notification_stores,
             virtual_entities,
             relations,
             trend_materializations,
@@ -55,6 +62,7 @@ impl MinervaInstance {
 
     pub fn load_from(minerva_instance_root: &Path) -> MinervaInstance {
         let trend_stores = load_trend_stores_from(minerva_instance_root).collect();
+        let notification_stores = load_notification_stores_from(minerva_instance_root).collect();
         let attribute_stores = load_attribute_stores_from(minerva_instance_root).collect();
         let virtual_entities = load_virtual_entities_from(minerva_instance_root).collect();
         let relations = load_relations_from(minerva_instance_root).collect();
@@ -64,6 +72,7 @@ impl MinervaInstance {
             instance_root: Some(PathBuf::from(minerva_instance_root)),
             trend_stores,
             attribute_stores,
+            notification_stores,
             virtual_entities,
             relations,
             trend_materializations,
@@ -74,6 +83,8 @@ impl MinervaInstance {
         initialize_attribute_stores(client, &self.attribute_stores);
 
         initialize_trend_stores(client, &self.trend_stores);
+
+        initialize_notification_stores(client, &self.notification_stores);
 
         initialize_virtual_entities(client, &self.virtual_entities);
 
@@ -225,6 +236,41 @@ fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec<Attri
             }
             Err(e) => {
                 println!("Error creating attribute store: {}", e);
+            }
+        }
+    }
+}
+
+fn load_notification_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = NotificationStore> {
+    let glob_path = format!("{}/notification/*.yaml", minerva_instance_root.to_string_lossy());
+
+    glob(&glob_path)
+        .expect("Failed to read glob pattern")
+        .filter_map(|entry| match entry {
+            Ok(path) => {
+                let f = std::fs::File::open(&path).unwrap();
+                let notification_store: NotificationStore = serde_yaml::from_reader(f).unwrap();
+
+                Some(notification_store)
+            }
+            Err(_) => None,
+        })
+}
+
+fn initialize_notification_stores(client: &mut Client, notification_stores: &Vec<NotificationStore>) {
+    for notification_store in notification_stores {
+        let change = AddNotificationStore {
+            notification_store: notification_store.clone(),
+        };
+
+        let result = change.apply(client);
+
+        match result {
+            Ok(message) => {
+                println!("{}", message);
+            }
+            Err(e) => {
+                println!("Error creating notification store: {}", e);
             }
         }
     }

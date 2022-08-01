@@ -7,3 +7,4 @@ pub mod relation;
 pub mod trend_materialization;
 pub mod trend_store;
 pub mod virtual_entity;
+pub mod notification_store;
