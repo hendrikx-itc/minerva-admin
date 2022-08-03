@@ -2,8 +2,8 @@ use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::fmt;
-use std::time::Duration;
 use std::path::Path;
+use std::time::Duration;
 
 use postgres::{types::ToSql, Client};
 use postgres_protocol::escape::escape_identifier;
@@ -136,7 +136,8 @@ impl TrendViewMaterialization {
         // Comparing a view from the database with a view definition is not
         // really usefull because PostgreSQL rewrites the SQL.
         //if self.view != other.view {
-        //    changes.push(Box::new(UpdateView { trend_view_materialization: self.clone() }));
+        //    changes.push(Box::new(UpdateView { trend_view_materialization:
+        // self.clone() }));
         //}
 
         if self.enabled != other.enabled
@@ -165,11 +166,10 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 impl Change for UpdateTrendViewMaterializationAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        Ok(format!(
-            "Updated view {}",
-            self.trend_view_materialization.view_name()
-        ))
+    fn apply(&self, _client: &mut Client) -> Result<String, Error> {
+        Err(Error::Runtime(RuntimeError {
+            msg: "Not implemented".into(),
+        }))
     }
 }
 
@@ -340,8 +340,16 @@ pub enum TrendMaterialization {
 impl fmt::Display for TrendMaterialization {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TrendMaterialization::View(view_materialization) => write!(f, "TrendViewMaterialization('{}')", &view_materialization.target_trend_store_part),
-            TrendMaterialization::Function(function_materialization) => write!(f, "TrendFunctionMaterialization('{}')", &function_materialization.target_trend_store_part),
+            TrendMaterialization::View(view_materialization) => write!(
+                f,
+                "TrendViewMaterialization('{}')",
+                &view_materialization.target_trend_store_part
+            ),
+            TrendMaterialization::Function(function_materialization) => write!(
+                f,
+                "TrendFunctionMaterialization('{}')",
+                &function_materialization.target_trend_store_part
+            ),
         }
     }
 }
@@ -398,7 +406,10 @@ pub fn trend_materialization_from_config(
 pub fn load_materializations_from(
     minerva_instance_root: &Path,
 ) -> impl Iterator<Item = TrendMaterialization> {
-    let glob_path = format!("{}/materialization/*.yaml", minerva_instance_root.to_string_lossy());
+    let glob_path = format!(
+        "{}/materialization/*.yaml",
+        minerva_instance_root.to_string_lossy()
+    );
 
     glob(&glob_path)
         .expect("Failed to read glob pattern")

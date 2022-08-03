@@ -1,5 +1,6 @@
 use std::io::Read;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use glob::glob;
 
@@ -80,6 +81,17 @@ impl MinervaInstance {
     }
 
     pub fn initialize(&self, client: &mut Client) {
+        if let Some(instance_root) = &self.instance_root {
+            match initialize_custom_pre_init(client, &instance_root) {
+                Ok(steps) => {
+                    for step in steps {
+                        println!("{}", step);
+                    }
+                }
+                Err(e) => println!("Error running custom pre-init steps: {}", e),
+            }
+        }
+
         initialize_attribute_stores(client, &self.attribute_stores);
 
         initialize_trend_stores(client, &self.trend_stores);
@@ -93,7 +105,7 @@ impl MinervaInstance {
         initialize_trend_materializations(client, &self.trend_materializations);
 
         if let Some(instance_root) = &self.instance_root {
-            match initialize_custom(client, &instance_root) {
+            match initialize_custom_post_init(client, &instance_root) {
                 Ok(steps) => {
                     for step in steps {
                         println!("{}", step);
@@ -206,8 +218,13 @@ pub fn dump(client: &mut Client) {
     }
 }
 
-fn load_attribute_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = AttributeStore> {
-    let glob_path = format!("{}/attribute/*.yaml", minerva_instance_root.to_string_lossy());
+fn load_attribute_stores_from(
+    minerva_instance_root: &Path,
+) -> impl Iterator<Item = AttributeStore> {
+    let glob_path = format!(
+        "{}/attribute/*.yaml",
+        minerva_instance_root.to_string_lossy()
+    );
 
     glob(&glob_path)
         .expect("Failed to read glob pattern")
@@ -277,11 +294,17 @@ fn initialize_notification_stores(client: &mut Client, notification_stores: &Vec
 }
 
 fn load_trend_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = TrendStore> {
-    let yaml_paths = glob(&format!("{}/trend/*.yaml", minerva_instance_root.to_string_lossy()))
-        .expect("Failed to read glob pattern");
+    let yaml_paths = glob(&format!(
+        "{}/trend/*.yaml",
+        minerva_instance_root.to_string_lossy()
+    ))
+    .expect("Failed to read glob pattern");
 
-    let json_paths = glob(&format!("{}/trend/*.json", minerva_instance_root.to_string_lossy()))
-        .expect("Failed to read glob pattern");
+    let json_paths = glob(&format!(
+        "{}/trend/*.json",
+        minerva_instance_root.to_string_lossy()
+    ))
+    .expect("Failed to read glob pattern");
 
     yaml_paths
         .chain(json_paths)
@@ -317,8 +340,11 @@ fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendStore>) 
 }
 
 fn load_virtual_entities_from(minerva_instance_root: &Path) -> impl Iterator<Item = VirtualEntity> {
-    let sql_paths = glob(&format!("{}/virtual-entity/*.sql", minerva_instance_root.to_string_lossy()))
-        .expect("Failed to read glob pattern");
+    let sql_paths = glob(&format!(
+        "{}/virtual-entity/*.sql",
+        minerva_instance_root.to_string_lossy()
+    ))
+    .expect("Failed to read glob pattern");
 
     sql_paths.filter_map(|entry| match entry {
         Ok(path) => match load_virtual_entity_from_file(&path) {
@@ -333,11 +359,17 @@ fn load_virtual_entities_from(minerva_instance_root: &Path) -> impl Iterator<Ite
 }
 
 fn load_relations_from(minerva_instance_root: &Path) -> impl Iterator<Item = Relation> {
-    let yaml_paths = glob(&format!("{}/relation/*.yaml", minerva_instance_root.to_string_lossy()))
-        .expect("Failed to read glob pattern");
+    let yaml_paths = glob(&format!(
+        "{}/relation/*.yaml",
+        minerva_instance_root.to_string_lossy()
+    ))
+    .expect("Failed to read glob pattern");
 
-    let json_paths = glob(&format!("{}/relation/*.json", minerva_instance_root.to_string_lossy()))
-        .expect("Failed to read glob pattern");
+    let json_paths = glob(&format!(
+        "{}/relation/*.json",
+        minerva_instance_root.to_string_lossy()
+    ))
+    .expect("Failed to read glob pattern");
 
     yaml_paths
         .chain(json_paths)
@@ -389,7 +421,148 @@ fn initialize_trend_materializations(
     }
 }
 
-fn initialize_custom<'a>(
+fn load_sql<'a>(client: &'a mut Client, path: &PathBuf) -> Result<(), String> {
+    let mut f = match std::fs::File::open(&path) {
+        Ok(file) => file,
+        Err(e) => {
+            return Err(format!(
+                "Could not open sql file '{}': {}",
+                &path.to_string_lossy(),
+                e
+            ))
+        }
+    };
+
+    let mut sql = String::new();
+
+    if let Err(e) = f.read_to_string(&mut sql) {
+        return Err(format!(
+            "Could not read virtual entity definition file: {}",
+            e
+        ));
+    }
+
+    if let Err(e) = client.batch_execute(&sql) {
+        return Err(format!("Error creating relation materialized view: {}", e));
+    }
+
+    Ok(())
+}
+
+fn load_psql<'a>(path: &PathBuf) -> Result<String, String> {
+    let cmd = Command::new("psql").arg("-f").arg(path).output();
+
+    match cmd {
+        Ok(output) => match output.status.success() {
+            true => {
+                let stdout = std::str::from_utf8(&output.stderr).unwrap();
+
+                return Ok(stdout.into());
+            }
+            false => {
+                let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+                return Err(stderr.into());
+            }
+        },
+        Err(e) => return Err(format!("Could not run psql command: {}", e)),
+    }
+}
+
+fn execute_custom<'a>(path: &PathBuf) -> Result<String, String> {
+    let cmd = Command::new(path).output();
+
+    match cmd {
+        Ok(output) => match output.status.success() {
+            true => {
+                let stdout = std::str::from_utf8(&output.stderr).unwrap();
+
+                return Ok(stdout.into());
+            }
+            false => {
+                let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+                return Err(stderr.into());
+            }
+        },
+        Err(e) => return Err(format!("Could not run command: {}", e)),
+    }
+}
+
+fn initialize_custom_pre_init<'a>(
+    client: &'a mut Client,
+    instance_root: &'a PathBuf,
+) -> Result<Box<impl Iterator<Item = String> + 'a>, Error> {
+    let paths = glob(&format!(
+        "{}/custom/pre-init/*",
+        instance_root.to_string_lossy()
+    ))
+    .expect("Failed to read glob pattern");
+
+    let iter = Box::new(paths.map(|entry| match entry {
+        Ok(path) => {
+            if path.is_dir() {
+                return format!("Directory '{}'", &path.to_string_lossy());
+            }
+
+            match path.extension() {
+                Some(ext) => {
+                    let ext_str = ext.to_str().unwrap_or("");
+                    match ext_str {
+                        "sql" => match load_sql(client, &path) {
+                            Ok(_) => return format!("Executed sql '{}'", &path.to_string_lossy()),
+                            Err(e) => {
+                                return format!(
+                                    "Error executing sql '{}': {}",
+                                    &path.to_string_lossy(),
+                                    e
+                                )
+                            }
+                        },
+                        "psql" => match load_psql(&path) {
+                            Ok(msg) => {
+                                return format!(
+                                    "Executed '{}' with psql: {}",
+                                    &path.to_string_lossy(),
+                                    msg
+                                )
+                            }
+                            Err(e) => {
+                                return format!(
+                                    "Error executing '{}' with psql: {}",
+                                    &path.to_string_lossy(),
+                                    e
+                                )
+                            }
+                        },
+                        _ => match execute_custom(&path) {
+                            Ok(msg) => {
+                                return format!("Executed '{}': {}", &path.to_string_lossy(), msg)
+                            }
+                            Err(e) => {
+                                return format!(
+                                    "Error executing '{}': {}",
+                                    &path.to_string_lossy(),
+                                    e
+                                )
+                            }
+                        },
+                    }
+                }
+                None => {
+                    return String::from(
+                        "A file without an extension should not have matched the glob patterns",
+                    )
+                }
+            }
+        }
+        Err(_) => format!("No path"),
+    }));
+
+    Ok(iter)
+}
+
+fn initialize_custom_post_init<'a>(
     client: &'a mut Client,
     instance_root: &'a PathBuf,
 ) -> Result<Box<impl Iterator<Item = String> + 'a>, Error> {

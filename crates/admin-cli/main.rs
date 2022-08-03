@@ -1,7 +1,10 @@
 use std::env;
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use dialoguer::Confirm;
 use postgres::{Client, NoTls};
 use structopt::StructOpt;
 
@@ -47,11 +50,11 @@ impl Cmd for DeleteOpt {
 
         match result {
             Ok(_) => Ok(()),
-            Err(e) => {
-                Err(Error::Runtime(RuntimeError{ msg: format!("Error deleting trend store: {}", e) } ))
-            }
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!("Error deleting trend store: {}", e),
+            })),
         }
-    }    
+    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -323,8 +326,11 @@ impl Cmd for InitializeOpt {
 }
 #[derive(Debug, StructOpt)]
 struct DiffOpt {
-    #[structopt(long = "--with-dir", help = "compare with other Minerva instance directory")]
-    with_dir: Option<PathBuf>
+    #[structopt(
+        long = "--with-dir",
+        help = "compare with other Minerva instance directory"
+    )]
+    with_dir: Option<PathBuf>,
 }
 
 impl Cmd for DiffOpt {
@@ -344,9 +350,7 @@ impl Cmd for DiffOpt {
         let instance_def = MinervaInstance::load_from(&minerva_instance_root);
 
         let other_instance = match &self.with_dir {
-            Some(with_dir) => {
-                MinervaInstance::load_from(&with_dir)
-            },
+            Some(with_dir) => MinervaInstance::load_from(&with_dir),
             None => {
                 let mut client = connect_db()?;
 
@@ -368,24 +372,65 @@ impl Cmd for DiffOpt {
 
         Ok(())
     }
+}
 
+#[derive(Debug, StructOpt)]
+struct UpdateOpt {
+    #[structopt(short, long)]
+    non_interactive: bool,
+}
+
+impl Cmd for UpdateOpt {
+    fn run(&self) -> CmdResult {
+        let mut client = connect_db()?;
+
+        print!("Reading Minerva instance from database... ");
+        io::stdout().flush().unwrap();
+        let instance_db = MinervaInstance::load_from_db(&mut client)?;
+        print!("Ok\n");
+
+        let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
+            Ok(v) => PathBuf::from(v),
+            Err(e) => {
+                return Err(Error::Configuration(ConfigurationError {
+                    msg: format!(
+                        "Environment variable '{}' could not be read: {}",
+                        &ENV_MINERVA_INSTANCE_ROOT, e
+                    ),
+                }));
+            }
+        };
+
+        print!(
+            "Reading Minerva instance from '{}'... ",
+            &minerva_instance_root.to_string_lossy()
+        );
+        io::stdout().flush().unwrap();
+        let instance_def = MinervaInstance::load_from(&minerva_instance_root);
+        print!("Ok\n");
+
+        update(
+            &mut client,
+            &instance_db,
+            &instance_def,
+            !self.non_interactive,
+        )
+    }
 }
 
 #[derive(Debug, StructOpt)]
 enum Opt {
-    #[structopt(about = "command for complete dump of a Minerva instance")]
+    #[structopt(about = "Complete dump of a Minerva instance")]
     Dump,
-    #[structopt(
-        about = "command for creating a diff between Minerva instance definitions"
-    )]
+    #[structopt(about = "Create a diff between Minerva instance definitions")]
     Diff(DiffOpt),
-    #[structopt(about = "command for updating a Minerva database from an instance definition")]
-    Update,
-    #[structopt(about = "command for complete initialization of a Minerva instance")]
+    #[structopt(about = "Update a Minerva database from an instance definition")]
+    Update(UpdateOpt),
+    #[structopt(about = "Initialize a complete Minerva instance")]
     Initialize(InitializeOpt),
-    #[structopt(about = "manage trend stores")]
+    #[structopt(about = "Manage trend stores")]
     TrendStore(TrendStoreOpt),
-    #[structopt(about = "manage attribute stores")]
+    #[structopt(about = "Manage attribute stores")]
     AttributeStore(AttributeStoreOpt),
 }
 
@@ -395,7 +440,7 @@ fn main() {
     let result = match opt {
         Opt::Dump => run_dump_cmd(),
         Opt::Diff(diff) => diff.run(),
-        Opt::Update => run_update_cmd(),
+        Opt::Update(update) => update.run(),
         Opt::Initialize(initialize) => initialize.run(),
         Opt::TrendStore(trend_store) => match trend_store {
             TrendStoreOpt::List => run_trend_store_list_cmd(),
@@ -569,33 +614,43 @@ fn run_dump_cmd() -> CmdResult {
     Ok(())
 }
 
-fn run_update_cmd() -> CmdResult {
-    let mut client = connect_db()?;
-
-    let instance_db = MinervaInstance::load_from_db(&mut client)?;
-
-    let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
-        Ok(v) => PathBuf::from(v),
-        Err(e) => {
-            return Err(Error::Configuration(ConfigurationError {
-                msg: format!(
-                    "Environment variable '{}' could not be read: {}",
-                    &ENV_MINERVA_INSTANCE_ROOT, e
-                ),
-            }));
-        }
-    };
-
-    let instance_def = MinervaInstance::load_from(&minerva_instance_root);
-
-    instance_db.update(&mut client, &instance_def)
-}
-
 fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) -> CmdResult {
     let mut client = connect_db()?;
 
     create_partitions(&mut client, args.ahead_interval)?;
 
     println!("Created partitions");
+    Ok(())
+}
+
+fn update(
+    client: &mut Client,
+    db_instance: &MinervaInstance,
+    other: &MinervaInstance,
+    interactive: bool,
+) -> CmdResult {
+    let changes = db_instance.diff(other);
+
+    println!("Applying changes:");
+
+    for change in changes {
+        println!("* {}", change);
+
+        if (!interactive)
+            || Confirm::new()
+                .with_prompt("Apply change?")
+                .interact()
+                .map_err(|e| {
+                    Error::Runtime(RuntimeError {
+                        msg: format!("Could not process input: {}", e),
+                    })
+                })?
+        {
+            let message = change.apply(client)?;
+
+            println!("> {}", &message);
+        }
+    }
+
     Ok(())
 }
