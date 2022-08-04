@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::os::unix::fs::PermissionsExt;
 
 use glob::glob;
 
@@ -535,16 +536,29 @@ fn initialize_custom_pre_init<'a>(
                                 )
                             }
                         },
-                        _ => match execute_custom(&path) {
-                            Ok(msg) => {
-                                return format!("Executed '{}': {}", &path.to_string_lossy(), msg)
-                            }
-                            Err(e) => {
-                                return format!(
-                                    "Error executing '{}': {}",
-                                    &path.to_string_lossy(),
-                                    e
-                                )
+                        _ => {
+                            let metadata_result = path.metadata();
+
+                            match metadata_result {
+                                Err(e) => return format!("Error retrieving meta data for '{}': {}", &path.to_string_lossy(), e),
+                                Ok(metadata) => {
+                                    if (metadata.permissions().mode() & 0o111) != 0 {
+                                        match execute_custom(&path) {
+                                            Ok(msg) => {
+                                                return format!("Executed '{}': {}", &path.to_string_lossy(), msg)
+                                            }
+                                            Err(e) => {
+                                                return format!(
+                                                    "Error executing '{}': {}",
+                                                    &path.to_string_lossy(),
+                                                    e
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        return format!("Skipping non-executable file '{}'", path.to_string_lossy())
+                                    }
+                                },
                             }
                         },
                     }
