@@ -99,8 +99,8 @@ impl fmt::Display for AddTrends {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "AddTrends({}, {:?})",
-            &self.trend_store_part, &self.trends
+            "AddTrends({}, {})",
+            &self.trend_store_part, &self.trends.iter().map(|t| format!("{}", &t)).collect::<Vec<String>>().join(", ")
         )
     }
 }
@@ -164,7 +164,7 @@ impl fmt::Display for ModifyTrendDataTypes {
             f,
             "ModifyTrendDataTypes({}, {})",
             &self.trend_store_part,
-            &modifications.join(","),
+            &modifications.join(", "),
         )
     }
 }

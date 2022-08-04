@@ -13,6 +13,10 @@ parts:
         data_type: integer
       - name: freq_power
         data_type: numeric[]
+      - name: bytes_tx
+        data_type: bigint
+      - name: bytes_rx
+        data_type: bigint
     generated_trends:
       - name: power_Mwh
         data_type: integer

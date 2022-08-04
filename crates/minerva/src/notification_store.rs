@@ -42,7 +42,6 @@ impl fmt::Display for AddAttributes {
 pub struct NotificationStore {
     pub title: Option<String>,
     pub data_source: String,
-    pub entity_type: String,
     pub attributes: Vec<Attribute>,
 }
 
@@ -58,8 +57,8 @@ impl fmt::Display for NotificationStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "NotificationStore({}, {})",
-            &self.data_source, &self.entity_type
+            "NotificationStore({})",
+            &self.data_source,
         )
     }
 }
@@ -103,10 +102,9 @@ pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationSto
     let mut notification_stores: Vec<NotificationStore> = Vec::new();
 
     let query = concat!(
-        "SELECT notification_store.id, data_source.name, entity_type.name ",
+        "SELECT notification_store.id, data_source.name ",
         "FROM notification_directory.notification_store ",
         "JOIN directory.data_source ON data_source.id = notification_store.data_source_id ",
-        "JOIN directory.entity_type ON entity_type.id = notification_store.entity_type_id"
     );
 
     let result = conn
@@ -116,14 +114,12 @@ pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationSto
     for row in result {
         let attribute_store_id: i32 = row.get(0);
         let data_source: &str = row.get(1);
-        let entity_type: &str = row.get(2);
 
         let attributes = load_attributes(conn, attribute_store_id);
 
         notification_stores.push(NotificationStore {
             title: None,
             data_source: String::from(data_source),
-            entity_type: String::from(entity_type),
             attributes,
         });
     }
@@ -140,8 +136,7 @@ pub fn load_notification_store(
         "SELECT attribute_store.id ",
         "FROM attribute_directory.attribute_store ",
         "JOIN directory.data_source ON data_source.id = attribute_store.data_source_id ",
-        "JOIN directory.entity_type ON entity_type.id = attribute_store.entity_type_id ",
-        "WHERE data_source.name = $1 AND entity_type.name = $2"
+        "WHERE data_source.name = $1"
     );
 
     let result = conn
@@ -153,7 +148,6 @@ pub fn load_notification_store(
     Ok(NotificationStore {
         title: None,
         data_source: String::from(data_source),
-        entity_type: String::from(entity_type),
         attributes,
     })
 }
