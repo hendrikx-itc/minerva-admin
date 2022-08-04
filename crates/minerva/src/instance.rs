@@ -1,7 +1,7 @@
 use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::os::unix::fs::PermissionsExt;
 
 use glob::glob;
 
@@ -10,16 +10,16 @@ use postgres::Client;
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
 use super::error::Error;
+use super::notification_store::{
+    load_notification_stores, AddNotificationStore, NotificationStore,
+};
 use super::relation::{load_relation_from_file, AddRelation, Relation};
 use super::trend_materialization::{
-    load_materializations, AddTrendMaterialization,
-    TrendMaterialization, load_materializations_from
+    load_materializations, load_materializations_from, AddTrendMaterialization,
+    TrendMaterialization,
 };
 use super::trend_store::{
     load_trend_store_from_file, load_trend_stores, AddTrendStore, TrendStore,
-};
-use super::notification_store::{
-    NotificationStore, AddNotificationStore, load_notification_stores
 };
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 
@@ -259,8 +259,13 @@ fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec<Attri
     }
 }
 
-fn load_notification_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = NotificationStore> {
-    let glob_path = format!("{}/notification/*.yaml", minerva_instance_root.to_string_lossy());
+fn load_notification_stores_from(
+    minerva_instance_root: &Path,
+) -> impl Iterator<Item = NotificationStore> {
+    let glob_path = format!(
+        "{}/notification/*.yaml",
+        minerva_instance_root.to_string_lossy()
+    );
 
     glob(&glob_path)
         .expect("Failed to read glob pattern")
@@ -275,7 +280,10 @@ fn load_notification_stores_from(minerva_instance_root: &Path) -> impl Iterator<
         })
 }
 
-fn initialize_notification_stores(client: &mut Client, notification_stores: &Vec<NotificationStore>) {
+fn initialize_notification_stores(
+    client: &mut Client,
+    notification_stores: &Vec<NotificationStore>,
+) {
     for notification_store in notification_stores {
         let change = AddNotificationStore {
             notification_store: notification_store.clone(),
@@ -540,12 +548,22 @@ fn initialize_custom_pre_init<'a>(
                             let metadata_result = path.metadata();
 
                             match metadata_result {
-                                Err(e) => return format!("Error retrieving meta data for '{}': {}", &path.to_string_lossy(), e),
+                                Err(e) => {
+                                    return format!(
+                                        "Error retrieving meta data for '{}': {}",
+                                        &path.to_string_lossy(),
+                                        e
+                                    )
+                                }
                                 Ok(metadata) => {
                                     if (metadata.permissions().mode() & 0o111) != 0 {
                                         match execute_custom(&path) {
                                             Ok(msg) => {
-                                                return format!("Executed '{}': {}", &path.to_string_lossy(), msg)
+                                                return format!(
+                                                    "Executed '{}': {}",
+                                                    &path.to_string_lossy(),
+                                                    msg
+                                                )
                                             }
                                             Err(e) => {
                                                 return format!(
@@ -556,11 +574,14 @@ fn initialize_custom_pre_init<'a>(
                                             }
                                         }
                                     } else {
-                                        return format!("Skipping non-executable file '{}'", path.to_string_lossy())
+                                        return format!(
+                                            "Skipping non-executable file '{}'",
+                                            path.to_string_lossy()
+                                        );
                                     }
-                                },
+                                }
                             }
-                        },
+                        }
                     }
                 }
                 None => {

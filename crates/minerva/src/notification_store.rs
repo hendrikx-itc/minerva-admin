@@ -37,7 +37,6 @@ impl fmt::Display for AddAttributes {
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NotificationStore {
     pub title: Option<String>,
@@ -55,11 +54,7 @@ impl NotificationStore {
 
 impl fmt::Display for NotificationStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "NotificationStore({})",
-            &self.data_source,
-        )
+        write!(f, "NotificationStore({})", &self.data_source,)
     }
 }
 
@@ -81,12 +76,7 @@ impl Change for AddNotificationStore {
         );
 
         client
-            .query_one(
-                &query,
-                &[
-                    &self.notification_store.data_source,
-                ],
-            )
+            .query_one(&query, &[&self.notification_store.data_source])
             .map_err(|e| {
                 DatabaseError::from_msg(format!("Error creating notification store: {}", e))
             })?;
@@ -107,9 +97,9 @@ pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationSto
         "JOIN directory.data_source ON data_source.id = notification_store.data_source_id ",
     );
 
-    let result = conn
-        .query(query, &[])
-        .map_err(|e| DatabaseError::from_msg(format!("Error loading notification stores: {}", e)))?;
+    let result = conn.query(query, &[]).map_err(|e| {
+        DatabaseError::from_msg(format!("Error loading notification stores: {}", e))
+    })?;
 
     for row in result {
         let attribute_store_id: i32 = row.get(0);

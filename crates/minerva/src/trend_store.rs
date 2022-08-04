@@ -100,7 +100,13 @@ impl fmt::Display for AddTrends {
         write!(
             f,
             "AddTrends({}, {})",
-            &self.trend_store_part, &self.trends.iter().map(|t| format!("{}", &t)).collect::<Vec<String>>().join(", ")
+            &self.trend_store_part,
+            &self
+                .trends
+                .iter()
+                .map(|t| format!("{}", &t))
+                .collect::<Vec<String>>()
+                .join(", ")
         )
     }
 }
