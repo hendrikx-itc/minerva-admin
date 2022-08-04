@@ -37,6 +37,40 @@ impl fmt::Display for AddAttributes {
     }
 }
 
+impl Change for AddAttributes {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        let query = concat!(
+            "with a as (",
+            "insert into notification_directory.attribute(notification_store_id, name, data_type, description) ",
+            "select ns.id, $1, $2, $3 from notification_directory.notification_store ns join directory.data_source ds on ds.id = ns.data_source_id where ds.name = $4 returning attribute",
+            ") ",
+            "select notification_directory.create_attribute_column(a.attribute) from a;"
+        );
+
+        for attribute in &self.attributes {
+            client
+                .execute(
+                    query,
+                    &[
+                        &attribute.name,
+                        &attribute.data_type,
+                        &attribute.description,
+                        &self.notification_store.data_source,
+                    ],
+                )
+                .map_err(|e| {
+                    DatabaseError::from_msg(format!("Error adding attribute to notification store: {}", e))
+                })?;
+        }
+
+        Ok(format!(
+            "Added attributes to notification store '{}'",
+            &self.notification_store
+        ))
+    }
+}
+
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NotificationStore {
     pub title: Option<String>,
@@ -47,6 +81,30 @@ pub struct NotificationStore {
 impl NotificationStore {
     pub fn diff(&self, other: &NotificationStore) -> Vec<Box<dyn Change>> {
         let mut changes: Vec<Box<dyn Change>> = Vec::new();
+
+        let mut new_attributes: Vec<Attribute> = Vec::new();
+
+        for other_attribute in &other.attributes {
+            match self
+                .attributes
+                .iter()
+                .find(|my_part| my_part.name == other_attribute.name)
+            {
+                Some(_my_part) => {
+                    // Ok attribute exists
+                }
+                None => {
+                    new_attributes.push(other_attribute.clone());
+                }
+            }
+        }
+
+        if !new_attributes.is_empty() {
+            changes.push(Box::new(AddAttributes {
+                notification_store: self.clone(),
+                attributes: new_attributes,
+            }));
+        }
 
         changes
     }
