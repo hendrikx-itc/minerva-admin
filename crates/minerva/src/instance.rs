@@ -155,6 +155,22 @@ impl MinervaInstance {
             }
         }
 
+        // Check for changes in notification stores
+        for other_notification_store in &other.notification_stores {
+            match self.notification_stores.iter().find(|my_attribute_store| {
+                my_attribute_store.data_source == other_notification_store.data_source
+            }) {
+                Some(my_attribute_store) => {
+                    changes.append(&mut my_attribute_store.diff(other_notification_store));
+                }
+                None => {
+                    changes.push(Box::new(AddNotificationStore {
+                        notification_store: other_notification_store.clone(),
+                    }));
+                }
+            }
+        }
+
         // Check for changes in trend materializations
         for other_trend_materialization in &other.trend_materializations {
             match self

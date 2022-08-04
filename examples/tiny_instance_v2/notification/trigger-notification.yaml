@@ -9,4 +9,5 @@ attributes:
     data_type: integer
   - name: created
     data_type: timestamp with time zone
-
+  - name: data
+    data_type: json

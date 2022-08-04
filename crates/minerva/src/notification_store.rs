@@ -200,25 +200,21 @@ pub fn load_notification_store(
     })
 }
 
-fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute> {
-    let attribute_query = "SELECT name, data_type, description FROM attribute_directory.attribute WHERE attribute_store_id = $1";
-    let attribute_result = conn.query(attribute_query, &[&attribute_store_id]).unwrap();
+fn load_attributes(conn: &mut Client, notification_store_id: i32) -> Vec<Attribute> {
+    let attribute_query = "SELECT name, data_type, description FROM notification_directory.attribute WHERE notification_store_id = $1";
+    let rows = conn.query(attribute_query, &[&notification_store_id]).unwrap();
 
-    let mut attributes: Vec<Attribute> = Vec::new();
+    rows.iter().map(|row| {
+        let attribute_name: &str = row.get(0);
+        let attribute_data_type: &str = row.get(1);
+        let attribute_description: Option<String> = row.get(2);
 
-    for attribute_row in attribute_result {
-        let attribute_name: &str = attribute_row.get(0);
-        let attribute_data_type: &str = attribute_row.get(1);
-        let attribute_description: Option<String> = attribute_row.get(2);
-
-        attributes.push(Attribute {
+        Attribute {
             name: String::from(attribute_name),
             data_type: String::from(attribute_data_type),
             description: attribute_description.unwrap_or(String::from("")),
-        });
-    }
-
-    attributes
+        }
+    }).collect()
 }
 
 pub fn load_notification_store_from_file(path: &PathBuf) -> Result<NotificationStore, Error> {
