@@ -199,9 +199,10 @@ impl MinervaInstance {
         for change in changes {
             println!("* {}", change);
 
-            let message = change.apply(client)?;
-
-            println!("> {}", &message);
+            match change.apply(client) {
+                Ok(message) => println!("> {}", &message),
+                Err(err) => println!("! Error applying change: {}", &err),
+            }
         }
 
         // Materializations have no diff mechanism yet, so just update

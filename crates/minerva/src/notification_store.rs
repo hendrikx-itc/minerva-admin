@@ -59,7 +59,10 @@ impl Change for AddAttributes {
                     ],
                 )
                 .map_err(|e| {
-                    DatabaseError::from_msg(format!("Error adding attribute to notification store: {}", e))
+                    DatabaseError::from_msg(format!(
+                        "Error adding attribute to notification store: {}",
+                        e
+                    ))
                 })?;
         }
 
@@ -69,7 +72,6 @@ impl Change for AddAttributes {
         ))
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NotificationStore {
@@ -202,19 +204,23 @@ pub fn load_notification_store(
 
 fn load_attributes(conn: &mut Client, notification_store_id: i32) -> Vec<Attribute> {
     let attribute_query = "SELECT name, data_type, description FROM notification_directory.attribute WHERE notification_store_id = $1";
-    let rows = conn.query(attribute_query, &[&notification_store_id]).unwrap();
+    let rows = conn
+        .query(attribute_query, &[&notification_store_id])
+        .unwrap();
 
-    rows.iter().map(|row| {
-        let attribute_name: &str = row.get(0);
-        let attribute_data_type: &str = row.get(1);
-        let attribute_description: Option<String> = row.get(2);
+    rows.iter()
+        .map(|row| {
+            let attribute_name: &str = row.get(0);
+            let attribute_data_type: &str = row.get(1);
+            let attribute_description: Option<String> = row.get(2);
 
-        Attribute {
-            name: String::from(attribute_name),
-            data_type: String::from(attribute_data_type),
-            description: attribute_description.unwrap_or(String::from("")),
-        }
-    }).collect()
+            Attribute {
+                name: String::from(attribute_name),
+                data_type: String::from(attribute_data_type),
+                description: attribute_description.unwrap_or(String::from("")),
+            }
+        })
+        .collect()
 }
 
 pub fn load_notification_store_from_file(path: &PathBuf) -> Result<NotificationStore, Error> {

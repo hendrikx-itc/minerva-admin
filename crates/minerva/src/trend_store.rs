@@ -90,6 +90,55 @@ impl fmt::Display for Trend {
     }
 }
 
+pub struct RemoveTrends {
+    pub trend_store_part: TrendStorePart,
+    pub trends: Vec<String>,
+}
+
+impl fmt::Display for RemoveTrends {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RemoveTrends({}, {})",
+            &self.trend_store_part,
+            &self
+                .trends
+                .iter()
+                .map(|t| format!("'{}'", &t))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
+}
+
+impl Change for RemoveTrends {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        let query = concat!(
+            "SELECT trend_directory.remove_table_trend(table_trend) ",
+            "FROM trend_directory.table_trend ",
+            "JOIN trend_directory.trend_store_part ON trend_store_part.id = table_trend.trend_store_part_id ",
+            "WHERE trend_store_part.name = $1 AND table_trend.name = $2",
+        );
+
+        for trend_name in &self.trends {
+            client
+                .query_one(query, &[&self.trend_store_part.name, &trend_name])
+                .map_err(|e| {
+                    DatabaseError::from_msg(format!(
+                        "Error removing trend '{}' from trend store part: {}",
+                        &trend_name, e
+                    ))
+                })?;
+        }
+
+        Ok(format!(
+            "Removed {} trends from trend store part '{}'",
+            &self.trends.len(),
+            &self.trend_store_part.name
+        ))
+    }
+}
+
 pub struct AddTrends {
     pub trend_store_part: TrendStorePart,
     pub trends: Vec<Trend>,
@@ -208,8 +257,6 @@ impl Change for ModifyTrendDataTypes {
             "WHERE tsp.id = tt.trend_store_part_id AND tsp.name = $2 AND tt.name = $3"
         );
 
-        println!("{}", &query);
-
         for modification in &self.modifications {
             let result = transaction.execute(
                 query,
@@ -247,16 +294,20 @@ impl Change for ModifyTrendDataTypes {
             &self.trend_store_part.name, &alter_type_parts_str
         );
 
-        println!("{}", alter_query);
-
         let alter_query_slice: &str = &alter_query;
 
         if let Err(e) = transaction.execute(alter_query_slice, &[]) {
             transaction.rollback().unwrap();
 
-            return Err(
-                DatabaseError::from_msg(format!("Error changing data types: {}", e)).into(),
-            );
+            return Err(match e.code() {
+                Some(code) => DatabaseError::from_msg(format!(
+                    "Error changing data types: {} - {}",
+                    code.code(),
+                    e
+                ))
+                .into(),
+                None => DatabaseError::from_msg(format!("Error changing data types: {}", e)).into(),
+            });
         }
 
         if let Err(e) = transaction.commit() {
@@ -307,6 +358,7 @@ impl TrendStorePart {
         let mut changes: Vec<Box<dyn Change>> = Vec::new();
 
         let mut new_trends: Vec<Trend> = Vec::new();
+        let mut removed_trends: Vec<String> = Vec::new();
         let mut alter_trend_data_types: Vec<ModifyTrendDataType> = Vec::new();
 
         for other_trend in &other.trends {
@@ -336,6 +388,28 @@ impl TrendStorePart {
                 trend_store_part: self.clone(),
                 trends: new_trends,
             }));
+        }
+
+        for my_trend in &self.trends {
+            match other
+                .trends
+                .iter()
+                .find(|other_trend| other_trend.name == my_trend.name)
+            {
+                Some(_) => {
+                    // Ok, the trend still exists
+                }
+                None => {
+                    removed_trends.push(my_trend.name.clone());
+                }
+            }
+        }
+
+        if !removed_trends.is_empty() {
+            changes.push(Box::new(RemoveTrends {
+                trend_store_part: self.clone(),
+                trends: removed_trends,
+            }))
         }
 
         if !alter_trend_data_types.is_empty() {

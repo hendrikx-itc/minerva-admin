@@ -11,8 +11,6 @@ parts:
         data_type: integer
       - name: power_kwh
         data_type: integer
-      - name: freq_power
-        data_type: numeric[]
       - name: bytes_tx
         data_type: bigint
       - name: bytes_rx

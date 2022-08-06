@@ -146,7 +146,7 @@ impl TrendViewMaterialization {
             || self.reprocessing_period != other.reprocessing_period
         {
             changes.push(Box::new(UpdateTrendViewMaterializationAttributes {
-                trend_view_materialization: self.clone(),
+                trend_view_materialization: other.clone(),
             }));
         }
 
@@ -166,10 +166,31 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 impl Change for UpdateTrendViewMaterializationAttributes {
-    fn apply(&self, _client: &mut Client) -> Result<String, Error> {
-        Err(Error::Runtime(RuntimeError {
-            msg: "Not implemented".into(),
-        }))
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        let query = concat!(
+            "UPDATE trend_directory.materialization ",
+            "SET processing_delay = $1::text::interval, ",
+            "stability_delay = $2::text::interval, ",
+            "reprocessing_period = $3::text::interval, ",
+            "enabled = $4 ",
+            "WHERE materialization::text = $5",
+        );
+
+        let query_args: &[&(dyn ToSql + Sync)] = &[
+            &format_duration(self.trend_view_materialization.processing_delay).to_string(),
+            &format_duration(self.trend_view_materialization.stability_delay).to_string(),
+            &format_duration(self.trend_view_materialization.reprocessing_period).to_string(),
+            &self.trend_view_materialization.enabled,
+            &self.trend_view_materialization.target_trend_store_part,
+        ];
+
+        match client.execute(query, query_args) {
+            Ok(_) => Ok("Updated attributes of view materialization".into()),
+            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+                "Error updating view materialization attributes: {}",
+                e
+            )))),
+        }
     }
 }
 
@@ -455,7 +476,7 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
             let sources = load_sources(conn, materialization_id)?;
 
             let view_materialization = TrendViewMaterialization {
-                target_trend_store_part,
+                target_trend_store_part: target_trend_store_part.clone(),
                 enabled,
                 fingerprint_function: String::from(""),
                 processing_delay: parse_interval(&processing_delay).unwrap(),
@@ -471,7 +492,28 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
         }
 
         if let Some(function) = src_function {
-            println!("{}", function);
+            let function_def =
+                get_function_def(conn, &function).unwrap_or("failed getting sources".into());
+            let sources = load_sources(conn, materialization_id)?;
+
+            let function_materialization = TrendFunctionMaterialization {
+                target_trend_store_part: target_trend_store_part.clone(),
+                enabled,
+                fingerprint_function: String::from(""),
+                processing_delay: parse_interval(&processing_delay).unwrap(),
+                reprocessing_period: parse_interval(&reprocessing_period).unwrap(),
+                sources,
+                stability_delay: parse_interval(&stability_delay).unwrap(),
+                function: TrendMaterializationFunction {
+                    return_type: "".into(),
+                    src: function_def,
+                    language: "plpgsql".into(),
+                },
+            };
+
+            let trend_materialization = TrendMaterialization::Function(function_materialization);
+
+            trend_materializations.push(trend_materialization);
         }
     }
 
@@ -513,6 +555,15 @@ pub fn get_view_def(client: &mut Client, view: &str) -> Option<String> {
     let query = format!(concat!("SELECT pg_get_viewdef('{}'::regclass::oid);"), view);
 
     match client.query_one(query.as_str(), &[]) {
+        Ok(row) => row.get(0),
+        Err(_) => None,
+    }
+}
+
+pub fn get_function_def(client: &mut Client, function: &str) -> Option<String> {
+    let query = format!("SELECT prosrc FROM pg_proc WHERE proname = $1");
+
+    match client.query_one(query.as_str(), &[&function]) {
         Ok(row) => row.get(0),
         Err(_) => None,
     }

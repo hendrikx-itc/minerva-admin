@@ -206,13 +206,13 @@ impl Cmd for TrendStorePartAnalyze {
     fn run(&self) -> CmdResult {
         let mut client = connect_db()?;
 
-        //create_partitions(&mut client, args.ahead_interval)?;
         let result = analyze_trend_store_part(&mut client, &self.name)?;
 
         println!("Analyzed '{}'", self.name);
 
         let mut table = Table::new();
         table.style = TableStyle::thin();
+        table.separate_rows = false;
 
         table.add_row(Row::new(vec![
             TableCell::new("Name"),
@@ -646,9 +646,10 @@ fn update(
                     })
                 })?
         {
-            let message = change.apply(client)?;
-
-            println!("> {}", &message);
+            match change.apply(client) {
+                Ok(message) => println!("> {}", &message),
+                Err(err) => println!("! Error applying change: {}", &err),
+            }
         }
     }
 
