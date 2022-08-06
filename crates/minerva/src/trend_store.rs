@@ -807,8 +807,6 @@ pub fn create_partitions(
         let trend_store_id: i32 = row.get(0);
 
         create_partitions_for_trend_store(client, trend_store_id, ahead_interval)?;
-
-        println!("Trend store {}", &trend_store_id);
     }
 
     Ok(())
@@ -863,7 +861,7 @@ fn create_partition_for_trend_store_part(
     partition_index: i32,
 ) -> Result<String, Error> {
     let query = concat!(
-        "SELECT p.name, trend_directory.create_partition(p, $2::integer) ",
+        "SELECT p.name, (trend_directory.create_partition(p, $2::integer)).name ",
         "FROM trend_directory.trend_store_part p ",
         "WHERE p.id = $1",
     );
@@ -872,7 +870,7 @@ fn create_partition_for_trend_store_part(
         .query_one(query, &[&trend_store_part_id, &partition_index])
         .map_err(|e| DatabaseError::from_msg(format!("Error creating partition: {}", e)))?;
 
-    let partition_name = result.get(0);
+    let partition_name = result.get(1);
 
     Ok(partition_name)
 }
