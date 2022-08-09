@@ -83,7 +83,10 @@ impl MinervaInstance {
 
     pub fn initialize(&self, client: &mut Client) {
         if let Some(instance_root) = &self.instance_root {
-            match initialize_custom_pre_init(client, &instance_root) {
+            match initialize_custom(
+                client,
+                &format!("{}/custom/pre-init/*", instance_root.to_string_lossy()),
+            ) {
                 Ok(steps) => {
                     for step in steps {
                         println!("{}", step);
@@ -106,7 +109,10 @@ impl MinervaInstance {
         initialize_trend_materializations(client, &self.trend_materializations);
 
         if let Some(instance_root) = &self.instance_root {
-            match initialize_custom_post_init(client, &instance_root) {
+            match initialize_custom(
+                client,
+                &format!("{}/custom/post-init/*", instance_root.to_string_lossy()),
+            ) {
                 Ok(steps) => {
                     for step in steps {
                         println!("{}", step);
@@ -515,15 +521,11 @@ fn execute_custom<'a>(path: &PathBuf) -> Result<String, String> {
     }
 }
 
-fn initialize_custom_pre_init<'a>(
+fn initialize_custom<'a>(
     client: &'a mut Client,
-    instance_root: &'a PathBuf,
+    glob_pattern: &'a str,
 ) -> Result<Box<impl Iterator<Item = String> + 'a>, Error> {
-    let paths = glob(&format!(
-        "{}/custom/pre-init/*",
-        instance_root.to_string_lossy()
-    ))
-    .expect("Failed to read glob pattern");
+    let paths = glob(glob_pattern).expect("Failed to read glob pattern");
 
     let iter = Box::new(paths.map(|entry| match entry {
         Ok(path) => {
@@ -607,47 +609,6 @@ fn initialize_custom_pre_init<'a>(
                     )
                 }
             }
-        }
-        Err(_) => format!("No path"),
-    }));
-
-    Ok(iter)
-}
-
-fn initialize_custom_post_init<'a>(
-    client: &'a mut Client,
-    instance_root: &'a PathBuf,
-) -> Result<Box<impl Iterator<Item = String> + 'a>, Error> {
-    let sql_paths = glob(&format!(
-        "{}/custom/post-init/*.sql",
-        instance_root.to_string_lossy()
-    ))
-    .expect("Failed to read glob pattern");
-
-    let iter = Box::new(sql_paths.map(|entry| match entry {
-        Ok(path) => {
-            let mut f = match std::fs::File::open(&path) {
-                Ok(file) => file,
-                Err(e) => {
-                    return format!(
-                        "Could not open sql file '{}': {}",
-                        &path.to_string_lossy(),
-                        e
-                    )
-                }
-            };
-
-            let mut sql = String::new();
-
-            if let Err(e) = f.read_to_string(&mut sql) {
-                return format!("Could not read virtual entity definition file: {}", e);
-            }
-
-            if let Err(e) = client.batch_execute(&sql) {
-                return format!("Error creating relation materialized view: {}", e);
-            }
-
-            format!("Executed sql {}", &path.to_string_lossy())
         }
         Err(_) => format!("No path"),
     }));
