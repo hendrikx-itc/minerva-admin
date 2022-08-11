@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use chrono::FixedOffset;
+use chrono::DateTime;
 use dialoguer::Confirm;
 use postgres::{Client, NoTls};
 use structopt::StructOpt;
@@ -15,7 +17,7 @@ use minerva::change::Change;
 use minerva::error::{ConfigurationError, Error, RuntimeError};
 use minerva::instance::{dump, MinervaInstance};
 use minerva::trend_store::{
-    analyze_trend_store_part, create_partitions, delete_trend_store, list_trend_stores,
+    analyze_trend_store_part, create_partitions, create_partitions_for_timestamp, delete_trend_store, list_trend_stores,
     load_trend_store, load_trend_store_from_file, AddTrendStore,
 };
 
@@ -182,6 +184,12 @@ struct TrendStorePartitionCreate {
         parse(try_from_str = humantime::parse_duration)
     )]
     ahead_interval: Option<Duration>,
+    #[structopt(
+        help="timestamp for which to create partitions",
+        long="--for-timestamp",
+        parse(try_from_str = DateTime::parse_from_rfc3339)
+    )]
+    for_timestamp: Option<DateTime<FixedOffset>>,
 }
 
 #[derive(Debug, StructOpt)]
@@ -617,7 +625,11 @@ fn run_dump_cmd() -> CmdResult {
 fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) -> CmdResult {
     let mut client = connect_db()?;
 
-    create_partitions(&mut client, args.ahead_interval)?;
+    if let Some(for_timestamp) = args.for_timestamp {
+        create_partitions_for_timestamp(&mut client, for_timestamp)?;
+    } else {
+        create_partitions(&mut client, args.ahead_interval)?;
+    }
 
     println!("Created partitions");
     Ok(())

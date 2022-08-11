@@ -9,6 +9,8 @@ use std::time::Duration;
 
 use humantime::format_duration;
 
+use chrono::{DateTime, FixedOffset};
+
 use super::change::Change;
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
@@ -812,6 +814,25 @@ pub fn create_partitions(
     Ok(())
 }
 
+pub fn create_partitions_for_timestamp(
+    client: &mut Client,
+    timestamp: DateTime<FixedOffset>,
+) -> Result<(), Error> {
+    let query = concat!("SELECT id FROM trend_directory.trend_store");
+
+    let result = client
+        .query(query, &[])
+        .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
+
+    for row in result {
+        let trend_store_id: i32 = row.get(0);
+
+        create_partitions_for_trend_store_and_timestamp(client, trend_store_id, timestamp)?;
+    }
+
+    Ok(())
+}
+
 pub fn create_partitions_for_trend_store(
     client: &mut Client,
     trend_store_id: i32,
@@ -836,6 +857,46 @@ pub fn create_partitions_for_trend_store(
 
     let result = client
         .query(query, &[&trend_store_id, &ahead_interval_str])
+        .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
+
+    for row in result {
+        let trend_store_part_id: i32 = row.get(0);
+        let part_name: String = row.get(1);
+        let partition_index: i32 = row.get(2);
+
+        let partition_name =
+            create_partition_for_trend_store_part(client, trend_store_part_id, partition_index)?;
+
+        println!(
+            "Created partition for '{}': '{}'",
+            &part_name, &partition_name
+        );
+    }
+
+    Ok(())
+}
+
+pub fn create_partitions_for_trend_store_and_timestamp(
+    client: &mut Client,
+    trend_store_id: i32,
+    timestamp: DateTime<FixedOffset>,
+) -> Result<(), Error> {
+    println!("Creating partitions for trend store {}", &trend_store_id);
+
+    let query = concat!(
+        "WITH partition_indexes AS (",
+        "SELECT trend_directory.timestamp_to_index(partition_size, $2) AS i, p.id AS part_id, p.name AS part_name ",
+        "FROM trend_directory.trend_store ",
+        "JOIN trend_directory.trend_store_part p ON p.trend_store_id = trend_store.id ",
+        "WHERE trend_store.id = $1",
+        ") ",
+        "SELECT partition_indexes.part_id, partition_indexes.part_name, partition_indexes.i FROM partition_indexes ",
+        "LEFT JOIN trend_directory.partition ON partition.index = i AND partition.trend_store_part_id = partition_indexes.part_id ",
+        "WHERE partition.id IS NULL",
+    );
+
+    let result = client
+        .query(query, &[&trend_store_id, &timestamp])
         .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {}", e)))?;
 
     for row in result {
