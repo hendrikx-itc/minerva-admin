@@ -4,9 +4,10 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use chrono::FixedOffset;
 use chrono::DateTime;
+use chrono::FixedOffset;
 use dialoguer::Confirm;
+
 use postgres::{Client, NoTls};
 use structopt::StructOpt;
 
@@ -16,9 +17,14 @@ use minerva::attribute_store::{
 use minerva::change::Change;
 use minerva::error::{ConfigurationError, Error, RuntimeError};
 use minerva::instance::{dump, MinervaInstance};
+use minerva::trend_materialization;
+use minerva::trend_materialization::{
+    trend_materialization_from_config, AddTrendMaterialization, UpdateTrendMaterialization,
+};
 use minerva::trend_store::{
-    analyze_trend_store_part, create_partitions, create_partitions_for_timestamp, delete_trend_store, list_trend_stores,
-    load_trend_store, load_trend_store_from_file, AddTrendStore,
+    analyze_trend_store_part, create_partitions, create_partitions_for_timestamp,
+    delete_trend_store, list_trend_stores, load_trend_store, load_trend_store_from_file,
+    AddTrendStore,
 };
 
 use term_table::{
@@ -427,6 +433,79 @@ impl Cmd for UpdateOpt {
 }
 
 #[derive(Debug, StructOpt)]
+struct TrendMaterializationCreate {
+    #[structopt(help = "trend materialization definition file")]
+    definition: PathBuf,
+}
+
+impl Cmd for TrendMaterializationCreate {
+    fn run(&self) -> CmdResult {
+        let trend_materialization =
+            trend_materialization::trend_materialization_from_config(&self.definition)?;
+
+        println!("Loaded definition, creating trend materialization");
+        let mut client = connect_db()?;
+
+        let change = AddTrendMaterialization {
+            trend_materialization,
+        };
+
+        let result = change.apply(&mut client);
+
+        match result {
+            Ok(_) => {
+                println!("Created trend materialization");
+
+                Ok(())
+            }
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!("Error creating trend materialization: {}", e),
+            })),
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
+struct TrendMaterializationUpdate {
+    #[structopt(help = "trend materialization definition file")]
+    definition: PathBuf,
+}
+
+impl Cmd for TrendMaterializationUpdate {
+    fn run(&self) -> CmdResult {
+        let trend_materialization = trend_materialization_from_config(&self.definition)?;
+
+        println!("Loaded definition, updating trend materialization");
+        let mut client = connect_db()?;
+
+        let change = UpdateTrendMaterialization {
+            trend_materialization,
+        };
+
+        let result = change.apply(&mut client);
+
+        match result {
+            Ok(_) => {
+                println!("Updated trend materialization");
+
+                Ok(())
+            }
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!("Error updating trend materialization: {}", e),
+            })),
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
+enum TrendMaterializationOpt {
+    #[structopt(about = "create an attribute store")]
+    Create(TrendMaterializationCreate),
+    #[structopt(about = "update an attribute store")]
+    Update(TrendMaterializationUpdate),
+}
+
+#[derive(Debug, StructOpt)]
 enum Opt {
     #[structopt(about = "Complete dump of a Minerva instance")]
     Dump,
@@ -440,6 +519,8 @@ enum Opt {
     TrendStore(TrendStoreOpt),
     #[structopt(about = "Manage attribute stores")]
     AttributeStore(AttributeStoreOpt),
+    #[structopt(about = "Manage trend materializations")]
+    TrendMaterialization(TrendMaterializationOpt),
 }
 
 fn main() {
@@ -469,6 +550,14 @@ fn main() {
         Opt::AttributeStore(attribute_store) => match attribute_store {
             AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(&args),
             AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(&args),
+        },
+        Opt::TrendMaterialization(trend_materialization) => match trend_materialization {
+            TrendMaterializationOpt::Create(trend_materialization_create) => {
+                trend_materialization_create.run()
+            }
+            TrendMaterializationOpt::Update(trend_materialization_update) => {
+                trend_materialization_update.run()
+            }
         },
     };
 

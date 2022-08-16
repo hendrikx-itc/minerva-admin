@@ -107,10 +107,10 @@ impl TrendViewMaterialization {
 
     fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(concat!(
-            "CREATE FUNCTION trend.\"{}\"(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
+            "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
             "{}\n",
             "$$ LANGUAGE sql STABLE\n"
-        ), self.fingerprint_function_name(), self.fingerprint_function);
+        ), escape_identifier(&self.fingerprint_function_name()), self.fingerprint_function);
 
         match client.query(query.as_str(), &[]) {
             Ok(_) => Ok(()),
@@ -120,8 +120,8 @@ impl TrendViewMaterialization {
 
     fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "DROP FUNCTION IF EXISTS trend.\"{}\"(timestamp with time zone)",
-            self.fingerprint_function_name()
+            "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
+            escape_identifier(&self.fingerprint_function_name())
         );
 
         match client.query(query.as_str(), &[]) {
@@ -155,6 +155,9 @@ impl TrendViewMaterialization {
 
     fn update(&self, client: &mut Client) -> Result<(), String> {
         self.drop_fingerprint_function(client).unwrap();
+        self.drop_view(client).unwrap();
+
+        self.create_view(client).unwrap();
         self.create_fingerprint_function(client).unwrap();
 
         Ok(())
@@ -279,6 +282,18 @@ impl TrendFunctionMaterialization {
         }
     }
 
+    fn drop_function(&self, client: &mut Client) -> Result<(), String> {
+        let query = format!(
+            "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
+            &escape_identifier(&self.target_trend_store_part),
+        );
+
+        match client.execute(query.as_str(), &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Error dropping function: {}", e)),
+        }
+    }
+
     fn create_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS {} AS $function$\n{}\n$function$ LANGUAGE {}",
@@ -314,10 +329,10 @@ impl TrendFunctionMaterialization {
 
     fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(concat!(
-            "CREATE FUNCTION trend.\"{}\"(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
+            "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
             "{}\n",
             "$$ LANGUAGE sql STABLE\n"
-        ), self.fingerprint_function_name(), self.fingerprint_function);
+        ), escape_identifier(&self.fingerprint_function_name()), self.fingerprint_function);
 
         match client.query(query.as_str(), &[]) {
             Ok(_) => Ok(()),
@@ -327,8 +342,8 @@ impl TrendFunctionMaterialization {
 
     fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), String> {
         let query = format!(
-            "DROP FUNCTION IF EXISTS trend.\"{}\"(timestamp with time zone)",
-            self.fingerprint_function_name()
+            "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
+            escape_identifier(&self.fingerprint_function_name())
         );
 
         match client.query(query.as_str(), &[]) {
@@ -345,6 +360,9 @@ impl TrendFunctionMaterialization {
 
     fn update(&self, client: &mut Client) -> Result<(), String> {
         self.drop_fingerprint_function(client).unwrap();
+        self.drop_function(client).unwrap();
+
+        self.create_function(client).unwrap();
         self.create_fingerprint_function(client).unwrap();
 
         Ok(())
@@ -413,14 +431,22 @@ impl TrendMaterialization {
 
 pub fn trend_materialization_from_config(
     path: &std::path::PathBuf,
-) -> Result<TrendMaterialization, String> {
-    let f = std::fs::File::open(&path).unwrap();
+) -> Result<TrendMaterialization, Error> {
+    let f = std::fs::File::open(&path).map_err(|e| {
+        Error::Runtime(RuntimeError::from_msg(format!(
+            "could not open definition file: {}",
+            e
+        )))
+    })?;
     let deserialize_result: Result<TrendMaterialization, serde_yaml::Error> =
         serde_yaml::from_reader(f);
 
     match deserialize_result {
         Ok(materialization) => Ok(materialization),
-        Err(e) => Err(format!("Error deserializing yaml: {}", e)),
+        Err(e) => Err(Error::Runtime(RuntimeError::from_msg(format!(
+            "could not deserialize materialization: {}",
+            e
+        )))),
     }
 }
 
@@ -587,12 +613,12 @@ impl Change for AddTrendMaterialization {
     fn apply(&self, client: &mut Client) -> Result<String, Error> {
         match self.trend_materialization.create(client) {
             Ok(_) => Ok(format!(
-                "Added trend materialization {}",
+                "Added trend materialization '{}'",
                 &self.trend_materialization
             )),
             Err(e) => Err(Error::Runtime(RuntimeError {
                 msg: format!(
-                    "Error adding trend materialization {}: {}",
+                    "Error adding trend materialization '{}': {}",
                     &self.trend_materialization, e
                 ),
             })),
@@ -604,6 +630,37 @@ impl From<TrendMaterialization> for AddTrendMaterialization {
     fn from(trend_materialization: TrendMaterialization) -> Self {
         AddTrendMaterialization {
             trend_materialization,
+        }
+    }
+}
+
+pub struct UpdateTrendMaterialization {
+    pub trend_materialization: TrendMaterialization,
+}
+
+impl fmt::Display for UpdateTrendMaterialization {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "UpdateTrendMaterialization({})",
+            &self.trend_materialization
+        )
+    }
+}
+
+impl Change for UpdateTrendMaterialization {
+    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+        match self.trend_materialization.update(client) {
+            Ok(_) => Ok(format!(
+                "Updated trend materialization '{}'",
+                &self.trend_materialization
+            )),
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!(
+                    "Error updating trend materialization '{}': {}",
+                    &self.trend_materialization, e
+                ),
+            })),
         }
     }
 }
