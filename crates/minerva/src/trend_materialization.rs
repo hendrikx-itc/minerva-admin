@@ -4,13 +4,15 @@ use serde_yaml;
 use std::fmt;
 use std::path::Path;
 use std::time::Duration;
+use std::future::Future;
+use std::pin::Pin;
 
-use postgres::{types::ToSql, Client};
+use tokio_postgres::{types::ToSql, Client};
 use postgres_protocol::escape::escape_identifier;
 
 use humantime::format_duration;
 
-use super::change::Change;
+use super::change::{Change, ChangeResult};
 use super::error::{DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
 
@@ -36,7 +38,7 @@ pub struct TrendViewMaterialization {
 }
 
 impl TrendViewMaterialization {
-    fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
+    async fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
         let query = concat!(
             "SELECT trend_directory.define_view_materialization(",
             "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass",
@@ -52,7 +54,7 @@ impl TrendViewMaterialization {
             &self.target_trend_store_part,
         ];
 
-        match client.query(query, query_args) {
+        match client.query(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error defining view materialization: {}", e)))),
         }
@@ -62,34 +64,34 @@ impl TrendViewMaterialization {
         format!("_{}", &self.target_trend_store_part)
     }
 
-    pub fn drop_view(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn drop_view(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             "DROP VIEW IF EXISTS trend.{}",
             &escape_identifier(&self.view_name()),
         );
 
-        match client.execute(query.as_str(), &[]) {
+        match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error dropping view: {}", e)))),
         }
     }
 
-    pub fn create_view(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn create_view(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             "CREATE VIEW trend.{} AS {}",
             &escape_identifier(&self.view_name()),
             self.view,
         );
 
-        match client.execute(query.as_str(), &[]) {
+        match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error creating view: {}", e)))),
         }
     }
 
-    fn create(&self, client: &mut Client) -> Result<(), Error> {
-        self.create_view(client)?;
-        self.define_materialization(client)?;
+    async fn create(&self, client: &mut Client) -> Result<(), Error> {
+        self.create_view(client).await?;
+        self.define_materialization(client).await?;
 
         Ok(())
     }
@@ -98,33 +100,33 @@ impl TrendViewMaterialization {
         format!("{}_fingerprint", self.target_trend_store_part)
     }
 
-    fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(concat!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
             "{}\n",
             "$$ LANGUAGE sql STABLE\n"
         ), escape_identifier(&self.fingerprint_function_name()), self.fingerprint_function);
 
-        match client.query(query.as_str(), &[]) {
+        match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error creating fingerprint function: {}", e)))),
         }
     }
 
-    fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
             escape_identifier(&self.fingerprint_function_name())
         );
 
-        match client.query(query.as_str(), &[]) {
+        match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error dropping fingerprint function: {}", e)))),
         }
     }
 
-    pub fn diff(&self, other: &TrendViewMaterialization) -> Vec<Box<dyn Change>> {
-        let mut changes: Vec<Box<dyn Change>> = Vec::new();
+    pub fn diff(&self, other: &TrendViewMaterialization) -> Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> {
+        let mut changes: Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> = Vec::new();
 
         // Comparing a view from the database with a view definition is not
         // really usefull because PostgreSQL rewrites the SQL.
@@ -146,19 +148,19 @@ impl TrendViewMaterialization {
         changes
     }
 
-    fn update(&self, client: &mut Client) -> Result<(), Error> {
-        self.drop_fingerprint_function(client)?;
-        self.drop_view(client)?;
+    async fn update(&self, client: &mut Client) -> Result<(), Error> {
+        self.drop_fingerprint_function(client).await?;
+        self.drop_view(client).await?;
 
-        self.create_view(client)?;
-        self.create_fingerprint_function(client)?;
+        self.create_view(client).await?;
+        self.create_fingerprint_function(client).await?;
 
-        self.update_attributes(client)?;
+        self.update_attributes(client).await;
 
         Ok(())
     }
 
-    fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
+    async fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
         let query = concat!(
             "UPDATE trend_directory.materialization ",
             "SET processing_delay = $1::text::interval, ",
@@ -176,7 +178,7 @@ impl TrendViewMaterialization {
             &self.target_trend_store_part,
         ];
 
-        match client.execute(query, query_args) {
+        match client.execute(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error updating view materialization attributes: {}",
@@ -191,11 +193,17 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 impl Change for UpdateTrendViewMaterializationAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        self.trend_view_materialization.update_attributes(client)?;
+    type ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>;
 
-        Ok("Updated attributes of view materialization".into())
+    fn apply(&self, client: &mut Client) -> Self::ChangeResultType {
+        Box::pin(apply_update_trend_view_materialization_attributes(self, client))
     }
+}
+
+async fn apply_update_trend_view_materialization_attributes(update_trend_view_materialization_attributes: &UpdateTrendViewMaterializationAttributes, client: &mut Client) -> Result<String, Error> {
+    update_trend_view_materialization_attributes.trend_view_materialization.update_attributes(client).await?;
+
+    Ok("Updated attributes of view materialization".into())
 }
 
 impl fmt::Display for UpdateTrendViewMaterializationAttributes {
@@ -213,15 +221,21 @@ pub struct UpdateView {
 }
 
 impl Change for UpdateView {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        self.trend_view_materialization.drop_view(client).unwrap();
-        self.trend_view_materialization.create_view(client).unwrap();
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
 
-        Ok(format!(
-            "Updated view {}",
-            self.trend_view_materialization.view_name()
-        ))
+    fn apply(&self, client: &mut Client) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
+        Box::pin(apply_update_view(self, client))
     }
+}
+
+async fn apply_update_view(update_view: &UpdateView, client: &mut Client) -> Result<String, Error> {
+    update_view.trend_view_materialization.drop_view(client).await.unwrap();
+    update_view.trend_view_materialization.create_view(client).await.unwrap();
+
+    Ok(format!(
+        "Updated view {}",
+        update_view.trend_view_materialization.view_name()
+    ))
 }
 
 impl fmt::Display for UpdateView {
@@ -258,7 +272,7 @@ pub struct TrendFunctionMaterialization {
 }
 
 impl TrendFunctionMaterialization {
-    fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
+    async fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
         let query = concat!(
             "SELECT trend_directory.define_function_materialization(",
             "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure",
@@ -277,25 +291,25 @@ impl TrendFunctionMaterialization {
             &self.target_trend_store_part,
         ];
 
-        match client.query(query, query_args) {
+        match client.query(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error defining function materialization: {}", e)))),
         }
     }
 
-    fn drop_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_function(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
             &escape_identifier(&self.target_trend_store_part),
         );
 
-        match client.execute(query.as_str(), &[]) {
+        match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error dropping function: {}", e)))),
         }
     }
 
-    fn create_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create_function(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS {} AS $function$\n{}\n$function$ LANGUAGE {}",
             &escape_identifier(&self.target_trend_store_part),
@@ -304,15 +318,15 @@ impl TrendFunctionMaterialization {
             &self.function.language,
         );
 
-        match client.execute(query.as_str(), &[]) {
+        match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error creating function: {}", e)))),
         }
     }
 
-    fn create(&self, client: &mut Client) -> Result<(), Error> {
-        self.create_function(client)?;
-        self.define_materialization(client)?;
+    async fn create(&self, client: &mut Client) -> Result<(), Error> {
+        self.create_function(client).await?;
+        self.define_materialization(client).await?;
 
         Ok(())
     }
@@ -321,43 +335,43 @@ impl TrendFunctionMaterialization {
         format!("{}_fingerprint", self.target_trend_store_part)
     }
 
-    fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(concat!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
             "{}\n",
             "$$ LANGUAGE sql STABLE\n"
         ), escape_identifier(&self.fingerprint_function_name()), self.fingerprint_function);
 
-        match client.query(query.as_str(), &[]) {
+        match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error creating fingerprint function: {}", e)))),
         }
     }
 
-    fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
             escape_identifier(&self.fingerprint_function_name())
         );
 
-        match client.query(query.as_str(), &[]) {
+        match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!("Error dropping fingerprint function: {}", e)))),
         }
     }
 
-    pub fn diff(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change>> {
-        let changes: Vec<Box<dyn Change>> = Vec::new();
+    pub fn diff(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> {
+        let changes: Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> = Vec::new();
 
         changes
     }
 
-    fn update(&self, client: &mut Client) -> Result<(), Error> {
-        self.drop_fingerprint_function(client)?;
-        self.drop_function(client)?;
+    async fn update(&self, client: &mut Client) -> Result<(), Error> {
+        self.drop_fingerprint_function(client).await?;
+        self.drop_function(client).await?;
 
-        self.create_function(client)?;
-        self.create_fingerprint_function(client)?;
+        self.create_function(client).await?;
+        self.create_fingerprint_function(client).await?;
 
         Ok(())
     }
@@ -395,21 +409,21 @@ impl TrendMaterialization {
         }
     }
 
-    pub fn update(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn update(&self, client: &mut Client) -> Result<(), Error> {
         match self {
-            TrendMaterialization::View(m) => m.update(client),
-            TrendMaterialization::Function(m) => m.update(client),
+            TrendMaterialization::View(m) => m.update(client).await,
+            TrendMaterialization::Function(m) => m.update(client).await,
         }
     }
 
-    pub fn create(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn create(&self, client: &mut Client) -> Result<(), Error> {
         match self {
-            TrendMaterialization::View(m) => m.create(client),
-            TrendMaterialization::Function(m) => m.create(client),
+            TrendMaterialization::View(m) => m.create(client).await,
+            TrendMaterialization::Function(m) => m.create(client).await,
         }
     }
 
-    pub fn diff(&self, other: &TrendMaterialization) -> Vec<Box<dyn Change>> {
+    pub fn diff(&self, other: &TrendMaterialization) -> Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> {
         match self {
             TrendMaterialization::View(m) => match other {
                 TrendMaterialization::View(other_m) => m.diff(other_m),
@@ -466,7 +480,7 @@ pub fn load_materializations_from(
         })
 }
 
-pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterialization>, Error> {
+pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterialization>, Error> {
     let mut trend_materializations: Vec<TrendMaterialization> = Vec::new();
 
     let query = concat!(
@@ -477,7 +491,7 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
         "LEFT JOIN trend_directory.function_materialization AS fm ON fm.materialization_id = m.id ",
     );
 
-    let result = conn.query(query, &[]).map_err(|e| {
+    let result = conn.query(query, &[]).await.map_err(|e| {
         DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
     })?;
 
@@ -492,8 +506,8 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
         let src_function: Option<String> = row.get(7);
 
         if let Some(view) = src_view {
-            let view_def = get_view_def(conn, &view).unwrap();
-            let sources = load_sources(conn, materialization_id)?;
+            let view_def = get_view_def(conn, &view).await.unwrap();
+            let sources = load_sources(conn, materialization_id).await?;
 
             let view_materialization = TrendViewMaterialization {
                 target_trend_store_part: target_trend_store_part.clone(),
@@ -513,8 +527,8 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
 
         if let Some(function) = src_function {
             let function_def =
-                get_function_def(conn, &function).unwrap_or("failed getting sources".into());
-            let sources = load_sources(conn, materialization_id)?;
+                get_function_def(conn, &function).await.unwrap_or("failed getting sources".into());
+            let sources = load_sources(conn, materialization_id).await?;
 
             let function_materialization = TrendFunctionMaterialization {
                 target_trend_store_part: target_trend_store_part.clone(),
@@ -540,7 +554,7 @@ pub fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterializati
     Ok(trend_materializations)
 }
 
-fn load_sources(
+async fn load_sources(
     conn: &mut Client,
     materialization_id: i32,
 ) -> Result<Vec<TrendMaterializationSource>, Error> {
@@ -553,7 +567,7 @@ fn load_sources(
         "WHERE mtsl.materialization_id = $1"
     );
 
-    let result = conn.query(query, &[&materialization_id]).map_err(|e| {
+    let result = conn.query(query, &[&materialization_id]).await.map_err(|e| {
         DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
     })?;
 
@@ -571,19 +585,19 @@ fn load_sources(
 }
 
 // Load the body of a function by specifying it's full name
-pub fn get_view_def(client: &mut Client, view: &str) -> Option<String> {
+pub async fn get_view_def(client: &mut Client, view: &str) -> Option<String> {
     let query = format!(concat!("SELECT pg_get_viewdef('{}'::regclass::oid);"), view);
 
-    match client.query_one(query.as_str(), &[]) {
+    match client.query_one(query.as_str(), &[]).await {
         Ok(row) => row.get(0),
         Err(_) => None,
     }
 }
 
-pub fn get_function_def(client: &mut Client, function: &str) -> Option<String> {
+pub async fn get_function_def(client: &mut Client, function: &str) -> Option<String> {
     let query = format!("SELECT prosrc FROM pg_proc WHERE proname = $1");
 
-    match client.query_one(query.as_str(), &[&function]) {
+    match client.query_one(query.as_str(), &[&function]).await {
         Ok(row) => row.get(0),
         Err(_) => None,
     }
@@ -604,19 +618,25 @@ impl fmt::Display for AddTrendMaterialization {
 }
 
 impl Change for AddTrendMaterialization {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        match self.trend_materialization.create(client) {
-            Ok(_) => Ok(format!(
-                "Added trend materialization '{}'",
-                &self.trend_materialization
-            )),
-            Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!(
-                    "Error adding trend materialization '{}': {}",
-                    &self.trend_materialization, e
-                ),
-            })),
-        }
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
+
+    fn apply(&self, client: &mut Client) -> Self::ChangeResultType {
+        Box::pin(apply_add_trend_materialization(self, client))
+    }
+}
+
+async fn apply_add_trend_materialization(add_trend_materialization: &AddTrendMaterialization, client: &mut Client) -> Result<String, Error> {
+    match add_trend_materialization.trend_materialization.create(client).await {
+        Ok(_) => Ok(format!(
+            "Added trend materialization '{}'",
+            &add_trend_materialization.trend_materialization
+        )),
+        Err(e) => Err(Error::Runtime(RuntimeError {
+            msg: format!(
+                "Error adding trend materialization '{}': {}",
+                &add_trend_materialization.trend_materialization, e
+            ),
+        })),
     }
 }
 
@@ -643,18 +663,24 @@ impl fmt::Display for UpdateTrendMaterialization {
 }
 
 impl Change for UpdateTrendMaterialization {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        match self.trend_materialization.update(client) {
-            Ok(_) => Ok(format!(
-                "Updated trend materialization '{}'",
-                &self.trend_materialization
-            )),
-            Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!(
-                    "Error updating trend materialization '{}': {}",
-                    &self.trend_materialization, e
-                ),
-            })),
-        }
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
+
+    fn apply(&self, client: &mut Client) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
+        Box::pin(apply_update_trend_materialization(self, client))
+    }
+}
+
+async fn apply_update_trend_materialization(update_trend_materialization: &UpdateTrendMaterialization, client: &mut Client) -> Result<String, Error> {
+    match update_trend_materialization.trend_materialization.update(client).await {
+        Ok(_) => Ok(format!(
+            "Updated trend materialization '{}'",
+            &update_trend_materialization.trend_materialization
+        )),
+        Err(e) => Err(Error::Runtime(RuntimeError {
+            msg: format!(
+                "Error updating trend materialization '{}': {}",
+                &update_trend_materialization.trend_materialization, e
+            ),
+        })),
     }
 }

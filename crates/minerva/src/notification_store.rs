@@ -1,12 +1,14 @@
-use postgres::types::ToSql;
-use postgres::Client;
+use tokio_postgres::types::ToSql;
+use tokio_postgres::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
+use std::future::Future;
+use std::pin::Pin;
 
 type PostgresName = String;
 
-use super::change::Change;
+use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
@@ -38,39 +40,46 @@ impl fmt::Display for AddAttributes {
 }
 
 impl Change for AddAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        let query = concat!(
-            "with a as (",
-            "insert into notification_directory.attribute(notification_store_id, name, data_type, description) ",
-            "select ns.id, $1, $2, $3 from notification_directory.notification_store ns join directory.data_source ds on ds.id = ns.data_source_id where ds.name = $4 returning attribute",
-            ") ",
-            "select notification_directory.create_attribute_column(a.attribute) from a;"
-        );
+    type ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>;
 
-        for attribute in &self.attributes {
-            client
-                .execute(
-                    query,
-                    &[
-                        &attribute.name,
-                        &attribute.data_type,
-                        &attribute.description,
-                        &self.notification_store.data_source,
-                    ],
-                )
-                .map_err(|e| {
-                    DatabaseError::from_msg(format!(
-                        "Error adding attribute to notification store: {}",
-                        e
-                    ))
-                })?;
-        }
-
-        Ok(format!(
-            "Added attributes to notification store '{}'",
-            &self.notification_store
-        ))
+    fn apply(&self, client: &mut Client) -> Self::ChangeResultType {
+        Box::pin(apply_add_attributes(self, client))
     }
+}
+
+async fn apply_add_attributes(add_attributes: &AddAttributes, client: &mut Client) -> ChangeResult {
+    let query = concat!(
+        "with a as (",
+        "insert into notification_directory.attribute(notification_store_id, name, data_type, description) ",
+        "select ns.id, $1, $2, $3 from notification_directory.notification_store ns join directory.data_source ds on ds.id = ns.data_source_id where ds.name = $4 returning attribute",
+        ") ",
+        "select notification_directory.create_attribute_column(a.attribute) from a;"
+    );
+
+    for attribute in &add_attributes.attributes {
+        client
+            .execute(
+                query,
+                &[
+                    &attribute.name,
+                    &attribute.data_type,
+                    &attribute.description,
+                    &add_attributes.notification_store.data_source,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                DatabaseError::from_msg(format!(
+                    "Error adding attribute to notification store: {}",
+                    e
+                ))
+            })?;
+    }
+
+    Ok(format!(
+        "Added attributes to notification store '{}'",
+        &add_attributes.notification_store
+    ))
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -81,8 +90,8 @@ pub struct NotificationStore {
 }
 
 impl NotificationStore {
-    pub fn diff(&self, other: &NotificationStore) -> Vec<Box<dyn Change>> {
-        let mut changes: Vec<Box<dyn Change>> = Vec::new();
+    pub fn diff(&self, other: &NotificationStore) -> Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> {
+        let mut changes: Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> = Vec::new();
 
         let mut new_attributes: Vec<Attribute> = Vec::new();
 
@@ -129,26 +138,33 @@ impl fmt::Display for AddNotificationStore {
 }
 
 impl Change for AddNotificationStore {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        let query = format!(
-            "SELECT notification_directory.create_notification_store($1::text, ARRAY[{}]::notification_directory.attr_def[])",
-            self.notification_store.attributes.iter().map(|att| format!("('{}', '{}', '')", &att.name, &att.data_type)).collect::<Vec<String>>().join(",")
-        );
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
 
-        client
-            .query_one(&query, &[&self.notification_store.data_source])
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error creating notification store: {}", e))
-            })?;
-
-        Ok(format!(
-            "Created attribute store '{}'",
-            &self.notification_store
-        ))
+    fn apply(&self, client: &mut Client) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
+        Box::pin(apply_add_notification_store(self, client))
     }
 }
 
-pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationStore>, Error> {
+async fn apply_add_notification_store(add_notification_store: &AddNotificationStore, client: &mut Client) -> Result<String, Error> {
+    let query = format!(
+        "SELECT notification_directory.create_notification_store($1::text, ARRAY[{}]::notification_directory.attr_def[])",
+        add_notification_store.notification_store.attributes.iter().map(|att| format!("('{}', '{}', '')", &att.name, &att.data_type)).collect::<Vec<String>>().join(",")
+    );
+
+    client
+        .query_one(&query, &[&add_notification_store.notification_store.data_source])
+        .await
+        .map_err(|e| {
+            DatabaseError::from_msg(format!("Error creating notification store: {}", e))
+        })?;
+
+    Ok(format!(
+        "Created attribute store '{}'",
+        &add_notification_store.notification_store
+    ))
+}
+
+pub async fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationStore>, Error> {
     let mut notification_stores: Vec<NotificationStore> = Vec::new();
 
     let query = concat!(
@@ -157,7 +173,7 @@ pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationSto
         "JOIN directory.data_source ON data_source.id = notification_store.data_source_id ",
     );
 
-    let result = conn.query(query, &[]).map_err(|e| {
+    let result = conn.query(query, &[]).await.map_err(|e| {
         DatabaseError::from_msg(format!("Error loading notification stores: {}", e))
     })?;
 
@@ -165,7 +181,7 @@ pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationSto
         let attribute_store_id: i32 = row.get(0);
         let data_source: &str = row.get(1);
 
-        let attributes = load_attributes(conn, attribute_store_id);
+        let attributes = load_attributes(conn, attribute_store_id).await;
 
         notification_stores.push(NotificationStore {
             title: None,
@@ -177,7 +193,7 @@ pub fn load_notification_stores(conn: &mut Client) -> Result<Vec<NotificationSto
     Ok(notification_stores)
 }
 
-pub fn load_notification_store(
+pub async fn load_notification_store(
     conn: &mut Client,
     data_source: &str,
     entity_type: &str,
@@ -191,9 +207,10 @@ pub fn load_notification_store(
 
     let result = conn
         .query_one(query, &[&data_source, &entity_type])
+        .await
         .map_err(|e| DatabaseError::from_msg(format!("Could not load attribute stores: {}", e)))?;
 
-    let attributes = load_attributes(conn, result.get::<usize, i32>(0));
+    let attributes = load_attributes(conn, result.get::<usize, i32>(0)).await;
 
     Ok(NotificationStore {
         title: None,
@@ -202,10 +219,11 @@ pub fn load_notification_store(
     })
 }
 
-fn load_attributes(conn: &mut Client, notification_store_id: i32) -> Vec<Attribute> {
+async fn load_attributes(conn: &mut Client, notification_store_id: i32) -> Vec<Attribute> {
     let attribute_query = "SELECT name, data_type, description FROM notification_directory.attribute WHERE notification_store_id = $1";
     let rows = conn
         .query(attribute_query, &[&notification_store_id])
+        .await
         .unwrap();
 
     rows.iter()

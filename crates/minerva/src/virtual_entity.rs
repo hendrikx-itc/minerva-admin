@@ -1,7 +1,10 @@
 use std::fmt;
 use std::{io::Read, path::PathBuf};
+use std::future::Future;
+use std::pin::Pin;
+use std::boxed::Box;
 
-use postgres::Client;
+use tokio_postgres::Client;
 use serde::{Deserialize, Serialize};
 
 use super::change::Change;
@@ -55,15 +58,22 @@ impl fmt::Display for AddVirtualEntity {
 }
 
 impl Change for AddVirtualEntity {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        client
-            .batch_execute(&self.virtual_entity.sql)
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
-            })?;
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
 
-        Ok(format!("Added virtual entity {}", &self.virtual_entity))
+    fn apply(&self, client: &mut Client) -> Self::ChangeResultType {
+        Box::pin(apply_add_virtual_entity(self, client))
     }
+}
+
+async fn apply_add_virtual_entity(add_virtual_entity: &AddVirtualEntity, client: &mut Client) -> Result<String, Error> {
+    client
+        .batch_execute(&add_virtual_entity.virtual_entity.sql)
+        .await
+        .map_err(|e| {
+            DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
+        })?;
+
+    Ok(format!("Added virtual entity {}", &add_virtual_entity.virtual_entity))
 }
 
 impl From<VirtualEntity> for AddVirtualEntity {

@@ -8,7 +8,8 @@ use chrono::DateTime;
 use chrono::FixedOffset;
 use dialoguer::Confirm;
 
-use postgres::{Client, NoTls};
+use tokio;
+use tokio_postgres::{Client, NoTls};
 use structopt::StructOpt;
 
 use minerva::attribute_store::{
@@ -46,23 +47,6 @@ trait Cmd {
 #[derive(Debug, StructOpt)]
 struct DeleteOpt {
     id: i32,
-}
-
-impl Cmd for DeleteOpt {
-    fn run(&self) -> CmdResult {
-        println!("Deleting trend store {}", self.id);
-
-        let mut client = connect_db()?;
-
-        let result = delete_trend_store(&mut client, self.id);
-
-        match result {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error deleting trend store: {}", e),
-            })),
-        }
-    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -566,7 +550,7 @@ fn main() {
     }
 }
 
-fn connect_db() -> Result<Client, Error> {
+async fn connect_db() -> Result<Client, Error> {
     let conn_params = match env::var(ENV_DB_CONN) {
         Ok(value) => String::from(value),
         Err(_) => {
@@ -590,7 +574,13 @@ fn connect_db() -> Result<Client, Error> {
         }
     };
 
-    let client = Client::connect(&conn_params, NoTls)?;
+    let (client, connection) = tokio_postgres::connect(&conn_params, NoTls).await?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
 
     Ok(client)
 }
@@ -607,10 +597,10 @@ fn run_trend_store_list_cmd() -> CmdResult {
     Ok(())
 }
 
-fn run_trend_store_delete_cmd(args: &DeleteOpt) -> CmdResult {
+async fn run_trend_store_delete_cmd(args: &DeleteOpt) -> CmdResult {
     println!("Deleting trend store {}", args.id);
 
-    let mut client = connect_db()?;
+    let mut client = connect_db().await?;
 
     let result = delete_trend_store(&mut client, args.id);
 

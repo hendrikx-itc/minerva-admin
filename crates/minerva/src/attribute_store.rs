@@ -1,12 +1,15 @@
-use postgres::types::ToSql;
-use postgres::Client;
+use tokio_postgres::types::ToSql;
+use tokio_postgres::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
+use std::future::Future;
+use std::pin::Pin;
+use std::boxed::Box;
 
 type PostgresName = String;
 
-use super::change::Change;
+use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
@@ -38,33 +41,40 @@ impl fmt::Display for AddAttributes {
 }
 
 impl Change for AddAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        let query = concat!(
-            "SELECT attribute_directory.add_attributes(attribute_store, $1) ",
-            "FROM attribute_directory.attribute_store ",
-            "JOIN directory.data_source ON data_source.id = attribute_store.data_source_id ",
-            "JOIN directory.entity_type ON entity_type.id = attribute_store.entity_type_id ",
-            "WHERE data_source.name = $2 AND entity_type.name = $3",
-        );
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
 
-        client
-            .query_one(
-                query,
-                &[
-                    &self.attributes,
-                    &self.attribute_store.data_source,
-                    &self.attribute_store.entity_type,
-                ],
-            )
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
-            })?;
-
-        Ok(format!(
-            "Added attributes to attribute store '{}'",
-            &self.attribute_store
-        ))
+    fn apply(&self, client: &mut Client) -> Self::ChangeResultType {
+        Box::pin(apply_add_attributes(self, client))
     }
+}
+
+async fn apply_add_attributes(add_attributes: &AddAttributes, client: &mut Client) -> Result<String, Error> {
+    let query = concat!(
+        "SELECT attribute_directory.add_attributes(attribute_store, $1) ",
+        "FROM attribute_directory.attribute_store ",
+        "JOIN directory.data_source ON data_source.id = attribute_store.data_source_id ",
+        "JOIN directory.entity_type ON entity_type.id = attribute_store.entity_type_id ",
+        "WHERE data_source.name = $2 AND entity_type.name = $3",
+    );
+
+    client
+        .query_one(
+            query,
+            &[
+                &add_attributes.attributes,
+                &add_attributes.attribute_store.data_source,
+                &add_attributes.attribute_store.entity_type,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
+        })?;
+
+    Ok(format!(
+        "Added attributes to attribute store '{}'",
+        &add_attributes.attribute_store
+    ))
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -75,8 +85,8 @@ pub struct AttributeStore {
 }
 
 impl AttributeStore {
-    pub fn diff(&self, other: &AttributeStore) -> Vec<Box<dyn Change>> {
-        let mut changes: Vec<Box<dyn Change>> = Vec::new();
+    pub fn diff(&self, other: &AttributeStore) -> Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> {
+        let mut changes: Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> = Vec::new();
 
         let mut new_attributes: Vec<Attribute> = Vec::new();
 
@@ -127,36 +137,43 @@ impl fmt::Display for AddAttributeStore {
 }
 
 impl Change for AddAttributeStore {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
-        let query = concat!(
-            "SELECT id ",
-            "FROM attribute_directory.create_attribute_store(",
-            "$1::text, $2::text, ",
-            "$3::attribute_directory.attribute_descr[]",
-            ")"
-        );
+    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
 
-        client
-            .query_one(
-                query,
-                &[
-                    &self.attribute_store.data_source,
-                    &self.attribute_store.entity_type,
-                    &self.attribute_store.attributes,
-                ],
-            )
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
-            })?;
-
-        Ok(format!(
-            "Created attribute store '{}'",
-            &self.attribute_store
-        ))
+    fn apply(&self, client: &mut Client) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
+        Box::pin(apply_add_attribute_store(self, client))
     }
 }
 
-pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, Error> {
+async fn apply_add_attribute_store(add_attribute_store: &AddAttributeStore, client: &mut Client) -> Result<String, Error> {
+    let query = concat!(
+        "SELECT id ",
+        "FROM attribute_directory.create_attribute_store(",
+        "$1::text, $2::text, ",
+        "$3::attribute_directory.attribute_descr[]",
+        ")"
+    );
+
+    client
+        .query_one(
+            query,
+            &[
+                &add_attribute_store.attribute_store.data_source,
+                &add_attribute_store.attribute_store.entity_type,
+                &add_attribute_store.attribute_store.attributes,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
+        })?;
+
+    Ok(format!(
+        "Created attribute store '{}'",
+        &add_attribute_store.attribute_store
+    ))
+}
+
+pub async fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, Error> {
     let mut attribute_stores: Vec<AttributeStore> = Vec::new();
 
     let query = concat!(
@@ -168,6 +185,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
 
     let result = conn
         .query(query, &[])
+        .await
         .map_err(|e| DatabaseError::from_msg(format!("Error loading attribute stores: {}", e)))?;
 
     for row in result {
@@ -175,7 +193,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
         let data_source: &str = row.get(1);
         let entity_type: &str = row.get(2);
 
-        let attributes = load_attributes(conn, attribute_store_id);
+        let attributes = load_attributes(conn, attribute_store_id).await;
 
         attribute_stores.push(AttributeStore {
             data_source: String::from(data_source),
@@ -187,7 +205,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
     Ok(attribute_stores)
 }
 
-pub fn load_attribute_store(
+pub async fn load_attribute_store(
     conn: &mut Client,
     data_source: &str,
     entity_type: &str,
@@ -202,9 +220,10 @@ pub fn load_attribute_store(
 
     let result = conn
         .query_one(query, &[&data_source, &entity_type])
+        .await
         .map_err(|e| DatabaseError::from_msg(format!("Could not load attribute stores: {}", e)))?;
 
-    let attributes = load_attributes(conn, result.get::<usize, i32>(0));
+    let attributes = load_attributes(conn, result.get::<usize, i32>(0)).await;
 
     Ok(AttributeStore {
         data_source: String::from(data_source),
@@ -213,9 +232,9 @@ pub fn load_attribute_store(
     })
 }
 
-fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute> {
+async fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute> {
     let attribute_query = "SELECT name, data_type, description FROM attribute_directory.attribute WHERE attribute_store_id = $1";
-    let attribute_result = conn.query(attribute_query, &[&attribute_store_id]).unwrap();
+    let attribute_result = conn.query(attribute_query, &[&attribute_store_id]).await.unwrap();
 
     let mut attributes: Vec<Attribute> = Vec::new();
 
