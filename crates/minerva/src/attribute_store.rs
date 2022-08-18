@@ -1,12 +1,15 @@
-use postgres::types::ToSql;
-use postgres::Client;
 use serde::{Deserialize, Serialize};
+use std::boxed::Box;
 use std::fmt;
 use std::path::PathBuf;
+use tokio_postgres::types::ToSql;
+use tokio_postgres::Client;
+
+use async_trait::async_trait;
 
 type PostgresName = String;
 
-use super::change::Change;
+use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
@@ -37,8 +40,9 @@ impl fmt::Display for AddAttributes {
     }
 }
 
+#[async_trait]
 impl Change for AddAttributes {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT attribute_directory.add_attributes(attribute_store, $1) ",
             "FROM attribute_directory.attribute_store ",
@@ -56,6 +60,7 @@ impl Change for AddAttributes {
                     &self.attribute_store.entity_type,
                 ],
             )
+            .await
             .map_err(|e| {
                 DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
             })?;
@@ -75,8 +80,8 @@ pub struct AttributeStore {
 }
 
 impl AttributeStore {
-    pub fn diff(&self, other: &AttributeStore) -> Vec<Box<dyn Change>> {
-        let mut changes: Vec<Box<dyn Change>> = Vec::new();
+    pub fn diff<'a>(&self, other: &AttributeStore) -> Vec<Box<dyn Change + Send>> {
+        let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
         let mut new_attributes: Vec<Attribute> = Vec::new();
 
@@ -126,8 +131,9 @@ impl fmt::Display for AddAttributeStore {
     }
 }
 
+#[async_trait]
 impl Change for AddAttributeStore {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT id ",
             "FROM attribute_directory.create_attribute_store(",
@@ -145,6 +151,7 @@ impl Change for AddAttributeStore {
                     &self.attribute_store.attributes,
                 ],
             )
+            .await
             .map_err(|e| {
                 DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
             })?;
@@ -156,7 +163,7 @@ impl Change for AddAttributeStore {
     }
 }
 
-pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, Error> {
+pub async fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, Error> {
     let mut attribute_stores: Vec<AttributeStore> = Vec::new();
 
     let query = concat!(
@@ -168,6 +175,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
 
     let result = conn
         .query(query, &[])
+        .await
         .map_err(|e| DatabaseError::from_msg(format!("Error loading attribute stores: {}", e)))?;
 
     for row in result {
@@ -175,7 +183,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
         let data_source: &str = row.get(1);
         let entity_type: &str = row.get(2);
 
-        let attributes = load_attributes(conn, attribute_store_id);
+        let attributes = load_attributes(conn, attribute_store_id).await;
 
         attribute_stores.push(AttributeStore {
             data_source: String::from(data_source),
@@ -187,7 +195,7 @@ pub fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeStore>, E
     Ok(attribute_stores)
 }
 
-pub fn load_attribute_store(
+pub async fn load_attribute_store(
     conn: &mut Client,
     data_source: &str,
     entity_type: &str,
@@ -202,9 +210,10 @@ pub fn load_attribute_store(
 
     let result = conn
         .query_one(query, &[&data_source, &entity_type])
+        .await
         .map_err(|e| DatabaseError::from_msg(format!("Could not load attribute stores: {}", e)))?;
 
-    let attributes = load_attributes(conn, result.get::<usize, i32>(0));
+    let attributes = load_attributes(conn, result.get::<usize, i32>(0)).await;
 
     Ok(AttributeStore {
         data_source: String::from(data_source),
@@ -213,9 +222,12 @@ pub fn load_attribute_store(
     })
 }
 
-fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute> {
+async fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attribute> {
     let attribute_query = "SELECT name, data_type, description FROM attribute_directory.attribute WHERE attribute_store_id = $1";
-    let attribute_result = conn.query(attribute_query, &[&attribute_store_id]).unwrap();
+    let attribute_result = conn
+        .query(attribute_query, &[&attribute_store_id])
+        .await
+        .unwrap();
 
     let mut attributes: Vec<Attribute> = Vec::new();
 

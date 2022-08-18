@@ -1,8 +1,12 @@
 use std::fmt;
 
 use super::error::Error;
-use postgres::Client;
+use async_trait::async_trait;
+use tokio_postgres::Client;
 
-pub trait Change: fmt::Display {
-    fn apply(&self, client: &mut Client) -> Result<String, Error>;
+pub type ChangeResult = Result<String, Error>;
+
+#[async_trait]
+pub trait Change: fmt::Display + Send + Sync {
+    async fn apply(&self, client: &mut Client) -> ChangeResult;
 }

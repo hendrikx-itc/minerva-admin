@@ -1,10 +1,11 @@
+use async_trait::async_trait;
 use std::fmt;
 use std::{io::Read, path::PathBuf};
 
-use postgres::Client;
 use serde::{Deserialize, Serialize};
+use tokio_postgres::Client;
 
-use super::change::Change;
+use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,10 +55,12 @@ impl fmt::Display for AddVirtualEntity {
     }
 }
 
+#[async_trait]
 impl Change for AddVirtualEntity {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
         client
             .batch_execute(&self.virtual_entity.sql)
+            .await
             .map_err(|e| {
                 DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
             })?;

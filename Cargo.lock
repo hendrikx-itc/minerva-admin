@@ -511,23 +511,25 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 name = "minerva"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "glob",
  "humantime",
  "humantime-serde",
- "postgres",
  "postgres-protocol",
  "postgres-types",
  "regex",
  "serde",
  "serde_json",
  "serde_yaml",
+ "tokio-postgres",
 ]
 
 [[package]]
 name = "minerva-admin"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "clap 3.2.16",
  "dialoguer",
@@ -535,7 +537,6 @@ dependencies = [
  "humantime",
  "humantime-serde",
  "minerva",
- "postgres",
  "postgres-types",
  "regex",
  "serde",
@@ -543,6 +544,8 @@ dependencies = [
  "serde_yaml",
  "structopt",
  "term-table",
+ "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]
@@ -574,6 +577,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "num_cpus"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
+dependencies = [
+ "hermit-abi",
+ "libc",
 ]
 
 [[package]]
@@ -646,20 +659,6 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
-
-[[package]]
-name = "postgres"
-version = "0.19.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8bbcd5f6deb39585a0d9f4ef34c4a41c25b7ad26d23c75d837d78c8e7adc85f"
-dependencies = [
- "bytes",
- "fallible-iterator",
- "futures",
- "log",
- "tokio",
- "tokio-postgres",
-]
 
 [[package]]
 name = "postgres-derive"
@@ -886,6 +885,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook-registry"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1075,10 +1083,25 @@ dependencies = [
  "libc",
  "memchr",
  "mio",
+ "num_cpus",
  "once_cell",
+ "parking_lot",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
+ "tokio-macros",
  "winapi",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9724f9a975fb987ef7a3cd9be0350edcbe130698af5b8f7a631e23d42d052484"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
