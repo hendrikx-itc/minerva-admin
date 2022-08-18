@@ -1,10 +1,12 @@
 use std::fmt;
 use std::path::PathBuf;
-use std::future::Future;
-use std::pin::Pin;
 
-use tokio_postgres::Client;
 use serde::{Deserialize, Serialize};
+use tokio_postgres::Client;
+
+use async_trait::async_trait;
+
+use crate::change::ChangeResult;
 
 use super::change::Change;
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
@@ -69,32 +71,27 @@ impl fmt::Display for AddRelation {
     }
 }
 
+#[async_trait]
 impl Change for AddRelation {
-    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        let query = format!(
+            "CREATE MATERIALIZED VIEW relation.\"{}\" AS {}",
+            self.relation.name, self.relation.query
+        );
 
-    fn apply(&self, client: &mut Client) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
-        Box::pin(apply_add_relation(self, client))
+        client.query(&query, &[]).await.map_err(|e| {
+            DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
+        })?;
+
+        let query = "SELECT relation_directory.register_type($1)";
+
+        client
+            .query_one(query, &[&self.relation.name])
+            .await
+            .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {}", e)))?;
+
+        Ok(format!("Added relation {}", &self.relation))
     }
-}
-
-async fn apply_add_relation(add_relation: &AddRelation, client: &mut Client) -> Result<String, Error> {
-    let query = format!(
-        "CREATE MATERIALIZED VIEW relation.\"{}\" AS {}",
-        add_relation.relation.name, add_relation.relation.query
-    );
-
-    client.query(&query, &[]).await.map_err(|e| {
-        DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
-    })?;
-
-    let query = "SELECT relation_directory.register_type($1)";
-
-    client
-        .query_one(query, &[&add_relation.relation.name])
-        .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {}", e)))?;
-
-    Ok(format!("Added relation {}", &add_relation.relation))
 }
 
 impl From<Relation> for AddRelation {

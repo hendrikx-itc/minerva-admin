@@ -1,13 +1,11 @@
+use async_trait::async_trait;
 use std::fmt;
 use std::{io::Read, path::PathBuf};
-use std::future::Future;
-use std::pin::Pin;
-use std::boxed::Box;
 
-use tokio_postgres::Client;
 use serde::{Deserialize, Serialize};
+use tokio_postgres::Client;
 
-use super::change::Change;
+use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -57,23 +55,18 @@ impl fmt::Display for AddVirtualEntity {
     }
 }
 
+#[async_trait]
 impl Change for AddVirtualEntity {
-    type ChangeResultType = Pin<Box<dyn Future<Output = Result<String, Error>>>>;
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        client
+            .batch_execute(&self.virtual_entity.sql)
+            .await
+            .map_err(|e| {
+                DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
+            })?;
 
-    fn apply(&self, client: &mut Client) -> Self::ChangeResultType {
-        Box::pin(apply_add_virtual_entity(self, client))
+        Ok(format!("Added virtual entity {}", &self.virtual_entity))
     }
-}
-
-async fn apply_add_virtual_entity(add_virtual_entity: &AddVirtualEntity, client: &mut Client) -> Result<String, Error> {
-    client
-        .batch_execute(&add_virtual_entity.virtual_entity.sql)
-        .await
-        .map_err(|e| {
-            DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
-        })?;
-
-    Ok(format!("Added virtual entity {}", &add_virtual_entity.virtual_entity))
 }
 
 impl From<VirtualEntity> for AddVirtualEntity {

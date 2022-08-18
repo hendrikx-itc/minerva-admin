@@ -8,9 +8,11 @@ use chrono::DateTime;
 use chrono::FixedOffset;
 use dialoguer::Confirm;
 
+use async_trait::async_trait;
+
+use structopt::StructOpt;
 use tokio;
 use tokio_postgres::{Client, NoTls};
-use structopt::StructOpt;
 
 use minerva::attribute_store::{
     load_attribute_store, load_attribute_store_from_file, AddAttributeStore, AttributeStore,
@@ -40,8 +42,9 @@ static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
 type CmdResult = Result<(), Error>;
 
 /// Defines the interface for CLI commands
+#[async_trait]
 trait Cmd {
-    fn run(&self) -> CmdResult;
+    async fn run(&self) -> CmdResult;
 }
 
 #[derive(Debug, StructOpt)]
@@ -55,17 +58,18 @@ struct TrendStoreCreate {
     definition: PathBuf,
 }
 
+#[async_trait]
 impl Cmd for TrendStoreCreate {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let trend_store = load_trend_store_from_file(&self.definition)?;
 
         println!("Loaded definition, creating trend store");
 
-        let mut client = connect_db()?;
+        let mut client = connect_db().await?;
 
         let change = AddTrendStore { trend_store };
 
-        change.apply(&mut client)?;
+        change.apply(&mut client).await?;
 
         println!("Created trend store");
 
@@ -79,18 +83,20 @@ struct TrendStoreDiff {
     definition: PathBuf,
 }
 
+#[async_trait]
 impl Cmd for TrendStoreDiff {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let trend_store = load_trend_store_from_file(&self.definition)?;
 
-        let mut client = connect_db()?;
+        let mut client = connect_db().await?;
 
         let result = load_trend_store(
             &mut client,
             &trend_store.data_source,
             &trend_store.entity_type,
             &trend_store.granularity,
-        );
+        )
+        .await;
 
         match result {
             Ok(trend_store_db) => {
@@ -121,18 +127,20 @@ struct TrendStoreUpdate {
     definition: PathBuf,
 }
 
+#[async_trait]
 impl Cmd for TrendStoreUpdate {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let trend_store = load_trend_store_from_file(&self.definition)?;
 
-        let mut client = connect_db()?;
+        let mut client = connect_db().await?;
 
         let result = load_trend_store(
             &mut client,
             &trend_store.data_source,
             &trend_store.entity_type,
             &trend_store.granularity,
-        );
+        )
+        .await;
 
         match result {
             Ok(trend_store_db) => {
@@ -142,7 +150,7 @@ impl Cmd for TrendStoreUpdate {
                     println!("Updating trend store");
 
                     for change in changes {
-                        let apply_result = change.apply(&mut client);
+                        let apply_result = change.apply(&mut client).await;
 
                         match apply_result {
                             Ok(_) => {
@@ -200,11 +208,12 @@ struct TrendStorePartAnalyze {
     name: String,
 }
 
+#[async_trait]
 impl Cmd for TrendStorePartAnalyze {
-    fn run(&self) -> CmdResult {
-        let mut client = connect_db()?;
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
 
-        let result = analyze_trend_store_part(&mut client, &self.name)?;
+        let result = analyze_trend_store_part(&mut client, &self.name).await?;
 
         println!("Analyzed '{}'", self.name);
 
@@ -292,8 +301,9 @@ struct InitializeOpt {
     create_partitions: bool,
 }
 
+#[async_trait]
 impl Cmd for InitializeOpt {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
             Ok(v) => PathBuf::from(v),
             Err(e) => {
@@ -306,17 +316,19 @@ impl Cmd for InitializeOpt {
             }
         };
 
-        let mut client = connect_db()?;
+        let mut client = connect_db().await?;
 
         println!(
             "Initializing Minerva instance from {}",
             minerva_instance_root.to_string_lossy()
         );
 
-        MinervaInstance::load_from(&minerva_instance_root).initialize(&mut client);
+        MinervaInstance::load_from(&minerva_instance_root)
+            .initialize(&mut client)
+            .await;
 
         if self.create_partitions {
-            create_partitions(&mut client, None)?;
+            create_partitions(&mut client, None).await?;
         }
 
         Ok(())
@@ -331,8 +343,9 @@ struct DiffOpt {
     with_dir: Option<PathBuf>,
 }
 
+#[async_trait]
 impl Cmd for DiffOpt {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
             Ok(v) => PathBuf::from(v),
             Err(e) => {
@@ -350,9 +363,9 @@ impl Cmd for DiffOpt {
         let other_instance = match &self.with_dir {
             Some(with_dir) => MinervaInstance::load_from(&with_dir),
             None => {
-                let mut client = connect_db()?;
+                let mut client = connect_db().await?;
 
-                MinervaInstance::load_from_db(&mut client)?
+                MinervaInstance::load_from_db(&mut client).await?
             }
         };
 
@@ -378,13 +391,14 @@ struct UpdateOpt {
     non_interactive: bool,
 }
 
+#[async_trait]
 impl Cmd for UpdateOpt {
-    fn run(&self) -> CmdResult {
-        let mut client = connect_db()?;
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
 
         print!("Reading Minerva instance from database... ");
         io::stdout().flush().unwrap();
-        let instance_db = MinervaInstance::load_from_db(&mut client)?;
+        let instance_db = MinervaInstance::load_from_db(&mut client).await?;
         print!("Ok\n");
 
         let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
@@ -413,6 +427,7 @@ impl Cmd for UpdateOpt {
             &instance_def,
             !self.non_interactive,
         )
+        .await
     }
 }
 
@@ -422,19 +437,20 @@ struct TrendMaterializationCreate {
     definition: PathBuf,
 }
 
+#[async_trait]
 impl Cmd for TrendMaterializationCreate {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let trend_materialization =
             trend_materialization::trend_materialization_from_config(&self.definition)?;
 
         println!("Loaded definition, creating trend materialization");
-        let mut client = connect_db()?;
+        let mut client = connect_db().await?;
 
         let change = AddTrendMaterialization {
             trend_materialization,
         };
 
-        let result = change.apply(&mut client);
+        let result = change.apply(&mut client).await;
 
         match result {
             Ok(_) => {
@@ -455,18 +471,19 @@ struct TrendMaterializationUpdate {
     definition: PathBuf,
 }
 
+#[async_trait]
 impl Cmd for TrendMaterializationUpdate {
-    fn run(&self) -> CmdResult {
+    async fn run(&self) -> CmdResult {
         let trend_materialization = trend_materialization_from_config(&self.definition)?;
 
         println!("Loaded definition, updating trend materialization");
-        let mut client = connect_db()?;
+        let mut client = connect_db().await?;
 
         let change = UpdateTrendMaterialization {
             trend_materialization,
         };
 
-        let result = change.apply(&mut client);
+        let result = change.apply(&mut client).await;
 
         match result {
             Ok(_) => {
@@ -507,40 +524,41 @@ enum Opt {
     TrendMaterialization(TrendMaterializationOpt),
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let opt = Opt::from_args();
 
     let result = match opt {
-        Opt::Dump => run_dump_cmd(),
-        Opt::Diff(diff) => diff.run(),
-        Opt::Update(update) => update.run(),
-        Opt::Initialize(initialize) => initialize.run(),
+        Opt::Dump => run_dump_cmd().await,
+        Opt::Diff(diff) => diff.run().await,
+        Opt::Update(update) => update.run().await,
+        Opt::Initialize(initialize) => initialize.run().await,
         Opt::TrendStore(trend_store) => match trend_store {
-            TrendStoreOpt::List => run_trend_store_list_cmd(),
-            TrendStoreOpt::Create(create) => create.run(),
-            TrendStoreOpt::Diff(diff) => diff.run(),
-            TrendStoreOpt::Update(update) => update.run(),
-            TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(&delete),
+            TrendStoreOpt::List => run_trend_store_list_cmd().await,
+            TrendStoreOpt::Create(create) => create.run().await,
+            TrendStoreOpt::Diff(diff) => diff.run().await,
+            TrendStoreOpt::Update(update) => update.run().await,
+            TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(&delete).await,
             TrendStoreOpt::Partition(partition) => match partition {
                 TrendStorePartition::Create(create) => {
-                    run_trend_store_partition_create_cmd(&create)
+                    run_trend_store_partition_create_cmd(&create).await
                 }
             },
             TrendStoreOpt::Check(check) => run_trend_store_check_cmd(&check),
             TrendStoreOpt::Part(part) => match part {
-                TrendStorePartOpt::Analyze(analyze) => analyze.run(),
+                TrendStorePartOpt::Analyze(analyze) => analyze.run().await,
             },
         },
         Opt::AttributeStore(attribute_store) => match attribute_store {
-            AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(&args),
-            AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(&args),
+            AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(&args).await,
+            AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(&args).await,
         },
         Opt::TrendMaterialization(trend_materialization) => match trend_materialization {
             TrendMaterializationOpt::Create(trend_materialization_create) => {
-                trend_materialization_create.run()
+                trend_materialization_create.run().await
             }
             TrendMaterializationOpt::Update(trend_materialization_update) => {
-                trend_materialization_update.run()
+                trend_materialization_update.run().await
             }
         },
     };
@@ -585,10 +603,10 @@ async fn connect_db() -> Result<Client, Error> {
     Ok(client)
 }
 
-fn run_trend_store_list_cmd() -> CmdResult {
-    let mut client = connect_db()?;
+async fn run_trend_store_list_cmd() -> CmdResult {
+    let mut client = connect_db().await?;
 
-    let trend_stores = list_trend_stores(&mut client).unwrap();
+    let trend_stores = list_trend_stores(&mut client).await.unwrap();
 
     for trend_store in trend_stores {
         println!("{}", &trend_store);
@@ -602,7 +620,7 @@ async fn run_trend_store_delete_cmd(args: &DeleteOpt) -> CmdResult {
 
     let mut client = connect_db().await?;
 
-    let result = delete_trend_store(&mut client, args.id);
+    let result = delete_trend_store(&mut client, args.id).await;
 
     match result {
         Ok(_) => Ok(()),
@@ -633,16 +651,16 @@ fn run_trend_store_check_cmd(args: &TrendStoreCheck) -> CmdResult {
     Ok(())
 }
 
-fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
+async fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
     let attribute_store: AttributeStore = load_attribute_store_from_file(&args.definition)?;
 
     println!("Loaded definition, creating attribute store");
 
-    let mut client = connect_db()?;
+    let mut client = connect_db().await?;
 
     let change = AddAttributeStore { attribute_store };
 
-    let result = change.apply(&mut client);
+    let result = change.apply(&mut client).await;
 
     match result {
         Ok(_) => {
@@ -656,18 +674,19 @@ fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResult {
     }
 }
 
-fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
+async fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
     let attribute_store: AttributeStore = load_attribute_store_from_file(&args.definition)?;
 
     println!("Loaded definition, updating attribute store");
 
-    let mut client = connect_db()?;
+    let mut client = connect_db().await?;
 
     let attribute_store_db = load_attribute_store(
         &mut client,
         &attribute_store.data_source,
         &attribute_store.entity_type,
-    )?;
+    )
+    .await?;
 
     let changes = attribute_store_db.diff(&attribute_store);
 
@@ -675,7 +694,7 @@ fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
         println!("Updating attribute store");
 
         for change in changes {
-            let apply_result = change.apply(&mut client);
+            let apply_result = change.apply(&mut client).await;
 
             match apply_result {
                 Ok(_) => {
@@ -693,28 +712,28 @@ fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
     Ok(())
 }
 
-fn run_dump_cmd() -> CmdResult {
-    let mut client = connect_db()?;
+async fn run_dump_cmd() -> CmdResult {
+    let mut client = connect_db().await?;
 
-    dump(&mut client);
+    dump(&mut client).await;
 
     Ok(())
 }
 
-fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) -> CmdResult {
-    let mut client = connect_db()?;
+async fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) -> CmdResult {
+    let mut client = connect_db().await?;
 
     if let Some(for_timestamp) = args.for_timestamp {
-        create_partitions_for_timestamp(&mut client, for_timestamp)?;
+        create_partitions_for_timestamp(&mut client, for_timestamp).await?;
     } else {
-        create_partitions(&mut client, args.ahead_interval)?;
+        create_partitions(&mut client, args.ahead_interval).await?;
     }
 
     println!("Created partitions");
     Ok(())
 }
 
-fn update(
+async fn update(
     client: &mut Client,
     db_instance: &MinervaInstance,
     other: &MinervaInstance,
@@ -737,7 +756,7 @@ fn update(
                     })
                 })?
         {
-            match change.apply(client) {
+            match change.apply(client).await {
                 Ok(message) => println!("> {}", &message),
                 Err(err) => println!("! Error applying change: {}", &err),
             }

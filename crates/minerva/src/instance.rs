@@ -2,14 +2,10 @@ use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::future::Future;
-use std::pin::Pin;
 
 use glob::glob;
 
 use tokio_postgres::Client;
-
-use crate::change::ChangeResult;
 
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
@@ -90,7 +86,8 @@ impl MinervaInstance {
             initialize_custom(
                 client,
                 &format!("{}/custom/pre-init/*", instance_root.to_string_lossy()),
-            ).await
+            )
+            .await
         }
 
         initialize_attribute_stores(client, &self.attribute_stores).await;
@@ -109,12 +106,13 @@ impl MinervaInstance {
             initialize_custom(
                 client,
                 &format!("{}/custom/post-init/*", instance_root.to_string_lossy()),
-            ).await
+            )
+            .await
         }
     }
 
-    pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> {
-        let mut changes: Vec<Box<dyn Change<ChangeResultType = Pin<Box<dyn Future<Output = ChangeResult>>>>>> = Vec::new();
+    pub fn diff<'a>(&self, other: &MinervaInstance) -> Vec<Box<dyn Change + Send>> {
+        let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
         // Check for changes in trend stores
         for other_trend_store in &other.trend_stores {
@@ -507,10 +505,7 @@ fn execute_custom<'a>(path: &PathBuf) -> Result<String, String> {
     }
 }
 
-async fn initialize_custom<'a>(
-    client: &'a mut Client,
-    glob_pattern: &'a str,
-) {
+async fn initialize_custom<'a>(client: &'a mut Client, glob_pattern: &'a str) {
     let paths = glob(glob_pattern).expect("Failed to read glob pattern");
 
     for entry in paths {
