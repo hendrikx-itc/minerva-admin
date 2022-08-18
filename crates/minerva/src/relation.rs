@@ -1,8 +1,12 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use postgres::Client;
 use serde::{Deserialize, Serialize};
+use tokio_postgres::Client;
+
+use async_trait::async_trait;
+
+use crate::change::ChangeResult;
 
 use super::change::Change;
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
@@ -67,14 +71,15 @@ impl fmt::Display for AddRelation {
     }
 }
 
+#[async_trait]
 impl Change for AddRelation {
-    fn apply(&self, client: &mut Client) -> Result<String, Error> {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = format!(
             "CREATE MATERIALIZED VIEW relation.\"{}\" AS {}",
             self.relation.name, self.relation.query
         );
 
-        client.query(&query, &[]).map_err(|e| {
+        client.query(&query, &[]).await.map_err(|e| {
             DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
         })?;
 
@@ -82,6 +87,7 @@ impl Change for AddRelation {
 
         client
             .query_one(query, &[&self.relation.name])
+            .await
             .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {}", e)))?;
 
         Ok(format!("Added relation {}", &self.relation))
