@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::Component;
 
 use minerva::interval::parse_interval;
+use minerva::trend_materialization;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
 pub struct TrendMaterializationSource {
@@ -53,21 +54,6 @@ pub struct TrendFunctionMaterialization {
     pub reprocessing_period: Duration,
     pub sources: Vec<TrendMaterializationSource>,
     pub fingerprint_function: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct TrendViewMaterializationData {
-    pub target_trend_store_part: i32,
-    pub enabled: bool,
-    #[serde(with = "humantime_serde")]
-    pub processing_delay: Duration,
-    #[serde(with = "humantime_serde")]
-    pub stability_delay: Duration,
-    #[serde(with = "humantime_serde")]
-    pub reprocessing_period: Duration,
-    pub sources: Vec<TrendMaterializationSource>,
-    pub view: String,
-    pub fingerprint_function: String,    
 }
 
 /// Get list of trend view materializations.
@@ -304,76 +290,46 @@ pub(super) async fn post_trend_view_materialization(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> impl Responder {
-    let input: Result<TrendViewMaterializationData, serde_json::Error> = serde_json::from_str(&post);
+    let input: Result<minerva::trend_materialization::TrendViewMaterialization, serde_json::Error> = serde_json::from_str(&post);
     match input {
-	Err(e) => HttpResponse::BadRequest().body("A: ".to_owned() + &e.to_string()),
+	Err(e) => HttpResponse::BadRequest().body(e.to_string()),
 	Ok(data) => {
 	    let client = pool.get().await.unwrap();
-	    let sourceviewrow = client.query_one("SELECT trend_directory.to_char(tsp) || '_staging' FROM trend_directory.trend_store_part tsp WHERE id = $1", &[&data.target_trend_store_part]).await;
-	    match sourceviewrow {
-		Err(e) => HttpResponse::InternalServerError().body("B: ".to_owned() + &e.to_string()),
-		Ok(row) => {
-		    let sourceview: String = row.get(0);
-		    let result = client.execute(&format!("CREATE VIEW trend.\"{}\" AS {}", &sourceview, &data.view), &[],).await;
+	    let action = minerva::ÄddTrendMaterialization {
+		trend_materialization: data
+	    }
+	    let result = AddTrendMaterialization.apply(client).await;
+	    match result {
+		Err(e) => HttpResponse::Conflict().body(e.to_string()),
+		Ok(_) => {
+		    let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, dst_trend_store_part_id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE dst_trend_store_part_id = $1", &[&data.target_trend_store_part],).await;
 		    match result {
-			Err(e) => HttpResponse::InternalServerError().body("C: ".to_owned() + &e.to_string() + &format!("\nCREATE VIEW trend.\"{}\" AS '{}'", &sourceview, &data.view)),
-			Ok(_) => {
-			    let prerow = client.query_one(&format!("SELECT id, materialization_id FROM trend_directory.define_view_materialization($1, '{}'::interval, '{}'::interval, '{}'::interval, 'trend.{}'::regclass)",  &(data.processing_delay.as_secs().to_string() + "s"), &(data.stability_delay.as_secs().to_string() + "s"), &(data.reprocessing_period.as_secs().to_string() + "s"), &sourceview), &[&data.target_trend_store_part],).await;
-			    match prerow {
-				Err(e) => HttpResponse::InternalServerError().body("D: ".to_owned() + &format!("SELECT id, materialization_id FROM trend_directory.define_view_materialization({}, '{}'::interval, '{}'::interval, '{}'::interval, 'trend.{}'::regclass)",  &data.target_trend_store_part, &(data.processing_delay.as_secs().to_string() + "s"), &(data.stability_delay.as_secs().to_string() + "s"), &(data.reprocessing_period.as_secs().to_string() + "s"), &sourceview) + &e.to_string()),
-				Ok(row) => {
-				    let id: i32 = row.get(0);
-				    let mat_id: i32 = row.get(1);
-				    let result = client.execute("UPDATE trend_directory.materialization SET enabled = $1 WHERE id = $2", &[&data.enabled, &mat_id],).await;
-				    match result {
-					Err(e) => HttpResponse::InternalServerError().body("E: ".to_owned() + &e.to_string()),
-					Ok(_) => {
-					    let fpfuncres = client.query_one("SELECT trend_directory.fingerprint_function_name(m) FROM trend_directory.materialization m WHERE id = $1", &[&mat_id]).await;
-					    match fpfuncres {
-						Err(e) => HttpResponse::InternalServerError().body("F: ".to_owned() + &e.to_string()),
-						Ok(fpfunc) => {
-						    let fingerprint_function: String = fpfunc.get(0);
-						    let result = client.execute(&format!("CREATE OR REPLACE FUNCTION trend.\"{}\"(timestamptz) RETURNS trend_directory.fingerprint AS $$ {} $$ LANGUAGE sql", &fingerprint_function, &data.fingerprint_function), &[],).await;
-						    match result {
-							Err(e) => HttpResponse::InternalServerError().body("G: ".to_owned() + &format!("CREATE OR REPLACE FUNCTION trend.\"{}\"(timestamptz) RETURNS trend_directory.fingerprint AS $$ {} $$ sql", &fingerprint_function, &data.fingerprint_function) + " - " + &e.to_string()),
-							Ok(_) => {
-							    for source in &data.sources {
-								client.execute("INSERT INTO trend_directory.materialization_trend_store_link (materialization_id, trend_store_part_id, timestamp_mapping_func) VALUES $1, $2, $3::regprocedure", &[&mat_id, &source.trend_store_part, &source.mapping_function]).await.unwrap();
-							    };
-							    let prerow = client.query_one("SELECT fm.id, m.id, dst_trend_store_part_id, processing_delay::text, stability_delay::text, reprocessing_period::text, pg_proc.prosrc FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname WHERE fm.id = $1", &[&id],).await;
-							    match prerow {
-								Err(e) => HttpResponse::InternalServerError().body("H: ".to_owned() + &e.to_string()),
-								Ok(row) => {
-								    let mut sources: Vec<TrendMaterializationSource> = vec![];
-								    for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&id],).await.unwrap()
-								    {
-									let source = TrendMaterializationSource {
-									    trend_store_part: inner_row.get(0),
-									    mapping_function: inner_row.get(1),
-									};
-									sources.push(source)
-								    };
-								    let materialization = TrendFunctionMaterialization {
-									id: row.get(0),
-									materialization_id: row.get(1),
-									target_trend_store_part: row.get(2),
-									processing_delay: parse_interval(row.get(3)).unwrap(),
-									stability_delay: parse_interval(row.get(4)).unwrap(),
-									reprocessing_period: parse_interval(row.get(5)).unwrap(),
-									sources: sources,
-									fingerprint_function: row.get(6),
-								    };
-								    HttpResponse::Ok().json(materialization)
-								}
-							    }
-							}
-						    }
-						}
-					    }
-					}
-				    }
-				}
-			    }
+			Err(e) => HttpResponse::NotFound().body("Creation reported as succeeded, but could not find created view materialization afterward: " + &e.to_string()),
+			Ok(row) => {
+			    let mut sources: Vec<TrendMaterializationSource> = vec![];
+			    for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&vm_id],).await.unwrap()
+			    {
+				let source = TrendMaterializationSource {
+				    trend_store_part: inner_row.get(0),
+				    mapping_function: inner_row.get(1),
+				};
+				sources.push(source)
+			    };
+			    
+			    let materialization = TrendViewMaterialization {
+				id: row.get(0),
+				materialization_id: row.get(1),
+				target_trend_store_part: row.get(3),
+				enabled: row.get(7),
+				processing_delay: parse_interval(row.get(4)).unwrap(),
+				stability_delay: parse_interval(row.get(5)).unwrap(),
+				reprocessing_period: parse_interval(row.get(6)).unwrap(),
+				sources: sources,
+				view: row.get(2),
+				fingerprint_function: row.get(8),
+			    };
+
+			    HttpResponse::Ok().json(materialization)
 			}
 		    }
 		}
@@ -381,3 +337,5 @@ pub(super) async fn post_trend_view_materialization(
 	}
     }
 }
+
+
