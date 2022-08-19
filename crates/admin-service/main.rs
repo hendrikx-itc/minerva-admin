@@ -11,8 +11,7 @@ use trendmaterialization::{
     get_trend_function_materialization, get_trend_function_materializations,
     get_trend_view_materialization, get_trend_view_materializations,
     post_trend_view_materialization,
-    TrendFunctionMaterialization, TrendMaterializationSource, TrendViewMaterialization,
-    TrendViewMaterializationData,
+    TrendFunctionMaterialization, TrendMaterializationSourceData, TrendViewMaterializationFull, TrendViewMaterializationData,
 };
 
 mod trendstore;
@@ -48,7 +47,7 @@ async fn main() -> std::io::Result<()> {
 	    entitytype::get_entity_types,
 	    entitytype::get_entity_type,
         ),
-        components(TrendMaterializationSource, TrendViewMaterialization, TrendFunctionMaterialization,
+        components(TrendMaterializationSourceData, TrendViewMaterializationFull, TrendFunctionMaterialization,
 		   TrendViewMaterializationData,
 		   Trend, GeneratedTrend, TrendStorePart, TrendStore, DataSource, EntityType),
         tags(

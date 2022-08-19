@@ -6,26 +6,43 @@ use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use actix_web::{get, post, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
-
 use utoipa::Component;
 
 use minerva::interval::parse_interval;
-use minerva::trend_materialization;
+use minerva::trend_materialization::{TrendViewMaterialization, TrendMaterialization, AddTrendMaterialization, TrendMaterializationSource};
+use minerva::change::Change;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct TrendMaterializationSource {
+pub struct TrendMaterializationSourceData {
     pub trend_store_part: i32,
     pub mapping_function: String,
+}
+
+impl TrendMaterializationSourceData {
+    fn as_minerva(&self) -> TrendMaterializationSource {
+	TrendMaterializationSource {
+	    trend_store_part: self.trend_store_part.to_string(),
+	    mapping_function: self.mapping_function.to_string(),
+	}
+    }
+}
+
+fn as_minerva(sources: &Vec<TrendMaterializationSourceData>) ->  Vec<TrendMaterializationSource> {
+    let mut result: Vec<TrendMaterializationSource> = vec![];
+    for source in sources {
+	result.push(source.as_minerva())
+    };
+    result
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
 struct TrendMaterializationSourceIdentifier {
     materialization: i32,
-    source: TrendMaterializationSource,
+    source: TrendMaterializationSourceData,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct TrendViewMaterialization {
+pub struct TrendViewMaterializationFull {
     pub id: i32,
     pub materialization_id: i32,
     pub target_trend_store_part: i32,
@@ -36,7 +53,7 @@ pub struct TrendViewMaterialization {
     pub stability_delay: Duration,
     #[serde(with = "humantime_serde")]
     pub reprocessing_period: Duration,
-    pub sources: Vec<TrendMaterializationSource>,
+    pub sources: Vec<TrendMaterializationSourceData>,
     pub view: String,
     pub fingerprint_function: String,
 }
@@ -52,8 +69,59 @@ pub struct TrendFunctionMaterialization {
     pub stability_delay: Duration,
     #[serde(with = "humantime_serde")]
     pub reprocessing_period: Duration,
-    pub sources: Vec<TrendMaterializationSource>,
+    pub sources: Vec<TrendMaterializationSourceData>,
     pub fingerprint_function: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct TrendViewMaterializationData {
+    pub target_trend_store_part: i32,
+    pub enabled: bool,
+    #[serde(with = "humantime_serde")]
+    pub processing_delay: Duration,
+    #[serde(with = "humantime_serde")]
+    pub stability_delay: Duration,
+    #[serde(with = "humantime_serde")]
+    pub reprocessing_period: Duration,
+    pub sources: Vec<TrendMaterializationSourceData>,
+    pub view: String,
+    pub fingerprint_function: String,
+}
+
+impl TrendViewMaterializationData {
+    fn as_minerva(&self) -> TrendMaterialization {
+	let sources = as_minerva(&(self.sources));
+	TrendMaterialization::View(TrendViewMaterialization {
+	    target_trend_store_part: self.target_trend_store_part.to_string(),
+	    enabled: self.enabled,
+	    processing_delay: self.processing_delay,
+	    stability_delay: self.stability_delay,
+	    reprocessing_period: self.reprocessing_period,
+	    sources: sources,
+	    view: self.view.to_string(),
+	    fingerprint_function: self.fingerprint_function.to_string(),
+	}
+	)
+    }
+}
+
+impl TrendViewMaterializationFull {
+    fn data(&self) -> TrendViewMaterializationData {
+	TrendViewMaterializationData {
+	    target_trend_store_part: self.target_trend_store_part,
+	    enabled: self.enabled,
+	    processing_delay: self.processing_delay,
+	    stability_delay: self.stability_delay,
+	    reprocessing_period: self.reprocessing_period,
+	    sources: self.sources.to_vec(),
+	    view: self.view.to_string(),
+	    fingerprint_function: self.fingerprint_function.to_string(),
+	}
+    }
+
+    fn as_minerva(&self) -> TrendMaterialization {
+	self.data().as_minerva()
+    }
 }
 
 /// Get list of trend view materializations.
@@ -66,14 +134,14 @@ pub struct TrendFunctionMaterialization {
 /// ```
 #[utoipa::path(
     responses(
-        (status = 200, description = "List current trend view materialization items", body = [TrendViewMaterialization])
+        (status = 200, description = "List current trend view materialization items", body = [TrendViewMaterializationFull])
     )
 )]
 #[get("/trend-view-materializations")]
 pub(super) async fn get_trend_view_materializations(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> impl Responder {
-    let mut m: Vec<TrendViewMaterialization> = vec![];
+    let mut m: Vec<TrendViewMaterializationFull> = vec![];
     let client = pool.get().await.unwrap();
 
     let mut sources: Vec<TrendMaterializationSourceIdentifier> = vec![];
@@ -81,7 +149,7 @@ pub(super) async fn get_trend_view_materializations(
     {
 	let source = TrendMaterializationSourceIdentifier {
 	    materialization: row.get(0),
-	    source: TrendMaterializationSource {
+	    source: TrendMaterializationSourceData {
 		trend_store_part: row.get(1),
 		mapping_function: row.get(2),
 	    },
@@ -93,7 +161,7 @@ pub(super) async fn get_trend_view_materializations(
     {
 	let mat_id: i32 = row.get(1);
 
-	let mut this_sources: Vec<TrendMaterializationSource> = vec![];
+	let mut this_sources: Vec<TrendMaterializationSourceData> = vec![];
 	for source in &sources
 	{
 	    if source.materialization == mat_id {
@@ -101,7 +169,7 @@ pub(super) async fn get_trend_view_materializations(
 	    }
 	}
 
-	let materialization = TrendViewMaterialization {
+	let materialization = TrendViewMaterializationFull {
 	    id: row.get(0),
 	    materialization_id: row.get(1),
 	    target_trend_store_part: row.get(3),
@@ -122,7 +190,7 @@ pub(super) async fn get_trend_view_materializations(
 
 #[utoipa::path(
     responses(
-	(status = 200, description = "Get a specific view materialization", body = TrendViewMaterialization),
+	(status = 200, description = "Get a specific view materialization", body = TrendViewMaterializationFull),
 	(status = 404, description = "View materialization not found", body = String)
     )
 )]
@@ -139,17 +207,17 @@ pub(super) async fn get_trend_view_materialization(
 
     match query_result {
         Ok(row) => {
-            let mut sources: Vec<TrendMaterializationSource> = vec![];
+            let mut sources: Vec<TrendMaterializationSourceData> = vec![];
             for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&vm_id],).await.unwrap()
 	    {
-		let source = TrendMaterializationSource {
+		let source = TrendMaterializationSourceData {
 		    trend_store_part: inner_row.get(0),
 		    mapping_function: inner_row.get(1),
 		};
 		sources.push(source)
 	    };
 
-            let materialization = TrendViewMaterialization {
+            let materialization = TrendViewMaterializationFull {
                 id: row.get(0),
                 materialization_id: row.get(1),
                 target_trend_store_part: row.get(3),
@@ -188,7 +256,7 @@ pub(super) async fn get_trend_function_materializations(
     {
 	let source = TrendMaterializationSourceIdentifier {
 	    materialization: row.get(0),
-	    source: TrendMaterializationSource {
+	    source: TrendMaterializationSourceData {
 		trend_store_part: row.get(1),
 		mapping_function: row.get(2),
 	    },
@@ -200,7 +268,7 @@ pub(super) async fn get_trend_function_materializations(
     {
 	let mat_id: i32 = row.get(1);
 
-	let mut this_sources: Vec<TrendMaterializationSource> = vec![];
+	let mut this_sources: Vec<TrendMaterializationSourceData> = vec![];
 	for source in &sources
 	{
 	    if source.materialization == mat_id {
@@ -244,10 +312,10 @@ pub(super) async fn get_trend_function_materialization(
 
     match query_result {
         Ok(row) => {
-            let mut sources: Vec<TrendMaterializationSource> = vec![];
+            let mut sources: Vec<TrendMaterializationSourceData> = vec![];
             for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&fm_id],).await.unwrap()
 	    {
-		let source = TrendMaterializationSource {
+		let source = TrendMaterializationSourceData {
 		    trend_store_part: inner_row.get(0),
 		    mapping_function: inner_row.get(1),
 		};
@@ -277,7 +345,7 @@ pub(super) async fn get_trend_function_materialization(
 // To call this with curl:
 // first: DROP TABLE trend."u2020-4g-pm_v-site_lcs_1w_staging";
 //        DELETE FROM trend_directory.materialization;
-// curl -H "Content-Type: application/json" -X POST -d '{"target_trend_store_part":668,"enabled":true,"processing_delay":"30m","stability_delay":"5m","reprocessing_period":"3days","sources":[{"trend_store_part": 5, "mapping_function": "trend.mapping_id(timestamp with time zone)"}, {"trend_store_part": 6, "mapping_function": "trend.mapping_id(timestamp with time zone)"}],"view":"SELECT r.target_id AS entity_id, t.\"timestamp\", sum(t.samples) AS samples, sum(t.\"L.LCS.EcidMeas.Req\") AS \"L.LCS.EcidMeas.Req\", sum(t.\"L.LCS.EcidMeas.Succ\") AS \"L.LCS.EcidMeas.Succ\", sum(t.\"L.LCS.OTDOAInterFreqRSTDMeas.Succ\") AS \"L.LCS.OTDOAInterFreqRSTDMeas.Succ\" FROM (trend.\"u2020-4g-pm_Cell_lcs_1w\" t JOIN relation.\"Cell->v-site\" r ON (t.entity_id = r.source_id)) GROUP BY t.\"timestamp\", r.target_id;", "fingerprint_function":"SELECT modified.last, \'{}\'::jsonb FROM trend_directory.modified JOIN trend_directory.trend_store_part ttsp ON ttsp.id = modified.trend_store_part_id WHERE modified.timestamp = $1;"}' localhost:8080/trend-view-materializations/new
+// curl -H "Content-Type: application/json" -X POST -d '{"target_trend_store_part":668,"enabled":true,"processing_delay":"30m","stability_delay":"5m","reprocessing_period":"3days","sources":[{"trend_store_part": 5, "mapping_function": "trend.mapping_id(timestamp with time zone)"}, {"trend_store_part": 6, "mapping_function": "trend.mapping_id(timestamp with time zone)"}],"view":"SELECT r.target_id AS entity_id, t.\"timestamp\", sum(t.samples) AS samples, sum(t.\"L.LCS.EcidMeas.Req\") AS \"L.LCS.EcidMeas.Req\", sum(t.\"L.LCS.EcidMeas.Succ\") AS \"L.LCS.EcidMeas.Succ\", sum(t.\"L.LCS.OTDOAInterFreqRSTDMeas.Succ\") AS \"L.LCS.OTDOAInterFreqRSTDMeas.Succ\" FROM (trend.\"u2020-4g-pm_Cell_lcs_1w\" t JOIN relation.\"Cell->v-site\" r ON (t.entity_id = r.source_id)) GROUP BY t.\"timestamp\", r.target_id;", "fingerprint_function":"SELECT modified.last, '\''{}'\''::jsonb FROM trend_directory.modified JOIN trend_directory.trend_store_part ttsp ON ttsp.id = modified.trend_store_part_id WHERE modified.timestamp = $1;"}' localhost:8080/trend-view-materializations/new
 
 #[utoipa::path(
     responses(
@@ -290,34 +358,36 @@ pub(super) async fn post_trend_view_materialization(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> impl Responder {
-    let input: Result<minerva::trend_materialization::TrendViewMaterialization, serde_json::Error> = serde_json::from_str(&post);
+    let input: Result<TrendViewMaterializationData, serde_json::Error> = serde_json::from_str(&post);
     match input {
 	Err(e) => HttpResponse::BadRequest().body(e.to_string()),
 	Ok(data) => {
-	    let client = pool.get().await.unwrap();
-	    let action = minerva::ÄddTrendMaterialization {
-		trend_materialization: data
-	    }
-	    let result = AddTrendMaterialization.apply(client).await;
+	    let mut client = pool.get().await.unwrap();
+	    let action = AddTrendMaterialization {
+		trend_materialization: data.as_minerva(),
+	    };
+	    let result = action.apply(&mut client).await;
 	    match result {
 		Err(e) => HttpResponse::Conflict().body(e.to_string()),
 		Ok(_) => {
 		    let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, dst_trend_store_part_id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE dst_trend_store_part_id = $1", &[&data.target_trend_store_part],).await;
-		    match result {
-			Err(e) => HttpResponse::NotFound().body("Creation reported as succeeded, but could not find created view materialization afterward: " + &e.to_string()),
+		    match query_result {
+			Err(e) => HttpResponse::NotFound().body("Creation reported as succeeded, but could not find created view materialization afterward: ".to_owned() + &e.to_string()),
 			Ok(row) => {
-			    let mut sources: Vec<TrendMaterializationSource> = vec![];
-			    for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&vm_id],).await.unwrap()
+			    let mut sources: Vec<TrendMaterializationSourceData> = vec![];
+			    let id: i32 = row.get(0);
+			    for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&id],).await.unwrap()
 			    {
-				let source = TrendMaterializationSource {
-				    trend_store_part: inner_row.get(0),
+				let source = TrendMaterializationSourceData {
+				    trend_store_part
+					: inner_row.get(0),
 				    mapping_function: inner_row.get(1),
 				};
 				sources.push(source)
 			    };
 			    
-			    let materialization = TrendViewMaterialization {
-				id: row.get(0),
+			    let materialization = TrendViewMaterializationFull {
+				id: id,
 				materialization_id: row.get(1),
 				target_trend_store_part: row.get(3),
 				enabled: row.get(7),
