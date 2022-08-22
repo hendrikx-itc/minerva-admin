@@ -11,6 +11,7 @@ use utoipa::Component;
 use minerva::interval::parse_interval;
 use minerva::trend_materialization::{TrendViewMaterialization, TrendMaterialization, AddTrendMaterialization, TrendMaterializationSource};
 use minerva::change::Change;
+use tokio_postgres::Client;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
 pub struct TrendMaterializationSourceData {
@@ -89,19 +90,25 @@ pub struct TrendViewMaterializationData {
 }
 
 impl TrendViewMaterializationData {
-    fn as_minerva(&self) -> TrendMaterialization {
+    async fn as_minerva(&self, client: &mut Client) -> Result<TrendMaterialization, String> {
 	let sources = as_minerva(&(self.sources));
-	TrendMaterialization::View(TrendViewMaterialization {
-	    target_trend_store_part: self.target_trend_store_part.to_string(),
-	    enabled: self.enabled,
-	    processing_delay: self.processing_delay,
-	    stability_delay: self.stability_delay,
-	    reprocessing_period: self.reprocessing_period,
-	    sources: sources,
-	    view: self.view.to_string(),
-	    fingerprint_function: self.fingerprint_function.to_string(),
+	let query_result = client.query_one("SELECT e::text FROM trend_directory.trend_store_part e WHERE id = $1", &[&self.target_trend_store_part]).await;
+	match query_result {
+	    Ok(row) => Ok(
+		TrendMaterialization::View(TrendViewMaterialization {
+		    target_trend_store_part: row.get(0),
+		    enabled: self.enabled,
+		    processing_delay: self.processing_delay,
+		    stability_delay: self.stability_delay,
+		    reprocessing_period: self.reprocessing_period,
+		    sources: sources,
+		    view: self.view.to_string(),
+		    fingerprint_function: self.fingerprint_function.to_string(),
+		}
+		)
+	    ),
+	    Err(e) => Err(e.to_string())
 	}
-	)
     }
 }
 
@@ -119,8 +126,8 @@ impl TrendViewMaterializationFull {
 	}
     }
 
-    fn as_minerva(&self) -> TrendMaterialization {
-	self.data().as_minerva()
+    async fn as_minerva(&self, client: &mut Client) -> Result<TrendMaterialization, String> {
+	self.data().as_minerva(client).await
     }
 }
 
@@ -350,7 +357,9 @@ pub(super) async fn get_trend_function_materialization(
 #[utoipa::path(
     responses(
 	(status = 200, description = "Create a new view materialization", body = TrendFunctionMaterialization),
-	(status = 400, description = "Missing or incorrect data", body = String),
+	(status = 400, description = "Missing or incorrect data, or command not understood", body = String),
+	(status = 404, description = "Attempt to create materialization for non-existing trend store part or similar, or materialization cannot be found after creation", body = String),
+	(status = 409, description = "View materialization cannot be created with these data", body = String),
     )
 )]
 #[post("/trend-view-materializations/new")]
@@ -363,43 +372,46 @@ pub(super) async fn post_trend_view_materialization(
 	Err(e) => HttpResponse::BadRequest().body(e.to_string()),
 	Ok(data) => {
 	    let mut client = pool.get().await.unwrap();
-	    let action = AddTrendMaterialization {
-		trend_materialization: data.as_minerva(),
-	    };
-	    let result = action.apply(&mut client).await;
-	    match result {
-		Err(e) => HttpResponse::Conflict().body(e.to_string()),
-		Ok(_) => {
-		    let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, dst_trend_store_part_id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE dst_trend_store_part_id = $1", &[&data.target_trend_store_part],).await;
-		    match query_result {
-			Err(e) => HttpResponse::NotFound().body("Creation reported as succeeded, but could not find created view materialization afterward: ".to_owned() + &e.to_string()),
-			Ok(row) => {
-			    let mut sources: Vec<TrendMaterializationSourceData> = vec![];
-			    let id: i32 = row.get(0);
-			    for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&id],).await.unwrap()
-			    {
-				let source = TrendMaterializationSourceData {
-				    trend_store_part
-					: inner_row.get(0),
-				    mapping_function: inner_row.get(1),
-				};
-				sources.push(source)
-			    };
-			    
-			    let materialization = TrendViewMaterializationFull {
-				id: id,
-				materialization_id: row.get(1),
-				target_trend_store_part: row.get(3),
-				enabled: row.get(7),
-				processing_delay: parse_interval(row.get(4)).unwrap(),
-				stability_delay: parse_interval(row.get(5)).unwrap(),
-				reprocessing_period: parse_interval(row.get(6)).unwrap(),
-				sources: sources,
-				view: row.get(2),
-				fingerprint_function: row.get(8),
-			    };
-
-			    HttpResponse::Ok().json(materialization)
+	    let materialization_query = data.as_minerva(&mut client).await;
+	    match materialization_query {
+		Err(e) => HttpResponse::NotFound().body(e.to_string()),
+		Ok(materialization) => {
+		    let action = AddTrendMaterialization {
+			trend_materialization: materialization
+		    };
+		    let result = action.apply(&mut client).await;
+		    match result {
+			Err(e) => HttpResponse::Conflict().body(e.to_string()),
+			Ok(_) => {
+			    match query_result {
+				Err(e) => HttpResponse::NotFound().body("Creation reported as succeeded, but could not find created view materialization afterward: ".to_owned() + &e.to_string()),
+				Ok(row) => {
+				    let mut sources: Vec<TrendMaterializationSourceData> = vec![];
+				    let id: i32 = row.get(0);
+				    for inner_row in client.query("SELECT trend_store_part_id, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&id],).await.unwrap()
+				    {
+					let source = TrendMaterializationSourceData {
+					    trend_store_part
+						: inner_row.get(0),
+					    mapping_function: inner_row.get(1),
+					};
+					sources.push(source)
+				    };
+				    let materialization = TrendViewMaterializationFull {
+					id: id,
+					materialization_id: row.get(1),
+					target_trend_store_part: row.get(3),
+					enabled: row.get(7),
+					processing_delay: parse_interval(row.get(4)).unwrap(),
+					stability_delay: parse_interval(row.get(5)).unwrap(),
+					reprocessing_period: parse_interval(row.get(6)).unwrap(),
+					sources: sources,
+					view: row.get(2),
+					fingerprint_function: row.get(8),
+				    };
+				    HttpResponse::Ok().json(materialization)
+				}
+			    }
 			}
 		    }
 		}
