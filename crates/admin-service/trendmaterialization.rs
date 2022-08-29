@@ -3,7 +3,7 @@ use std::time::Duration;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{get, post, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{get, post, delete, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
 use utoipa::Component;
@@ -613,3 +613,76 @@ pub(super) async fn post_trend_function_materialization(
 }
 
 
+// curl -X DELETE localhost:8080/trend-view-materializations/1
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Deleted function materialization", body = String),
+	(status = 404, description = "Function materialization not found", body = String),
+	(status = 500, description = "Deletion failed fully or partially", body = String)
+    )
+)]
+#[delete("/trend-view-materializations/{id}")]
+pub(super) async fn delete_trend_view_materialization(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    id: Path<i32>,
+) -> impl Responder {
+    let vm_id = id.into_inner();
+    let client = pool.get().await.unwrap();
+    let query_result = client.query_one("SELECT materialization_id FROM trend_directory.view_materialization WHERE id = $1", &[&vm_id],).await;
+    match query_result {
+	Err(e) => HttpResponse::NotFound().body("Trend view materialization not found: ".to_owned() + &e.to_string()),
+	Ok(row) =>
+	{
+	    let m_id: i32 = row.get(0);
+	    let result = client.execute("DELETE FROM trend_directory.view_materialization WHERE id = $1", &[&vm_id],).await;
+	    match result {
+		Err(e) => HttpResponse::InternalServerError().body("Deletion failed: ".to_owned() + &e.to_string()),
+		Ok(_) =>
+		{
+		    let result = client.execute("DELETE FROM trend_directory.materialization WHERE id = $1", &[&m_id],).await;
+		    match result {
+			Err(e) => HttpResponse::InternalServerError().body("Deletion partially failed: ".to_owned() + &e.to_string()),
+			Ok(_) => HttpResponse::Ok().body("View materialization deleted.")
+		    }
+		}
+	    }
+	}
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Deleted function materialization", body = String),
+	(status = 404, description = "Function materialization not found", body = String),
+	(status = 500, description = "Deletion failed fully or partially", body = String)
+    )
+)]
+#[delete("/trend-function-materializations/{id}")]
+pub(super) async fn delete_trend_function_materialization(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    id: Path<i32>,
+) -> impl Responder {
+    let fm_id = id.into_inner();
+    let client = pool.get().await.unwrap();
+    let query_result = client.query_one("SELECT materialization_id FROM trend_directory.function_materialization WHERE id = $1", &[&fm_id],).await;
+    match query_result {
+	Err(e) => HttpResponse::NotFound().body("Trend function materialization not found: ".to_owned() + &e.to_string()),
+	Ok(row) =>
+	{
+	    let m_id: i32 = row.get(0);
+	    let result = client.execute("DELETE FROM trend_directory.function_materialization WHERE id = $1", &[&fm_id],).await;
+	    match result {
+		Err(e) => HttpResponse::InternalServerError().body("Deletion failed: ".to_owned() + &e.to_string()),
+		Ok(_) =>
+		{
+		    let result = client.execute("DELETE FROM trend_directory.materialization WHERE id = $1", &[&m_id],).await;
+		    match result {
+			Err(e) => HttpResponse::InternalServerError().body("Deletion partially failed: ".to_owned() + &e.to_string()),
+			Ok(_) => HttpResponse::Ok().body("Function materialization deleted.")
+		    }
+		}
+	    }
+	}
+    }
+}

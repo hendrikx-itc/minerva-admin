@@ -11,6 +11,7 @@ use trendmaterialization::{
     get_trend_function_materialization, get_trend_function_materializations,
     get_trend_view_materialization, get_trend_view_materializations,
     post_trend_view_materialization, post_trend_function_materialization,
+    delete_trend_view_materialization, delete_trend_function_materialization,
     TrendMaterializationSourceData,
     TrendViewMaterializationFull, TrendFunctionMaterializationFull,
     TrendViewMaterializationData, TrendFunctionMaterializationData,
@@ -41,6 +42,8 @@ async fn main() -> std::io::Result<()> {
 	    trendmaterialization::get_trend_function_materialization,
 	    trendmaterialization::post_trend_view_materialization,
 	    trendmaterialization::post_trend_function_materialization,
+	    trendmaterialization::delete_trend_view_materialization,
+	    trendmaterialization::delete_trend_function_materialization,
 	    trendstore::get_trend_store_parts,
 	    trendstore::get_trend_store_part,
 	    trendstore::get_trend_stores,
@@ -83,6 +86,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_trend_function_materialization)
 	    .service(post_trend_view_materialization)
 	    .service(post_trend_function_materialization)
+	    .service(delete_trend_view_materialization)
+	    .service(delete_trend_function_materialization)
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
             .service(get_trend_stores)
