@@ -10,8 +10,10 @@ mod trendmaterialization;
 use trendmaterialization::{
     get_trend_function_materialization, get_trend_function_materializations,
     get_trend_view_materialization, get_trend_view_materializations,
-    post_trend_view_materialization,
-    TrendFunctionMaterialization, TrendMaterializationSourceData, TrendViewMaterializationFull, TrendViewMaterializationData,
+    post_trend_view_materialization, post_trend_function_materialization,
+    TrendMaterializationSourceData,
+    TrendViewMaterializationFull, TrendFunctionMaterializationFull,
+    TrendViewMaterializationData, TrendFunctionMaterializationData,
 };
 
 mod trendstore;
@@ -38,6 +40,7 @@ async fn main() -> std::io::Result<()> {
             trendmaterialization::get_trend_function_materializations,
 	    trendmaterialization::get_trend_function_materialization,
 	    trendmaterialization::post_trend_view_materialization,
+	    trendmaterialization::post_trend_function_materialization,
 	    trendstore::get_trend_store_parts,
 	    trendstore::get_trend_store_part,
 	    trendstore::get_trend_stores,
@@ -47,8 +50,9 @@ async fn main() -> std::io::Result<()> {
 	    entitytype::get_entity_types,
 	    entitytype::get_entity_type,
         ),
-        components(TrendMaterializationSourceData, TrendViewMaterializationFull, TrendFunctionMaterialization,
-		   TrendViewMaterializationData,
+        components(TrendMaterializationSourceData,
+		   TrendViewMaterializationFull, TrendFunctionMaterializationFull,
+		   TrendViewMaterializationData, TrendFunctionMaterializationData,
 		   Trend, GeneratedTrend, TrendStorePart, TrendStore, DataSource, EntityType),
         tags(
             (name = "Trend Materialization", description = "Trend materialization management endpoints.")
@@ -78,6 +82,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_trend_function_materializations)
             .service(get_trend_function_materialization)
 	    .service(post_trend_view_materialization)
+	    .service(post_trend_function_materialization)
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
             .service(get_trend_stores)
