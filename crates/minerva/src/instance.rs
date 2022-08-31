@@ -105,7 +105,7 @@ impl MinervaInstance {
         if let Some(instance_root) = &self.instance_root {
             initialize_custom(
                 client,
-                &format!("{}/custom/post-init/*", instance_root.to_string_lossy()),
+                &format!("{}/custom/post-init/*/*", instance_root.to_string_lossy()),
             )
             .await
         }
@@ -513,82 +513,82 @@ async fn initialize_custom<'a>(client: &'a mut Client, glob_pattern: &'a str) {
             Ok(path) => {
                 if path.is_dir() {
                     println!("Directory '{}'", &path.to_string_lossy());
-                }
-
-                match path.extension() {
-                    Some(ext) => {
-                        let ext_str = ext.to_str().unwrap_or("");
-                        match ext_str {
-                            "sql" => match load_sql(client, &path).await {
-                                Ok(_) => println!("Executed sql '{}'", &path.to_string_lossy()),
-                                Err(e) => {
-                                    println!(
-                                        "Error executing sql '{}': {}",
-                                        &path.to_string_lossy(),
-                                        e
-                                    )
-                                }
-                            },
-                            "psql" => match load_psql(&path) {
-                                Ok(msg) => {
-                                    println!(
-                                        "Executed '{}' with psql: {}",
-                                        &path.to_string_lossy(),
-                                        msg
-                                    )
-                                }
-                                Err(e) => {
-                                    println!(
-                                        "Error executing '{}' with psql: {}",
-                                        &path.to_string_lossy(),
-                                        e
-                                    )
-                                }
-                            },
-                            _ => {
-                                let metadata_result = path.metadata();
-
-                                match metadata_result {
+                } else {
+                    match path.extension() {
+                        Some(ext) => {
+                            let ext_str = ext.to_str().unwrap_or("");
+                            match ext_str {
+                                "sql" => match load_sql(client, &path).await {
+                                    Ok(_) => println!("Executed sql '{}'", &path.to_string_lossy()),
                                     Err(e) => {
                                         println!(
-                                            "Error retrieving meta data for '{}': {}",
+                                            "Error executing sql '{}': {}",
                                             &path.to_string_lossy(),
                                             e
                                         )
                                     }
-                                    Ok(metadata) => {
-                                        if (metadata.permissions().mode() & 0o111) != 0 {
-                                            match execute_custom(&path) {
-                                                Ok(msg) => {
-                                                    println!(
-                                                        "Executed '{}': {}",
-                                                        &path.to_string_lossy(),
-                                                        msg
-                                                    )
-                                                }
-                                                Err(e) => {
-                                                    println!(
-                                                        "Error executing '{}': {}",
-                                                        &path.to_string_lossy(),
-                                                        e
-                                                    )
-                                                }
-                                            }
-                                        } else {
+                                },
+                                "psql" => match load_psql(&path) {
+                                    Ok(msg) => {
+                                        println!(
+                                            "Executed '{}' with psql: {}",
+                                            &path.to_string_lossy(),
+                                            msg
+                                        )
+                                    }
+                                    Err(e) => {
+                                        println!(
+                                            "Error executing '{}' with psql: {}",
+                                            &path.to_string_lossy(),
+                                            e
+                                        )
+                                    }
+                                },
+                                _ => {
+                                    let metadata_result = path.metadata();
+    
+                                    match metadata_result {
+                                        Err(e) => {
                                             println!(
-                                                "Skipping non-executable file '{}'",
-                                                path.to_string_lossy()
-                                            );
+                                                "Error retrieving meta data for '{}': {}",
+                                                &path.to_string_lossy(),
+                                                e
+                                            )
+                                        }
+                                        Ok(metadata) => {
+                                            if (metadata.permissions().mode() & 0o111) != 0 {
+                                                match execute_custom(&path) {
+                                                    Ok(msg) => {
+                                                        println!(
+                                                            "Executed '{}': {}",
+                                                            &path.to_string_lossy(),
+                                                            msg
+                                                        )
+                                                    }
+                                                    Err(e) => {
+                                                        println!(
+                                                            "Error executing '{}': {}",
+                                                            &path.to_string_lossy(),
+                                                            e
+                                                        )
+                                                    }
+                                                }
+                                            } else {
+                                                println!(
+                                                    "Skipping non-executable file '{}'",
+                                                    path.to_string_lossy()
+                                                );
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                    None => {
-                        println!(
-                            "A file without an extension should not have matched the glob patterns",
-                        )
+                        None => {
+                            println!(
+                                "A file without an extension should not have matched the glob patterns",
+                            )
+                        }
                     }
                 }
             }
