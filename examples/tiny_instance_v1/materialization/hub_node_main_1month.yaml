@@ -11,7 +11,7 @@ function:
     TABLE (
       "entity_id" integer,
       "timestamp" timestamp with time zone,
-      "freq_power" numeric[],
+      "freq_power" numeric,
       "inside_temp" numeric,
       "outside_temp" numeric,
       "power_kwh" numeric,
@@ -23,7 +23,7 @@ function:
         SELECT
           entity_id,
           $2 AS timestamp,
-          SUM(t."freq_power")::numeric[] AS "freq_power",
+          SUM(t."freq_power")::numeric AS "freq_power",
           SUM(t."inside_temp")::numeric AS "inside_temp",
           SUM(t."outside_temp")::numeric AS "outside_temp",
           SUM(t."power_kwh")::numeric AS "power_kwh",

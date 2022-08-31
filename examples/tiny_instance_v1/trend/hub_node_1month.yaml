@@ -7,7 +7,7 @@ parts:
 - name: hub_node_main_1month
   trends:
   - name: freq_power
-    data_type: numeric[]
+    data_type: numeric
     description: ''
     time_aggregation: SUM
     entity_aggregation: SUM
