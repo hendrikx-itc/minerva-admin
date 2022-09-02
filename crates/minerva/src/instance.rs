@@ -85,7 +85,7 @@ impl MinervaInstance {
         if let Some(instance_root) = &self.instance_root {
             initialize_custom(
                 client,
-                &format!("{}/custom/pre-init/*/*", instance_root.to_string_lossy()),
+                &format!("{}/custom/pre-init/**/*", instance_root.to_string_lossy()),
             )
             .await
         }
@@ -105,7 +105,7 @@ impl MinervaInstance {
         if let Some(instance_root) = &self.instance_root {
             initialize_custom(
                 client,
-                &format!("{}/custom/post-init/*/*", instance_root.to_string_lossy()),
+                &format!("{}/custom/post-init/**/*", instance_root.to_string_lossy()),
             )
             .await
         }
