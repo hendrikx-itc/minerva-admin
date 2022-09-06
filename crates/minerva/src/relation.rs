@@ -6,9 +6,8 @@ use tokio_postgres::Client;
 
 use async_trait::async_trait;
 
-use crate::change::ChangeResult;
+use crate::change::{Change, ChangeResult, ChangeStep};
 
-use super::change::Change;
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -61,6 +60,7 @@ pub fn load_relation_from_file(path: &PathBuf) -> Result<Relation, Error> {
     }
 }
 
+#[derive(Clone)]
 pub struct AddRelation {
     pub relation: Relation,
 }
@@ -72,7 +72,7 @@ impl fmt::Display for AddRelation {
 }
 
 #[async_trait]
-impl Change for AddRelation {
+impl ChangeStep for AddRelation {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = format!(
             "CREATE MATERIALIZED VIEW relation.\"{}\" AS {}",
@@ -91,6 +91,16 @@ impl Change for AddRelation {
             .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {}", e)))?;
 
         Ok(format!("Added relation {}", &self.relation))
+    }
+}
+
+#[async_trait]
+impl Change for AddRelation {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 

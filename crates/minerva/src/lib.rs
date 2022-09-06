@@ -1,5 +1,6 @@
 pub mod attribute_store;
 pub mod change;
+pub mod dependency;
 pub mod error;
 pub mod instance;
 pub mod interval;

@@ -7,6 +7,9 @@ use glob::glob;
 
 use tokio_postgres::Client;
 
+use crate::change::ChangeResult;
+use crate::error::RuntimeError;
+
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
 use super::error::Error;
@@ -193,9 +196,11 @@ impl MinervaInstance {
         for change in changes {
             println!("* {}", change);
 
-            match change.apply(client).await {
-                Ok(message) => println!("> {}", &message),
-                Err(err) => println!("! Error applying change: {}", &err),
+            for step in change.create_steps(client).await? {
+                match step.apply(client).await {
+                    Ok(message) => println!("> {}", &message),
+                    Err(err) => println!("! Error applying change: {}", &err),
+                }
             }
         }
 
@@ -204,7 +209,7 @@ impl MinervaInstance {
             let result = materialization.update(client).await;
 
             if let Err(e) = result {
-                println!("Erro updating trend materialization: {}", e);
+                println!("Error updating trend materialization: {}", e);
             }
         }
 
@@ -251,23 +256,28 @@ fn load_attribute_stores_from(
         })
 }
 
-async fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec<AttributeStore>) {
+async fn initialize_attribute_stores(
+    client: &mut Client,
+    attribute_stores: &Vec<AttributeStore>,
+) -> ChangeResult {
     for attribute_store in attribute_stores {
         let change = AddAttributeStore {
             attribute_store: attribute_store.clone(),
         };
 
-        let result = change.apply(client).await;
-
-        match result {
-            Ok(message) => {
-                println!("{}", message);
-            }
-            Err(e) => {
-                println!("Error creating attribute store: {}", e);
+        for step in change.create_steps(client).await? {
+            match step.apply(client).await {
+                Ok(message) => {
+                    println!("{}", message);
+                }
+                Err(e) => {
+                    println!("Error creating attribute store: {}", e);
+                }
             }
         }
     }
+
+    Ok("Created attribute stores".to_string())
 }
 
 fn load_notification_stores_from(
@@ -294,21 +304,25 @@ fn load_notification_stores_from(
 async fn initialize_notification_stores(
     client: &mut Client,
     notification_stores: &Vec<NotificationStore>,
-) {
+) -> ChangeResult {
     for notification_store in notification_stores {
         let change = AddNotificationStore {
             notification_store: notification_store.clone(),
         };
 
-        match change.apply(client).await {
-            Ok(message) => {
-                println!("{}", message);
-            }
-            Err(e) => {
-                println!("Error creating notification store: {}", e);
+        for step in change.create_steps(client).await? {
+            match step.apply(client).await {
+                Ok(message) => {
+                    println!("{}", message);
+                }
+                Err(e) => {
+                    println!("Error creating notification store: {}", e);
+                }
             }
         }
     }
+
+    Ok("Created notification stores".to_string())
 }
 
 fn load_trend_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = TrendStore> {
@@ -338,21 +352,28 @@ fn load_trend_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = 
         })
 }
 
-async fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendStore>) {
+async fn initialize_trend_stores(
+    client: &mut Client,
+    trend_stores: &Vec<TrendStore>,
+) -> ChangeResult {
     for trend_store in trend_stores {
         let change = AddTrendStore {
             trend_store: trend_store.clone(),
         };
 
-        match change.apply(client).await {
-            Ok(message) => {
-                println!("{}", message);
-            }
-            Err(e) => {
-                println!("Error creating trend store: {}", e);
+        for step in change.create_steps(client).await? {
+            match step.apply(client).await {
+                Ok(message) => {
+                    println!("{}", message);
+                }
+                Err(e) => {
+                    println!("Error creating trend store: {}", e);
+                }
             }
         }
     }
+
+    Ok("Created trend stores".to_string())
 }
 
 fn load_virtual_entities_from(minerva_instance_root: &Path) -> impl Iterator<Item = VirtualEntity> {
@@ -401,40 +422,54 @@ fn load_relations_from(minerva_instance_root: &Path) -> impl Iterator<Item = Rel
         })
 }
 
-async fn initialize_virtual_entities(client: &mut Client, virtual_entities: &Vec<VirtualEntity>) {
+async fn initialize_virtual_entities(
+    client: &mut Client,
+    virtual_entities: &Vec<VirtualEntity>,
+) -> ChangeResult {
     for virtual_entity in virtual_entities {
         let change: AddVirtualEntity = AddVirtualEntity::from(virtual_entity.clone());
 
-        match change.apply(client).await {
-            Ok(message) => println!("{}", message),
-            Err(e) => print!("Error creating virtual entity: {}", e),
+        for step in change.create_steps(client).await? {
+            match step.apply(client).await {
+                Ok(message) => println!("{}", message),
+                Err(e) => print!("Error creating virtual entity: {}", e),
+            }
         }
     }
+
+    Ok("Created virtual entities".to_string())
 }
 
-async fn initialize_relations(client: &mut Client, relations: &Vec<Relation>) {
+async fn initialize_relations(client: &mut Client, relations: &Vec<Relation>) -> ChangeResult {
     for relation in relations {
         let change: AddRelation = AddRelation::from(relation.clone());
 
-        match change.apply(client).await {
-            Ok(message) => println!("{}", message),
-            Err(e) => print!("Error creating relation: {}", e),
+        for step in change.create_steps(client).await? {
+            match step.apply(client).await {
+                Ok(message) => println!("{}", message),
+                Err(e) => print!("Error creating relation: {}", e),
+            }
         }
     }
+
+    Ok("Created relations".to_string())
 }
 
 async fn initialize_trend_materializations(
     client: &mut Client,
     trend_materializations: &Vec<TrendMaterialization>,
-) {
+) -> ChangeResult {
     for materialization in trend_materializations {
         let change = AddTrendMaterialization::from(materialization.clone());
 
-        match change.apply(client).await {
-            Ok(message) => println!("{}", message),
-            Err(e) => println!("Error creating trend materialization: {}", e),
+        for step in change.create_steps(client).await? {
+            step.apply(client).await.map_err(|e| {
+                RuntimeError::from_msg(format!("Error creating trend materialization: {}", e))
+            })?;
         }
     }
+
+    Ok("Created trend materialization".to_string())
 }
 
 async fn load_sql<'a>(client: &'a mut Client, path: &PathBuf) -> Result<(), String> {

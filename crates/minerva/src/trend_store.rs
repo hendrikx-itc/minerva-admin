@@ -13,7 +13,8 @@ use chrono::{DateTime, FixedOffset};
 
 use async_trait::async_trait;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, ChangeResult, ChangeStep};
+use super::dependency::{get_column_dependees, DropDependee};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
 
@@ -94,6 +95,7 @@ impl fmt::Display for Trend {
     }
 }
 
+#[derive(Clone)]
 pub struct RemoveTrends {
     pub trend_store_part: TrendStorePart,
     pub trends: Vec<String>,
@@ -127,7 +129,7 @@ impl fmt::Debug for RemoveTrends {
 }
 
 #[async_trait]
-impl Change for RemoveTrends {
+impl ChangeStep for RemoveTrends {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT trend_directory.remove_table_trend(table_trend) ",
@@ -156,6 +158,34 @@ impl Change for RemoveTrends {
     }
 }
 
+#[async_trait]
+impl Change for RemoveTrends {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        let mut steps: Vec<Box<dyn ChangeStep + Send>> = Vec::new();
+
+        for column in self.trends.iter() {
+            let dependees =
+                get_column_dependees(client, "trend", &self.trend_store_part.name, &column).await?;
+
+            for dependee in dependees.into_iter() {
+                let step = DropDependee {
+                    dependee
+                };
+
+                steps.push(Box::new(step));
+            }
+        }
+
+        steps.push(Box::new((*self).clone()));
+
+        Ok(steps)
+    }
+}
+
+#[derive(Clone)]
 pub struct AddTrends {
     pub trend_store_part: TrendStorePart,
     pub trends: Vec<Trend>,
@@ -189,7 +219,7 @@ impl fmt::Debug for AddTrends {
 }
 
 #[async_trait]
-impl Change for AddTrends {
+impl ChangeStep for AddTrends {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT trend_directory.create_table_trends(trend_store_part, $1) ",
@@ -211,6 +241,17 @@ impl Change for AddTrends {
     }
 }
 
+#[async_trait]
+impl Change for AddTrends {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
+    }
+}
+
+#[derive(Clone)]
 pub struct ModifyTrendDataType {
     pub trend_name: String,
     pub from_type: String,
@@ -232,6 +273,7 @@ impl fmt::Display for ModifyTrendDataType {
 ///
 /// The change of data types for multiple trends in a trend store part is
 /// grouped into one operation for efficiency purposes.
+#[derive(Clone)]
 pub struct ModifyTrendDataTypes {
     pub trend_store_part: TrendStorePart,
     pub modifications: Vec<ModifyTrendDataType>,
@@ -266,7 +308,7 @@ impl fmt::Debug for ModifyTrendDataTypes {
 }
 
 #[async_trait]
-impl Change for ModifyTrendDataTypes {
+impl ChangeStep for ModifyTrendDataTypes {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let transaction = client
             .transaction()
@@ -363,6 +405,16 @@ impl Change for ModifyTrendDataTypes {
             "Altered trend data types for trend store part '{}'",
             &self.trend_store_part.name
         ))
+    }
+}
+
+#[async_trait]
+impl Change for ModifyTrendDataTypes {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 
@@ -480,13 +532,14 @@ impl SanityCheck for TrendStorePart {
     }
 }
 
+#[derive(Clone)]
 pub struct AddTrendStorePart {
     trend_store: TrendStore,
     trend_store_part: TrendStorePart,
 }
 
 #[async_trait]
-impl Change for AddTrendStorePart {
+impl ChangeStep for AddTrendStorePart {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT trend_directory.create_trend_store_part(trend_store.id, $1) ",
@@ -520,6 +573,16 @@ impl Change for AddTrendStorePart {
             "Added trend store part '{}' to trend store '{}'",
             &self.trend_store_part.name, &self.trend_store
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddTrendStorePart {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 
@@ -761,6 +824,7 @@ pub async fn load_trend_stores(conn: &mut Client) -> Result<Vec<TrendStore>, Err
     Ok(trend_stores)
 }
 
+#[derive(Clone)]
 pub struct AddTrendStore {
     pub trend_store: TrendStore,
 }
@@ -772,7 +836,7 @@ impl fmt::Display for AddTrendStore {
 }
 
 #[async_trait]
-impl Change for AddTrendStore {
+impl ChangeStep for AddTrendStore {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT id ",
@@ -801,6 +865,16 @@ impl Change for AddTrendStore {
             .map_err(|e| DatabaseError::from_msg(format!("Error creating trend store: {}", e)))?;
 
         Ok(format!("Added trend store {}", &self.trend_store))
+    }
+}
+
+#[async_trait]
+impl Change for AddTrendStore {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 

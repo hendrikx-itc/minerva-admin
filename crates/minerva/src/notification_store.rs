@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 type PostgresName = String;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, ChangeResult, ChangeStep};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
@@ -24,6 +24,7 @@ fn default_empty_string() -> String {
     String::new()
 }
 
+#[derive(Clone)]
 pub struct AddAttributes {
     pub notification_store: NotificationStore,
     pub attributes: Vec<Attribute>,
@@ -40,7 +41,7 @@ impl fmt::Display for AddAttributes {
 }
 
 #[async_trait]
-impl Change for AddAttributes {
+impl ChangeStep for AddAttributes {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "with a as (",
@@ -74,6 +75,16 @@ impl Change for AddAttributes {
             "Added attributes to notification store '{}'",
             &self.notification_store
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddAttributes {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 
@@ -122,6 +133,7 @@ impl fmt::Display for NotificationStore {
     }
 }
 
+#[derive(Clone)]
 pub struct AddNotificationStore {
     pub notification_store: NotificationStore,
 }
@@ -133,7 +145,7 @@ impl fmt::Display for AddNotificationStore {
 }
 
 #[async_trait]
-impl Change for AddNotificationStore {
+impl ChangeStep for AddNotificationStore {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = format!(
             "SELECT notification_directory.create_notification_store($1::text, ARRAY[{}]::notification_directory.attr_def[])",
@@ -151,6 +163,16 @@ impl Change for AddNotificationStore {
             "Created attribute store '{}'",
             &self.notification_store
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddNotificationStore {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 

@@ -5,7 +5,7 @@ use std::{io::Read, path::PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio_postgres::Client;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, ChangeResult, ChangeStep};
 use super::error::{ConfigurationError, DatabaseError, Error};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,6 +45,7 @@ pub fn load_virtual_entity_from_file(path: &PathBuf) -> Result<VirtualEntity, Er
     Ok(virtual_entity)
 }
 
+#[derive(Clone)]
 pub struct AddVirtualEntity {
     pub virtual_entity: VirtualEntity,
 }
@@ -56,7 +57,7 @@ impl fmt::Display for AddVirtualEntity {
 }
 
 #[async_trait]
-impl Change for AddVirtualEntity {
+impl ChangeStep for AddVirtualEntity {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         client
             .batch_execute(&self.virtual_entity.sql)
@@ -66,6 +67,16 @@ impl Change for AddVirtualEntity {
             })?;
 
         Ok(format!("Added virtual entity {}", &self.virtual_entity))
+    }
+}
+
+#[async_trait]
+impl Change for AddVirtualEntity {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 

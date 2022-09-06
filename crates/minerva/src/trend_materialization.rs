@@ -12,7 +12,7 @@ use humantime::format_duration;
 
 use async_trait::async_trait;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, ChangeResult, ChangeStep};
 use super::error::{DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
 
@@ -203,18 +203,29 @@ impl TrendViewMaterialization {
     }
 }
 
+#[derive(Clone)]
 pub struct UpdateTrendViewMaterializationAttributes {
     pub trend_view_materialization: TrendViewMaterialization,
 }
 
 #[async_trait]
-impl Change for UpdateTrendViewMaterializationAttributes {
+impl ChangeStep for UpdateTrendViewMaterializationAttributes {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.trend_view_materialization
             .update_attributes(client)
             .await?;
 
         Ok("Updated attributes of view materialization".into())
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTrendViewMaterializationAttributes {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 
@@ -228,12 +239,13 @@ impl fmt::Display for UpdateTrendViewMaterializationAttributes {
     }
 }
 
+#[derive(Clone)]
 pub struct UpdateView {
     pub trend_view_materialization: TrendViewMaterialization,
 }
 
 #[async_trait]
-impl Change for UpdateView {
+impl ChangeStep for UpdateView {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.trend_view_materialization
             .drop_view(client)
@@ -248,6 +260,16 @@ impl Change for UpdateView {
             "Updated view {}",
             self.trend_view_materialization.view_name()
         ))
+    }
+}
+
+#[async_trait]
+impl Change for UpdateView {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 
@@ -635,6 +657,7 @@ pub async fn get_function_def(client: &mut Client, function: &str) -> Option<Str
     }
 }
 
+#[derive(Clone)]
 pub struct AddTrendMaterialization {
     pub trend_materialization: TrendMaterialization,
 }
@@ -650,7 +673,7 @@ impl fmt::Display for AddTrendMaterialization {
 }
 
 #[async_trait]
-impl Change for AddTrendMaterialization {
+impl ChangeStep for AddTrendMaterialization {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         match self.trend_materialization.create(client).await {
             Ok(_) => Ok(format!(
@@ -667,6 +690,16 @@ impl Change for AddTrendMaterialization {
     }
 }
 
+#[async_trait]
+impl Change for AddTrendMaterialization {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
+    }
+}
+
 impl From<TrendMaterialization> for AddTrendMaterialization {
     fn from(trend_materialization: TrendMaterialization) -> Self {
         AddTrendMaterialization {
@@ -675,6 +708,7 @@ impl From<TrendMaterialization> for AddTrendMaterialization {
     }
 }
 
+#[derive(Clone)]
 pub struct UpdateTrendMaterialization {
     pub trend_materialization: TrendMaterialization,
 }
@@ -690,7 +724,7 @@ impl fmt::Display for UpdateTrendMaterialization {
 }
 
 #[async_trait]
-impl Change for UpdateTrendMaterialization {
+impl ChangeStep for UpdateTrendMaterialization {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         match self.trend_materialization.update(client).await {
             Ok(_) => Ok(format!(
@@ -704,5 +738,15 @@ impl Change for UpdateTrendMaterialization {
                 ),
             })),
         }
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTrendMaterialization {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 
 type PostgresName = String;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, ChangeResult, ChangeStep};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
@@ -25,6 +25,7 @@ fn default_empty_string() -> String {
     String::new()
 }
 
+#[derive(Clone)]
 pub struct AddAttributes {
     pub attribute_store: AttributeStore,
     pub attributes: Vec<Attribute>,
@@ -51,7 +52,7 @@ impl fmt::Debug for AddAttributes {
 }
 
 #[async_trait]
-impl Change for AddAttributes {
+impl ChangeStep for AddAttributes {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT attribute_directory.add_attributes(attribute_store, $1) ",
@@ -79,6 +80,16 @@ impl Change for AddAttributes {
             "Added attributes to attribute store '{}'",
             &self.attribute_store
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddAttributes {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 
@@ -131,6 +142,7 @@ impl fmt::Display for AttributeStore {
     }
 }
 
+#[derive(Clone)]
 pub struct AddAttributeStore {
     pub attribute_store: AttributeStore,
 }
@@ -142,7 +154,7 @@ impl fmt::Display for AddAttributeStore {
 }
 
 #[async_trait]
-impl Change for AddAttributeStore {
+impl ChangeStep for AddAttributeStore {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
             "SELECT id ",
@@ -170,6 +182,16 @@ impl Change for AddAttributeStore {
             "Created attribute store '{}'",
             &self.attribute_store
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddAttributeStore {
+    async fn create_steps(
+        &self,
+        client: &mut Client,
+    ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
+        Ok(vec![Box::new((*self).clone())])
     }
 }
 

@@ -72,7 +72,9 @@ impl Cmd for TrendStoreCreate {
 
         let change = AddTrendStore { trend_store };
 
-        change.apply(&mut client).await?;
+        for step in change.create_steps(&mut client).await? {
+            step.apply(&mut client).await?;
+        }
 
         println!("Created trend store");
 
@@ -153,14 +155,16 @@ impl Cmd for TrendStoreUpdate {
                     println!("Updating trend store");
 
                     for change in changes {
-                        let apply_result = change.apply(&mut client).await;
+                        for step in change.create_steps(&mut client).await? {
+                            let apply_result = step.apply(&mut client).await;
 
-                        match apply_result {
-                            Ok(_) => {
-                                println!("{}", &change);
-                            }
-                            Err(e) => {
-                                println!("Error applying update: {}", e);
+                            match apply_result {
+                                Ok(_) => {
+                                    println!("{}", &change);
+                                }
+                                Err(e) => {
+                                    println!("Error applying update: {}", e);
+                                }
                             }
                         }
                     }
@@ -463,18 +467,22 @@ impl Cmd for TrendMaterializationCreate {
             trend_materialization,
         };
 
-        let result = change.apply(&mut client).await;
+        for step in change.create_steps(&mut client).await? {
+            let result = step.apply(&mut client).await;
 
-        match result {
-            Ok(_) => {
-                println!("Created trend materialization");
-
-                Ok(())
+            match result {
+                Ok(_) => {
+                    println!("Created trend materialization");
+                }
+                Err(e) => {
+                    return Err(Error::Runtime(RuntimeError {
+                        msg: format!("Error creating trend materialization: {}", e),
+                    }))
+                }
             }
-            Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error creating trend materialization: {}", e),
-            })),
         }
+
+        Ok(())
     }
 }
 
@@ -496,18 +504,22 @@ impl Cmd for TrendMaterializationUpdate {
             trend_materialization,
         };
 
-        let result = change.apply(&mut client).await;
+        for step in change.create_steps(&mut client).await? {
+            let result = step.apply(&mut client).await;
 
-        match result {
-            Ok(_) => {
-                println!("Updated trend materialization");
-
-                Ok(())
+            match result {
+                Ok(_) => {
+                    println!("Updated trend materialization");
+                }
+                Err(e) => {
+                    return Err(Error::Runtime(RuntimeError {
+                        msg: format!("Error updating trend materialization: {}", e),
+                    }))
+                }
             }
-            Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error updating trend materialization: {}", e),
-            })),
         }
+
+        Ok(())
     }
 }
 
@@ -717,18 +729,22 @@ async fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResul
 
     let change = AddAttributeStore { attribute_store };
 
-    let result = change.apply(&mut client).await;
+    for step in change.create_steps(&mut client).await? {
+        let result = step.apply(&mut client).await;
 
-    match result {
-        Ok(_) => {
-            println!("Created attribute store");
-
-            Ok(())
+        match result {
+            Ok(_) => {
+                println!("Created attribute store");
+            }
+            Err(e) => {
+                return Err(Error::Runtime(RuntimeError {
+                    msg: format!("Error creating attribute store: {}", e),
+                }))
+            }
         }
-        Err(e) => Err(Error::Runtime(RuntimeError {
-            msg: format!("Error creating attribute store: {}", e),
-        })),
     }
+
+    Ok(())
 }
 
 async fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResult {
@@ -751,14 +767,14 @@ async fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResul
         println!("Updating attribute store");
 
         for change in changes {
-            let apply_result = change.apply(&mut client).await;
-
-            match apply_result {
-                Ok(_) => {
-                    println!("{}", &change);
-                }
-                Err(e) => {
-                    println!("Error applying update: {}", e);
+            for step in change.create_steps(&mut client).await? {
+                match step.apply(&mut client).await {
+                    Ok(_) => {
+                        println!("{}", &change);
+                    }
+                    Err(e) => {
+                        println!("Error applying update: {}", e);
+                    }
                 }
             }
         }
@@ -813,9 +829,11 @@ async fn update(
                     })
                 })?
         {
-            match change.apply(client).await {
-                Ok(message) => println!("> {}", &message),
-                Err(err) => println!("! Error applying change: {}", &err),
+            for step in change.create_steps(client).await? {
+                match step.apply(client).await {
+                    Ok(message) => println!("> {}", &message),
+                    Err(err) => println!("! Error applying change: {}", &err),
+                }
             }
         }
     }
