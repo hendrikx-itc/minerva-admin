@@ -414,7 +414,24 @@ impl Change for ModifyTrendDataTypes {
         &self,
         client: &mut Client,
     ) -> Result<Vec<Box<dyn ChangeStep + Send>>, Error> {
-        Ok(vec![Box::new((*self).clone())])
+        let mut steps: Vec<Box<dyn ChangeStep + Send>> = Vec::new();
+
+        for modification in self.modifications.iter() {
+            let dependees =
+                get_column_dependees(client, "trend", &self.trend_store_part.name, &modification.trend_name).await?;
+
+            for dependee in dependees.into_iter() {
+                let step = DropDependee {
+                    dependee
+                };
+
+                steps.push(Box::new(step));
+            }
+        }
+
+        steps.push(Box::new((*self).clone()));
+
+        Ok(steps)
     }
 }
 
