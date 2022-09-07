@@ -46,4 +46,4 @@ bb8-postgres = "0.8"
 utoipa = { version = "1.1", features = ["actix_extras", "chrono"] }
 utoipa-swagger-ui = { version = "1.1", features = ["actix-web"] }
 env_logger = "0.9"
-
+lazy_static = "1.4.0"

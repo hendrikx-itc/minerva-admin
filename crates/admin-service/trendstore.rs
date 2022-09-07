@@ -1,14 +1,30 @@
 use std::time::Duration;
+use std::collections::HashMap;
+use lazy_static::lazy_static;
 
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use tokio_postgres::Client;
 
-use actix_web::{get, web::Data, web::Path, web::Query, HttpResponse, Responder};
+use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
 use utoipa::{Component, IntoParams};
 
+use minerva::change::Change;
+use minerva::trend_store::{Trend, GeneratedTrend, TrendStorePart, TrendStore,
+			   AddTrendStore, AddTrendStorePart, load_trend_store};
 use minerva::interval::parse_interval;
+
+lazy_static! {
+    static ref PARTITION_SIZE: HashMap<Duration, Duration> = HashMap::from([
+	(parse_interval("15m").unwrap(), parse_interval("1d").unwrap()),
+	(parse_interval("1h").unwrap(), parse_interval("4d").unwrap()),
+	(parse_interval("1d").unwrap(), parse_interval("3mons").unwrap()),
+	(parse_interval("1w").unwrap(), parse_interval("1y").unwrap()),
+	(parse_interval("1mon").unwrap(), parse_interval("5y").unwrap()),
+    ]);
+}
 
 #[derive(Debug, Serialize, Deserialize, IntoParams)]
 pub struct QueryData {
@@ -16,7 +32,7 @@ pub struct QueryData {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct Trend {
+pub struct TrendFull {
     pub id: i32,
     pub trend_store_part: i32,
     pub name: String,
@@ -28,7 +44,47 @@ pub struct Trend {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct GeneratedTrend {
+pub struct TrendData {
+    pub name: String,
+    pub data_type: String,
+    pub time_aggregation: String,
+    pub entity_aggregation: String,
+    pub extra_data: serde_json::Value,
+    pub description: String,
+}
+
+impl TrendData {
+    fn as_minerva(&self) -> Trend {
+	Trend {
+	    name: self.name.clone(),
+	    data_type: self.data_type.clone(),
+	    description: self.description.clone(),
+	    time_aggregation: self.time_aggregation.clone(),
+	    entity_aggregation: self.entity_aggregation.clone(),
+	    extra_data: self.extra_data.clone(),
+	}
+    }
+}
+
+impl TrendFull {
+    fn data(&self) -> TrendData {
+	TrendData {
+	    name: self.name.clone(),
+	    data_type: self.data_type.clone(),
+	    time_aggregation: self.time_aggregation.clone(),
+	    entity_aggregation: self.entity_aggregation.clone(),
+	    extra_data: self.extra_data.clone(),
+	    description: self.description.clone(),
+	}
+    }
+
+    fn as_minerva(&self) -> Trend {
+	self.data().as_minerva()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct GeneratedTrendFull {
     pub id: i32,
     pub trend_store_part: i32,
     pub name: String,
@@ -39,16 +95,100 @@ pub struct GeneratedTrend {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct TrendStorePart {
-    pub id: i32,
+pub struct GeneratedTrendData {
     pub name: String,
-    pub trend_store: i32,
-    pub trends: Vec<Trend>,
-    pub generated_trends: Vec<GeneratedTrend>,
+    pub data_type: String,
+    pub expression: String,
+    pub extra_data: serde_json::Value,
+    pub description: String,
+}
+
+impl GeneratedTrendData {
+    fn as_minerva(&self) -> GeneratedTrend {
+	GeneratedTrend {
+	    name: self.name.clone(),
+	    data_type: self.data_type.clone(),
+	    description: self.description.clone(),
+	    expression: self.expression.clone(),
+	    extra_data: self.extra_data.clone(),
+	}
+    }
+}
+
+impl GeneratedTrendFull {
+    fn data(&self) -> GeneratedTrendData {
+	GeneratedTrendData {
+	    name: self.name.clone(),
+	    data_type: self.data_type.clone(),
+	    expression: self.expression.clone(),
+	    extra_data: self.extra_data.clone(),
+	    description: self.description.clone(),
+	}
+    }
+
+    fn as_minerva(&self) -> GeneratedTrend {
+	self.data().as_minerva()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct TrendStore {
+pub struct TrendStorePartFull {
+    pub id: i32,
+    pub name: String,
+    pub trend_store: i32,
+    pub trends: Vec<TrendFull>,
+    pub generated_trends: Vec<GeneratedTrendFull>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct TrendStorePartData {
+    pub name: String,
+    pub trends: Vec<TrendData>,
+    pub generated_trends: Vec<GeneratedTrendData>,
+}
+
+impl TrendStorePartData {
+    fn as_minerva(&self) -> TrendStorePart {
+	let mut trends: Vec<Trend> = vec![];
+	for trend in &self.trends {
+	    trends.push(trend.as_minerva())
+	};
+	let mut generated_trends: Vec<GeneratedTrend> = vec![];
+	for generated_trend in &self.generated_trends {
+	    generated_trends.push(generated_trend.as_minerva())
+	};
+	TrendStorePart {
+	    name: self.name.clone(),
+	    trends: trends,
+	    generated_trends: generated_trends,
+	}
+    }
+}
+
+impl TrendStorePartFull {
+    fn data(&self) -> TrendStorePartData {
+	let mut trends: Vec<TrendData> = vec![];
+	for trend in &self.trends {
+	    trends.push(trend.data())
+	};
+	let mut generated_trends: Vec<GeneratedTrendData> = vec![];
+	for generated_trend in &self.generated_trends {
+	    generated_trends.push(generated_trend.data())
+	};
+	TrendStorePartData {
+	    name: self.name.clone(),
+	    trends: trends,
+	    generated_trends: generated_trends,
+	}
+    }
+
+    fn as_minerva(&self) -> TrendStorePart {
+	self.data().as_minerva()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct TrendStoreFull {
     pub id: i32,
     pub entity_type: String,
     pub data_source: String,
@@ -58,24 +198,160 @@ pub struct TrendStore {
     pub partition_size: Duration,
     #[serde(with = "humantime_serde")]
     pub retention_period: Duration,
-    pub trend_store_parts: Vec<TrendStorePart>,
+    pub trend_store_parts: Vec<TrendStorePartFull>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct TrendStoreBasicData {
+    pub entity_type: String,
+    pub data_source: String,
+    #[serde(with = "humantime_serde")]
+    pub granularity: Duration,
+}
+
+impl TrendStoreBasicData {
+    async fn as_minerva(&self, client: &mut Client) -> Result<TrendStore, String> {
+	let result = load_trend_store(client, &self.data_source, &self.entity_type, &self.granularity).await;
+	match result {
+	    Ok(trendstore) => Ok(trendstore),
+	    Err(_) => {
+		let new_trend_store = TrendStore {
+		    data_source: self.data_source.clone(),
+		    entity_type: self.entity_type.clone(),
+		    granularity: self.granularity.clone(),
+		    partition_size: *PARTITION_SIZE.get(&self.granularity.clone()).unwrap(),
+		    parts: vec![],
+		};
+		let result = AddTrendStore{ trend_store: new_trend_store.clone() }.apply(client).await;
+		match result {
+		    Ok(_) => Ok(new_trend_store),
+		    Err(e) => Err(format!("Unable to find or create trend store: {}", e.to_string())),
+		}
+	    }
+	}	   
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct TrendStorePartCompleteData {
+    pub name: String,
+    pub entity_type: String,
+    pub data_source: String,
+    #[serde(with = "humantime_serde")]
+    pub granularity: Duration,
+    #[serde(with = "humantime_serde")]
+    pub partition_size: Duration,
+    pub trends: Vec<TrendData>,
+    pub generated_trends: Vec<GeneratedTrendData>,
+}
+
+impl TrendStorePartCompleteData {
+    fn trend_store(&self) -> TrendStoreBasicData {
+	TrendStoreBasicData {
+	    entity_type: self.entity_type.clone(),
+	    data_source: self.data_source.clone(),
+	    granularity: self.granularity.clone(),
+	}
+    }
+
+    fn trend_store_part(&self) -> TrendStorePartData {
+	let mut trends: Vec<TrendData> = vec![];
+	for trend in &self.trends {
+	    trends.push(trend.clone())
+	};
+	let mut generated_trends: Vec<GeneratedTrendData> = vec![];
+	for generated_trend in &self.generated_trends {
+	    generated_trends.push(generated_trend.clone())
+	};
+	TrendStorePartData {
+	    name: self.name.clone(),
+	    trends: trends,
+	    generated_trends: generated_trends,
+	}
+    }
+
+    async fn create(&self, client: &mut Client) -> HttpResponse {
+	let trendstore_query = self.trend_store().as_minerva(client).await;
+	match trendstore_query {
+	    Err(e) => HttpResponse::Conflict().body(e.to_string()),
+	    Ok(trendstore) => {
+		let action = AddTrendStorePart {
+		    trend_store: trendstore,
+		    trend_store_part: self.trend_store_part().as_minerva(),
+		};
+		let result = action.apply(client).await;
+		match result {
+                    Err(e) => HttpResponse::Conflict().body(e.to_string()),
+		    Ok(_) => {
+			let query_result = client.query_one("SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name=$1", &[&self.name],).await;
+    
+			match query_result {
+			    Ok(row) => {
+				let id: i32 = row.get(0);
+				let mut trends: Vec<TrendFull> = vec![];
+				for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
+				    let trend = TrendFull {
+					id: inner_row.get(0),
+					trend_store_part: inner_row.get(1),
+					name: inner_row.get(2),
+					data_type: inner_row.get(3),
+					time_aggregation: inner_row.get(4),
+					entity_aggregation: inner_row.get(5),
+					extra_data: inner_row.get(6),
+					description: inner_row.get(7)
+				    };
+				    trends.push(trend)
+				}
+				
+				let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
+				for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
+				    let trend = GeneratedTrendFull {
+					id: inner_row.get(0),
+					trend_store_part: inner_row.get(1),
+					name: inner_row.get(2),
+					data_type: inner_row.get(3),
+					expression: inner_row.get(4),
+					extra_data: inner_row.get(5),
+					description: inner_row.get(6)
+				    };
+				    generated_trends.push(trend)
+				};
+				
+				let trendstorepart = TrendStorePartFull {
+				    id: id,
+				    name: self.name.to_string(),
+				    trend_store: row.get(1),
+				    trends: trends,
+				    generated_trends: generated_trends,
+				};
+				
+				HttpResponse::Ok().json(trendstorepart)
+			    },
+			    Err(_) => HttpResponse::NotFound().body("Trend store part created, but could not be found after creation")
+			}
+		    }
+		}
+	    }
+	}
+    }
+}	    
+    
 #[utoipa::path(
     responses(
-	(status = 200, description = "List all trend store parts", body = [TrendStorePart])
+	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull])
     )
 )]
 #[get("/trend-store-parts")]
+
 pub(super) async fn get_trend_store_parts(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> impl Responder {
-    let mut m: Vec<TrendStorePart> = vec![];
+    let mut m: Vec<TrendStorePartFull> = vec![];
 
     let client = pool.get().await.unwrap();
-    let mut trends: Vec<Trend> = vec![];
+    let mut trends: Vec<TrendFull> = vec![];
     for row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend", &[]).await.unwrap() {
-	let trend = Trend {
+	let trend = TrendFull {
 	    id: row.get(0),
 	    trend_store_part: row.get(1),
 	    name: row.get(2),
@@ -88,9 +364,9 @@ pub(super) async fn get_trend_store_parts(
 	trends.push(trend)
     };
 
-    let mut generated_trends: Vec<GeneratedTrend> = vec![];
+    let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
     for row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend", &[]).await.unwrap() {
-	let trend = GeneratedTrend {
+	let trend = GeneratedTrendFull {
 	    id: row.get(0),
 	    trend_store_part: row.get(1),
 	    name: row.get(2),
@@ -112,21 +388,21 @@ pub(super) async fn get_trend_store_parts(
     {
         let tspid: i32 = row.get(0);
 
-        let mut my_trends: Vec<Trend> = vec![];
+        let mut my_trends: Vec<TrendFull> = vec![];
         for trend in &trends {
             if trend.trend_store_part == tspid {
                 my_trends.push(trend.clone())
             }
         }
 
-        let mut my_generated_trends: Vec<GeneratedTrend> = vec![];
+        let mut my_generated_trends: Vec<GeneratedTrendFull> = vec![];
         for generated_trend in &generated_trends {
             if generated_trend.trend_store_part == tspid {
                 my_generated_trends.push(generated_trend.clone())
             }
         }
 
-        let trendstorepart = TrendStorePart {
+        let trendstorepart = TrendStorePartFull {
             id: tspid,
             name: row.get(1),
             trend_store: row.get(2),
@@ -141,7 +417,7 @@ pub(super) async fn get_trend_store_parts(
 
 #[utoipa::path(
     responses(
-	(status = 200, description = "Get a specific trend store part", body = TrendStorePart),
+	(status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
 	(status = 404, description = "Trend store part not found", body = String)
     )
 )]
@@ -163,9 +439,9 @@ pub(super) async fn get_trend_store_part(
 
     match query_result {
         Ok(row) => {
-            let mut trends: Vec<Trend> = vec![];
+            let mut trends: Vec<TrendFull> = vec![];
             for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&tsp_id]).await.unwrap() {
-		let trend = Trend {
+		let trend = TrendFull {
 		    id: inner_row.get(0),
 		    trend_store_part: inner_row.get(1),
 		    name: inner_row.get(2),
@@ -178,9 +454,9 @@ pub(super) async fn get_trend_store_part(
 		trends.push(trend)
 	    }
 
-            let mut generated_trends: Vec<GeneratedTrend> = vec![];
+            let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
             for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&tsp_id]).await.unwrap() {
-		let trend = GeneratedTrend {
+		let trend = GeneratedTrendFull {
 		    id: inner_row.get(0),
 		    trend_store_part: inner_row.get(1),
 		    name: inner_row.get(2),
@@ -192,7 +468,7 @@ pub(super) async fn get_trend_store_part(
 		generated_trends.push(trend)
 	    };
 
-            let trendstorepart = TrendStorePart {
+            let trendstorepart = TrendStorePartFull {
                 id: tsp_id,
                 name: row.get(0),
                 trend_store: row.get(1),
@@ -210,7 +486,7 @@ pub(super) async fn get_trend_store_part(
 
 #[utoipa::path(
     responses(
-	(status = 200, description = "Get a specific trend store part", body = TrendStorePart),
+	(status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
 	(status = 404, description = "Trend store part not found", body = String)
     )
 )]
@@ -232,9 +508,9 @@ pub(super) async fn find_trend_store_part(
     match query_result {
         Ok(row) => {
 	    let id: i32 = row.get(0);
-            let mut trends: Vec<Trend> = vec![];
+            let mut trends: Vec<TrendFull> = vec![];
             for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
-		let trend = Trend {
+		let trend = TrendFull {
 		    id: inner_row.get(0),
 		    trend_store_part: inner_row.get(1),
 		    name: inner_row.get(2),
@@ -247,9 +523,9 @@ pub(super) async fn find_trend_store_part(
 		trends.push(trend)
 	    }
 
-            let mut generated_trends: Vec<GeneratedTrend> = vec![];
+            let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
             for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
-		let trend = GeneratedTrend {
+		let trend = GeneratedTrendFull {
 		    id: inner_row.get(0),
 		    trend_store_part: inner_row.get(1),
 		    name: inner_row.get(2),
@@ -261,7 +537,7 @@ pub(super) async fn find_trend_store_part(
 		generated_trends.push(trend)
 	    };
 
-            let trendstorepart = TrendStorePart {
+            let trendstorepart = TrendStorePartFull {
                 id: id,
                 name: name.to_string(),
                 trend_store: row.get(1),
@@ -279,19 +555,19 @@ pub(super) async fn find_trend_store_part(
     
 #[utoipa::path(
     responses(
-	(status = 200, description = "List all trend store parts", body = [TrendStorePart])
+	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull])
     )
 )]
 #[get("/trend-stores")]
 pub(super) async fn get_trend_stores(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> impl Responder {
-    let mut m: Vec<TrendStore> = vec![];
+    let mut m: Vec<TrendStoreFull> = vec![];
 
     let client = pool.get().await.unwrap();
-    let mut trends: Vec<Trend> = vec![];
+    let mut trends: Vec<TrendFull> = vec![];
     for row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend", &[]).await.unwrap() {
-	let trend = Trend {
+	let trend = TrendFull {
 	    id: row.get(0),
 	    trend_store_part: row.get(1),
 	    name: row.get(2),
@@ -304,9 +580,9 @@ pub(super) async fn get_trend_stores(
 	trends.push(trend)
     };
 
-    let mut generated_trends: Vec<GeneratedTrend> = vec![];
+    let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
     for row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend", &[]).await.unwrap() {
-	let trend = GeneratedTrend {
+	let trend = GeneratedTrendFull {
 	    id: row.get(0),
 	    trend_store_part: row.get(1),
 	    name: row.get(2),
@@ -318,7 +594,7 @@ pub(super) async fn get_trend_stores(
 	generated_trends.push(trend)
     };
 
-    let mut parts: Vec<TrendStorePart> = vec![];
+    let mut parts: Vec<TrendStorePartFull> = vec![];
 
     for row in client
         .query(
@@ -330,21 +606,21 @@ pub(super) async fn get_trend_stores(
     {
         let tspid: i32 = row.get(0);
 
-        let mut my_trends: Vec<Trend> = vec![];
+        let mut my_trends: Vec<TrendFull> = vec![];
         for trend in &trends {
             if trend.trend_store_part == tspid {
                 my_trends.push(trend.clone())
             }
         }
 
-        let mut my_generated_trends: Vec<GeneratedTrend> = vec![];
+        let mut my_generated_trends: Vec<GeneratedTrendFull> = vec![];
         for generated_trend in &generated_trends {
             if generated_trend.trend_store_part == tspid {
                 my_generated_trends.push(generated_trend.clone())
             }
         }
 
-        let trendstorepart = TrendStorePart {
+        let trendstorepart = TrendStorePartFull {
             id: tspid,
             name: row.get(1),
             trend_store: row.get(2),
@@ -356,14 +632,14 @@ pub(super) async fn get_trend_stores(
 
     for row in client.query("SELECT ts.id, entity_type.name, data_source.name, granularity::text, partition_size::text, retention_period::text FROM trend_directory.trend_store ts JOIN directory.entity_type ON ts.entity_type_id = entity_type.id JOIN directory.data_source ON ts.data_source_id = data_source.id", &[]).await.unwrap() {
 	let tsid: i32 = row.get(0);
-	let mut my_parts: Vec<TrendStorePart> = vec![];
+	let mut my_parts: Vec<TrendStorePartFull> = vec![];
 	for part in &parts {
 	    if part.trend_store == tsid {
 		my_parts.push(part.clone())
 	    }
 	}
 
-	let trendstore = TrendStore {
+	let trendstore = TrendStoreFull {
 	    id: tsid,
 	    entity_type: row.get(1),
 	    data_source: row.get(2),
@@ -381,7 +657,7 @@ pub(super) async fn get_trend_stores(
 
 #[utoipa::path(
     responses(
-	(status = 200, description = "Get a specific trend store", body = TrendStorePart),
+	(status = 200, description = "Get a specific trend store", body = TrendStorePartFull),
 	(status = 404, description = "Trend store not found", body = String)
     )
 )]
@@ -403,9 +679,9 @@ pub(super) async fn get_trend_store(
 
     match query_result {
         Ok(row) => {
-            let mut trends: Vec<Trend> = vec![];
+            let mut trends: Vec<TrendFull> = vec![];
             for inner_row in client.query("SELECT t.id, t.trend_store_part_id, t.name, t.data_type, t.time_aggregation, t.entity_aggregation, t.extra_data, t.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id WHERE tsp.trend_store_id = $1", &[&tsid]).await.unwrap() {
-		let trend = Trend {
+		let trend = TrendFull {
 		    id: inner_row.get(0),
 		    trend_store_part: inner_row.get(1),
 		    name: inner_row.get(2),
@@ -418,9 +694,9 @@ pub(super) async fn get_trend_store(
 		trends.push(trend)
 	    };
 
-            let mut generated_trends: Vec<GeneratedTrend> = vec![];
+            let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
             for inner_row in client.query("SELECT t.id, t.trend_store_part_id, t.name, t.data_type, t.expression, t.extra_data, t.description FROM trend_directory.generated_table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id WHERE tsp.trend_store_id = $1", &[&tsid]).await.unwrap() {
-		let trend = GeneratedTrend {
+		let trend = GeneratedTrendFull {
 		    id: inner_row.get(0),
 		    trend_store_part: inner_row.get(1),
 		    name: inner_row.get(2),
@@ -432,7 +708,7 @@ pub(super) async fn get_trend_store(
 		generated_trends.push(trend)
 	    };
 
-            let mut parts: Vec<TrendStorePart> = vec![];
+            let mut parts: Vec<TrendStorePartFull> = vec![];
 
             for inner_row in client
 		.query(
@@ -444,21 +720,21 @@ pub(super) async fn get_trend_store(
 	    {
 		let tspid: i32 = inner_row.get(0);
 
-		let mut my_trends: Vec<Trend> = vec![];
+		let mut my_trends: Vec<TrendFull> = vec![];
 		for trend in &trends {
 		    if trend.trend_store_part == tspid {
 			my_trends.push(trend.clone())
 		    }
 		}
 
-		let mut my_generated_trends: Vec<GeneratedTrend> = vec![];
+		let mut my_generated_trends: Vec<GeneratedTrendFull> = vec![];
 		for generated_trend in &generated_trends {
 		    if generated_trend.trend_store_part == tspid {
 			my_generated_trends.push(generated_trend.clone())
 		    }
 		}
 
-		let trendstorepart = TrendStorePart {
+		let trendstorepart = TrendStorePartFull {
 		    id: tspid,
 		    name: inner_row.get(1),
 		    trend_store: inner_row.get(2),
@@ -468,7 +744,7 @@ pub(super) async fn get_trend_store(
 		parts.push(trendstorepart)
 	    }
 
-            let trendstore = TrendStore {
+            let trendstore = TrendStoreFull {
                 id: tsid,
                 entity_type: row.get(1),
                 data_source: row.get(2),
@@ -482,6 +758,33 @@ pub(super) async fn get_trend_store(
         }
         Err(_e) => {
             HttpResponse::NotFound().body(format!("Trend store with id {} not found", &tsid))
+        }
+    }
+}
+
+// curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_One_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8080/trend-store-parts/new
+// curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_Two_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8080/trend-store-parts/new
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Create a new trend store part", body = TrendStorePartData),
+	(status = 400, description = "Incorrect data format", body = String),
+	(status = 404, description = "Trend store part cannot be found after creation", body = String),
+	(status = 409, description = "Trend store part cannot be created with these data", body = String),
+    )
+)]
+#[post("/trend-store-parts/new")]
+pub(super) async fn post_trend_store_part(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    post: String,
+) -> impl Responder {
+    let input: Result<TrendStorePartCompleteData, serde_json::Error> =
+        serde_json::from_str(&post);
+    match input {
+        Err(e) => HttpResponse::BadRequest().body(e.to_string()),
+        Ok(data) => {
+            let mut client = pool.get().await.unwrap();
+	    data.create(&mut client).await
         }
     }
 }

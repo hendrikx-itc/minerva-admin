@@ -22,7 +22,9 @@ mod trendstore;
 use trendstore::{
     get_trend_store, get_trend_store_part, find_trend_store_part,
     get_trend_store_parts, get_trend_stores,
-    GeneratedTrend, Trend, TrendStore, TrendStorePart,
+    post_trend_store_part,
+    GeneratedTrendFull, TrendFull, TrendStoreFull, TrendStorePartFull,
+    TrendStorePartCompleteData,
 };
 
 mod datasource;
@@ -30,6 +32,9 @@ use datasource::{get_data_source, get_data_sources, DataSource};
 
 mod entitytype;
 use entitytype::{get_entity_type, get_entity_types, EntityType};
+
+mod kpi;
+use kpi::{Kpi, KpiData};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -52,6 +57,7 @@ async fn main() -> std::io::Result<()> {
 	    trendstore::find_trend_store_part,
 	    trendstore::get_trend_stores,
 	    trendstore::get_trend_store,
+	    trendstore::post_trend_store_part,
 	    datasource::get_data_sources,
 	    datasource::get_data_source,
 	    entitytype::get_entity_types,
@@ -60,7 +66,8 @@ async fn main() -> std::io::Result<()> {
         components(TrendMaterializationSourceData, TrendMaterializationDef,
 		   TrendViewMaterializationFull, TrendFunctionMaterializationFull,
 		   TrendViewMaterializationData, TrendFunctionMaterializationData,
-		   Trend, GeneratedTrend, TrendStorePart, TrendStore, DataSource, EntityType),
+		   TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
+		   DataSource, EntityType),
         tags(
             (name = "Trend Materialization", description = "Trend materialization management endpoints.")
         ),
@@ -96,6 +103,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
 	    .service(find_trend_store_part)
+	    .service(post_trend_store_part)
             .service(get_trend_stores)
             .service(get_trend_store)
             .service(get_data_sources)
@@ -106,4 +114,5 @@ async fn main() -> std::io::Result<()> {
     .bind(("127.0.0.1", 8080))?
     .run()
     .await
+
 }

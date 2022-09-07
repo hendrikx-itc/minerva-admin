@@ -1118,6 +1118,7 @@ dependencies = [
  "glob",
  "humantime",
  "humantime-serde",
+ "lazy_static",
  "minerva",
  "postgres-types",
  "regex",
@@ -1137,6 +1138,7 @@ name = "minerva-service"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "lazy_static",
  "utoipa",
 ]
 

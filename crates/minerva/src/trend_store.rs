@@ -448,8 +448,8 @@ impl SanityCheck for TrendStorePart {
 }
 
 pub struct AddTrendStorePart {
-    trend_store: TrendStore,
-    trend_store_part: TrendStorePart,
+    pub trend_store: TrendStore,
+    pub trend_store_part: TrendStorePart,
 }
 
 #[async_trait]
