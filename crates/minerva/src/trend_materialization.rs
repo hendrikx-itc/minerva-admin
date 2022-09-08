@@ -90,7 +90,7 @@ impl TrendViewMaterialization {
         );
 
         match client.execute(query.as_str(), &[]).await {
-	    Ok(_) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error creating view: {}",
                 e
@@ -101,8 +101,8 @@ impl TrendViewMaterialization {
     async fn create(&self, client: &mut Client) -> Result<(), Error> {
         self.create_view(client).await?;
         self.define_materialization(client).await?;
-	self.create_fingerprint_function(client).await?;
-	
+        self.create_fingerprint_function(client).await?;
+
         Ok(())
     }
 
@@ -349,7 +349,7 @@ impl TrendFunctionMaterialization {
 
     async fn create(&self, client: &mut Client) -> Result<(), Error> {
         self.create_function(client).await?;
-	self.create_fingerprint_function(client).await?;
+        self.create_fingerprint_function(client).await?;
         self.define_materialization(client).await?;
 
         Ok(())

@@ -10,21 +10,17 @@ mod trendmaterialization;
 use trendmaterialization::{
     delete_trend_function_materialization, delete_trend_view_materialization,
     get_trend_function_materialization, get_trend_function_materializations,
-    get_trend_view_materialization, get_trend_view_materializations,
-    get_trend_materializations,
+    get_trend_materializations, get_trend_view_materialization, get_trend_view_materializations,
     post_trend_function_materialization, post_trend_view_materialization,
-    TrendFunctionMaterializationData, TrendFunctionMaterializationFull,
+    TrendFunctionMaterializationData, TrendFunctionMaterializationFull, TrendMaterializationDef,
     TrendMaterializationSourceData, TrendViewMaterializationData, TrendViewMaterializationFull,
-    TrendMaterializationDef
 };
 
 mod trendstore;
 use trendstore::{
-    get_trend_store, get_trend_store_part, find_trend_store_part,
-    get_trend_store_parts, get_trend_stores,
-    post_trend_store_part,
-    GeneratedTrendFull, TrendFull, TrendStoreFull, TrendStorePartFull,
-    TrendStorePartCompleteData,
+    find_trend_store_part, get_trend_store, get_trend_store_part, get_trend_store_parts,
+    get_trend_stores, post_trend_store_part, GeneratedTrendFull, TrendFull, TrendStoreFull,
+    TrendStorePartCompleteData, TrendStorePartFull,
 };
 
 mod datasource;
@@ -95,15 +91,15 @@ async fn main() -> std::io::Result<()> {
             .service(get_trend_view_materialization)
             .service(get_trend_function_materializations)
             .service(get_trend_function_materialization)
-	    .service(get_trend_materializations)
+            .service(get_trend_materializations)
             .service(post_trend_view_materialization)
             .service(post_trend_function_materialization)
             .service(delete_trend_view_materialization)
             .service(delete_trend_function_materialization)
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
-	    .service(find_trend_store_part)
-	    .service(post_trend_store_part)
+            .service(find_trend_store_part)
+            .service(post_trend_store_part)
             .service(get_trend_stores)
             .service(get_trend_store)
             .service(get_data_sources)
@@ -114,5 +110,4 @@ async fn main() -> std::io::Result<()> {
     .bind(("127.0.0.1", 8080))?
     .run()
     .await
-
 }

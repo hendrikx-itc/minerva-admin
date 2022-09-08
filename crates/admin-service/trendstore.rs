@@ -1,6 +1,6 @@
-use std::time::Duration;
-use std::collections::HashMap;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
+use std::time::Duration;
 
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
@@ -12,17 +12,28 @@ use serde::{Deserialize, Serialize};
 use utoipa::{Component, IntoParams};
 
 use minerva::change::Change;
-use minerva::trend_store::{Trend, GeneratedTrend, TrendStorePart, TrendStore,
-			   AddTrendStore, AddTrendStorePart, load_trend_store};
 use minerva::interval::parse_interval;
+use minerva::trend_store::{
+    load_trend_store, AddTrendStore, AddTrendStorePart, AddTrends, GeneratedTrend, Trend,
+    TrendStore, TrendStorePart,
+};
 
 lazy_static! {
     static ref PARTITION_SIZE: HashMap<Duration, Duration> = HashMap::from([
-	(parse_interval("15m").unwrap(), parse_interval("1d").unwrap()),
-	(parse_interval("1h").unwrap(), parse_interval("4d").unwrap()),
-	(parse_interval("1d").unwrap(), parse_interval("3mons").unwrap()),
-	(parse_interval("1w").unwrap(), parse_interval("1y").unwrap()),
-	(parse_interval("1mon").unwrap(), parse_interval("5y").unwrap()),
+        (
+            parse_interval("15m").unwrap(),
+            parse_interval("1d").unwrap()
+        ),
+        (parse_interval("1h").unwrap(), parse_interval("4d").unwrap()),
+        (
+            parse_interval("1d").unwrap(),
+            parse_interval("3mons").unwrap()
+        ),
+        (parse_interval("1w").unwrap(), parse_interval("1y").unwrap()),
+        (
+            parse_interval("1mon").unwrap(),
+            parse_interval("5y").unwrap()
+        ),
     ]);
 }
 
@@ -55,31 +66,31 @@ pub struct TrendData {
 
 impl TrendData {
     fn as_minerva(&self) -> Trend {
-	Trend {
-	    name: self.name.clone(),
-	    data_type: self.data_type.clone(),
-	    description: self.description.clone(),
-	    time_aggregation: self.time_aggregation.clone(),
-	    entity_aggregation: self.entity_aggregation.clone(),
-	    extra_data: self.extra_data.clone(),
-	}
+        Trend {
+            name: self.name.clone(),
+            data_type: self.data_type.clone(),
+            description: self.description.clone(),
+            time_aggregation: self.time_aggregation.clone(),
+            entity_aggregation: self.entity_aggregation.clone(),
+            extra_data: self.extra_data.clone(),
+        }
     }
 }
 
 impl TrendFull {
     fn data(&self) -> TrendData {
-	TrendData {
-	    name: self.name.clone(),
-	    data_type: self.data_type.clone(),
-	    time_aggregation: self.time_aggregation.clone(),
-	    entity_aggregation: self.entity_aggregation.clone(),
-	    extra_data: self.extra_data.clone(),
-	    description: self.description.clone(),
-	}
+        TrendData {
+            name: self.name.clone(),
+            data_type: self.data_type.clone(),
+            time_aggregation: self.time_aggregation.clone(),
+            entity_aggregation: self.entity_aggregation.clone(),
+            extra_data: self.extra_data.clone(),
+            description: self.description.clone(),
+        }
     }
 
     fn as_minerva(&self) -> Trend {
-	self.data().as_minerva()
+        self.data().as_minerva()
     }
 }
 
@@ -105,29 +116,29 @@ pub struct GeneratedTrendData {
 
 impl GeneratedTrendData {
     fn as_minerva(&self) -> GeneratedTrend {
-	GeneratedTrend {
-	    name: self.name.clone(),
-	    data_type: self.data_type.clone(),
-	    description: self.description.clone(),
-	    expression: self.expression.clone(),
-	    extra_data: self.extra_data.clone(),
-	}
+        GeneratedTrend {
+            name: self.name.clone(),
+            data_type: self.data_type.clone(),
+            description: self.description.clone(),
+            expression: self.expression.clone(),
+            extra_data: self.extra_data.clone(),
+        }
     }
 }
 
 impl GeneratedTrendFull {
     fn data(&self) -> GeneratedTrendData {
-	GeneratedTrendData {
-	    name: self.name.clone(),
-	    data_type: self.data_type.clone(),
-	    expression: self.expression.clone(),
-	    extra_data: self.extra_data.clone(),
-	    description: self.description.clone(),
-	}
+        GeneratedTrendData {
+            name: self.name.clone(),
+            data_type: self.data_type.clone(),
+            expression: self.expression.clone(),
+            extra_data: self.extra_data.clone(),
+            description: self.description.clone(),
+        }
     }
 
     fn as_minerva(&self) -> GeneratedTrend {
-	self.data().as_minerva()
+        self.data().as_minerva()
     }
 }
 
@@ -149,41 +160,41 @@ pub struct TrendStorePartData {
 
 impl TrendStorePartData {
     fn as_minerva(&self) -> TrendStorePart {
-	let mut trends: Vec<Trend> = vec![];
-	for trend in &self.trends {
-	    trends.push(trend.as_minerva())
-	};
-	let mut generated_trends: Vec<GeneratedTrend> = vec![];
-	for generated_trend in &self.generated_trends {
-	    generated_trends.push(generated_trend.as_minerva())
-	};
-	TrendStorePart {
-	    name: self.name.clone(),
-	    trends: trends,
-	    generated_trends: generated_trends,
-	}
+        let mut trends: Vec<Trend> = vec![];
+        for trend in &self.trends {
+            trends.push(trend.as_minerva())
+        }
+        let mut generated_trends: Vec<GeneratedTrend> = vec![];
+        for generated_trend in &self.generated_trends {
+            generated_trends.push(generated_trend.as_minerva())
+        }
+        TrendStorePart {
+            name: self.name.clone(),
+            trends: trends,
+            generated_trends: generated_trends,
+        }
     }
 }
 
 impl TrendStorePartFull {
     fn data(&self) -> TrendStorePartData {
-	let mut trends: Vec<TrendData> = vec![];
-	for trend in &self.trends {
-	    trends.push(trend.data())
-	};
-	let mut generated_trends: Vec<GeneratedTrendData> = vec![];
-	for generated_trend in &self.generated_trends {
-	    generated_trends.push(generated_trend.data())
-	};
-	TrendStorePartData {
-	    name: self.name.clone(),
-	    trends: trends,
-	    generated_trends: generated_trends,
-	}
+        let mut trends: Vec<TrendData> = vec![];
+        for trend in &self.trends {
+            trends.push(trend.data())
+        }
+        let mut generated_trends: Vec<GeneratedTrendData> = vec![];
+        for generated_trend in &self.generated_trends {
+            generated_trends.push(generated_trend.data())
+        }
+        TrendStorePartData {
+            name: self.name.clone(),
+            trends: trends,
+            generated_trends: generated_trends,
+        }
     }
 
     fn as_minerva(&self) -> TrendStorePart {
-	self.data().as_minerva()
+        self.data().as_minerva()
     }
 }
 
@@ -211,24 +222,37 @@ pub struct TrendStoreBasicData {
 
 impl TrendStoreBasicData {
     async fn as_minerva(&self, client: &mut Client) -> Result<TrendStore, String> {
-	let result = load_trend_store(client, &self.data_source, &self.entity_type, &self.granularity).await;
-	match result {
-	    Ok(trendstore) => Ok(trendstore),
-	    Err(_) => {
-		let new_trend_store = TrendStore {
-		    data_source: self.data_source.clone(),
-		    entity_type: self.entity_type.clone(),
-		    granularity: self.granularity.clone(),
-		    partition_size: *PARTITION_SIZE.get(&self.granularity.clone()).unwrap(),
-		    parts: vec![],
-		};
-		let result = AddTrendStore{ trend_store: new_trend_store.clone() }.apply(client).await;
-		match result {
-		    Ok(_) => Ok(new_trend_store),
-		    Err(e) => Err(format!("Unable to find or create trend store: {}", e.to_string())),
-		}
-	    }
-	}	   
+        let result = load_trend_store(
+            client,
+            &self.data_source,
+            &self.entity_type,
+            &self.granularity,
+        )
+        .await;
+        match result {
+            Ok(trendstore) => Ok(trendstore),
+            Err(_) => {
+                let new_trend_store = TrendStore {
+                    data_source: self.data_source.clone(),
+                    entity_type: self.entity_type.clone(),
+                    granularity: self.granularity.clone(),
+                    partition_size: *PARTITION_SIZE.get(&self.granularity.clone()).unwrap(),
+                    parts: vec![],
+                };
+                let result = AddTrendStore {
+                    trend_store: new_trend_store.clone(),
+                }
+                .apply(client)
+                .await;
+                match result {
+                    Ok(_) => Ok(new_trend_store),
+                    Err(e) => Err(format!(
+                        "Unable to find or create trend store: {}",
+                        e.to_string()
+                    )),
+                }
+            }
+        }
     }
 }
 
@@ -247,95 +271,104 @@ pub struct TrendStorePartCompleteData {
 
 impl TrendStorePartCompleteData {
     fn trend_store(&self) -> TrendStoreBasicData {
-	TrendStoreBasicData {
-	    entity_type: self.entity_type.clone(),
-	    data_source: self.data_source.clone(),
-	    granularity: self.granularity.clone(),
-	}
+        TrendStoreBasicData {
+            entity_type: self.entity_type.clone(),
+            data_source: self.data_source.clone(),
+            granularity: self.granularity.clone(),
+        }
     }
 
     fn trend_store_part(&self) -> TrendStorePartData {
-	let mut trends: Vec<TrendData> = vec![];
-	for trend in &self.trends {
-	    trends.push(trend.clone())
-	};
-	let mut generated_trends: Vec<GeneratedTrendData> = vec![];
-	for generated_trend in &self.generated_trends {
-	    generated_trends.push(generated_trend.clone())
-	};
-	TrendStorePartData {
-	    name: self.name.clone(),
-	    trends: trends,
-	    generated_trends: generated_trends,
-	}
+        let mut trends: Vec<TrendData> = vec![];
+        for trend in &self.trends {
+            trends.push(trend.clone())
+        }
+        let mut generated_trends: Vec<GeneratedTrendData> = vec![];
+        for generated_trend in &self.generated_trends {
+            generated_trends.push(generated_trend.clone())
+        }
+        TrendStorePartData {
+            name: self.name.clone(),
+            trends: trends,
+            generated_trends: generated_trends,
+        }
     }
 
     async fn create(&self, client: &mut Client) -> HttpResponse {
-	let trendstore_query = self.trend_store().as_minerva(client).await;
-	match trendstore_query {
-	    Err(e) => HttpResponse::Conflict().body(e.to_string()),
-	    Ok(trendstore) => {
-		let action = AddTrendStorePart {
-		    trend_store: trendstore,
-		    trend_store_part: self.trend_store_part().as_minerva(),
-		};
-		let result = action.apply(client).await;
-		match result {
-                    Err(e) => HttpResponse::Conflict().body(e.to_string()),
-		    Ok(_) => {
-			let query_result = client.query_one("SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name=$1", &[&self.name],).await;
-    
-			match query_result {
-			    Ok(row) => {
-				let id: i32 = row.get(0);
-				let mut trends: Vec<TrendFull> = vec![];
-				for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
-				    let trend = TrendFull {
-					id: inner_row.get(0),
-					trend_store_part: inner_row.get(1),
-					name: inner_row.get(2),
-					data_type: inner_row.get(3),
-					time_aggregation: inner_row.get(4),
-					entity_aggregation: inner_row.get(5),
-					extra_data: inner_row.get(6),
-					description: inner_row.get(7)
-				    };
-				    trends.push(trend)
+        let trendstore_query = self.trend_store().as_minerva(client).await;
+        match trendstore_query {
+            Err(e) => HttpResponse::Conflict().body(e.to_string()),
+            Ok(trendstore) => {
+                let action = AddTrendStorePart {
+                    trend_store: trendstore,
+                    trend_store_part: self.trend_store_part().as_minerva(),
+                };
+                let result = action.apply(client).await;
+                match result {
+                    Err(e) => HttpResponse::Conflict().body(format!(
+                        "Creation of trendstorepart failed: {}",
+                        e.to_string()
+                    )),
+                    Ok(_) => {
+                        let action = AddTrends {
+                            trend_store_part: self.trend_store_part().as_minerva(),
+                            trends: self.trend_store_part().as_minerva().trends,
+                        };
+                        let result = action.apply(client).await;
+                        match result {
+			    Err(e) => HttpResponse::Conflict().body(format!("Creation of trendstorepart succeeded, but inserting trends failed: {}", e.to_string())),
+			    Ok(_) => {
+				let query_result = client.query_one("SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name=$1", &[&self.name],).await;
+				match query_result {
+				    Ok(row) => {
+					let id: i32 = row.get(0);
+					let mut trends: Vec<TrendFull> = vec![];
+					for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
+					    let trend = TrendFull {
+						id: inner_row.get(0),
+						trend_store_part: inner_row.get(1),
+						name: inner_row.get(2),
+						data_type: inner_row.get(3),
+						time_aggregation: inner_row.get(4),
+						entity_aggregation: inner_row.get(5),
+						extra_data: inner_row.get(6),
+						description: inner_row.get(7)
+					    };
+					    trends.push(trend)
+					}
+					let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
+					for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
+					    let trend = GeneratedTrendFull {
+						id: inner_row.get(0),
+						trend_store_part: inner_row.get(1),
+						name: inner_row.get(2),
+						data_type: inner_row.get(3),
+						expression: inner_row.get(4),
+						extra_data: inner_row.get(5),
+						description: inner_row.get(6)
+					    };
+					    generated_trends.push(trend)
+					};
+					let trendstorepart = TrendStorePartFull {
+					    id: id,
+					    name: self.name.to_string(),
+					    trend_store: row.get(1),
+					    trends: trends,
+					    generated_trends: generated_trends,
+					};
+					HttpResponse::Ok().json(trendstorepart)
+				    },
+				    Err(_) => HttpResponse::NotFound().body("Trend store part created, but could not be found after creation")
 				}
-				
-				let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-				for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
-				    let trend = GeneratedTrendFull {
-					id: inner_row.get(0),
-					trend_store_part: inner_row.get(1),
-					name: inner_row.get(2),
-					data_type: inner_row.get(3),
-					expression: inner_row.get(4),
-					extra_data: inner_row.get(5),
-					description: inner_row.get(6)
-				    };
-				    generated_trends.push(trend)
-				};
-				
-				let trendstorepart = TrendStorePartFull {
-				    id: id,
-				    name: self.name.to_string(),
-				    trend_store: row.get(1),
-				    trends: trends,
-				    generated_trends: generated_trends,
-				};
-				
-				HttpResponse::Ok().json(trendstorepart)
-			    },
-			    Err(_) => HttpResponse::NotFound().body("Trend store part created, but could not be found after creation")
+			    }
 			}
-		    }
-		}
-	    }
-	}
+                    }
+                }
+            }
+        }
     }
-}	    
-    
+}
+
 #[utoipa::path(
     responses(
 	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull])
@@ -493,7 +526,7 @@ pub(super) async fn get_trend_store_part(
 #[get("/trend-store-parts/find")]
 pub(super) async fn find_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-    info: Query<QueryData>
+    info: Query<QueryData>,
 ) -> impl Responder {
     let name = &info.name;
     let client = pool.get().await.unwrap();
@@ -504,10 +537,10 @@ pub(super) async fn find_trend_store_part(
             &[&name],
         )
         .await;
-    
+
     match query_result {
         Ok(row) => {
-	    let id: i32 = row.get(0);
+            let id: i32 = row.get(0);
             let mut trends: Vec<TrendFull> = vec![];
             for inner_row in client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await.unwrap() {
 		let trend = TrendFull {
@@ -552,7 +585,7 @@ pub(super) async fn find_trend_store_part(
         }
     }
 }
-    
+
 #[utoipa::path(
     responses(
 	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull])
@@ -778,13 +811,12 @@ pub(super) async fn post_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> impl Responder {
-    let input: Result<TrendStorePartCompleteData, serde_json::Error> =
-        serde_json::from_str(&post);
+    let input: Result<TrendStorePartCompleteData, serde_json::Error> = serde_json::from_str(&post);
     match input {
         Err(e) => HttpResponse::BadRequest().body(e.to_string()),
         Ok(data) => {
             let mut client = pool.get().await.unwrap();
-	    data.create(&mut client).await
+            data.create(&mut client).await
         }
     }
 }
