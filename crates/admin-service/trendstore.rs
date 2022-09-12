@@ -294,7 +294,7 @@ impl TrendStorePartCompleteData {
         }
     }
 
-    async fn create(&self, client: &mut Client) -> HttpResponse {
+    pub async fn create(&self, client: &mut Client) -> HttpResponse {
         let trendstore_query = self.trend_store().as_minerva(client).await;
         match trendstore_query {
             Err(e) => HttpResponse::Conflict().body(e.to_string()),

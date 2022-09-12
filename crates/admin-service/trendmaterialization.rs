@@ -203,7 +203,7 @@ impl TrendFunctionMaterializationData {
         })
     }
 
-    async fn create(&self, client: &mut Client) -> HttpResponse {
+    pub async fn create(&self, client: &mut Client) -> HttpResponse {
         let action = AddTrendMaterialization {
             trend_materialization: self.as_minerva(),
         };

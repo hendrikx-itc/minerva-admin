@@ -463,7 +463,10 @@ impl Change for AddTrendStorePart {
             "WHERE data_source.name = $2 AND entity_type.name = $3 AND granularity = $4::integer * interval '1 sec'",
         );
 
-        let granularity_seconds: i32 = self.trend_store.granularity.as_secs() as i32;
+        let mut granularity_seconds: i32 = self.trend_store.granularity.as_secs() as i32;
+        if (granularity_seconds > 2500000) & (granularity_seconds < 3000000) {
+            granularity_seconds = 2592000 // rust and postgres disagree on the number of seconds in a month
+        }
 
         client
             .query_one(
