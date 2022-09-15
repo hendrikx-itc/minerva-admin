@@ -7,7 +7,7 @@ use utoipa::Component;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{body::MessageBody, http::StatusCode, post, web::Data, HttpResponse, Responder};
+use actix_web::{post, web::Data, HttpResponse, Responder};
 
 use serde_json::json;
 use tokio_postgres::Client;
@@ -19,6 +19,8 @@ use crate::trendmaterialization::{
     TrendMaterializationSourceData,
 };
 use crate::trendstore::{TrendData, TrendStorePartCompleteData};
+
+use super::error::{Error, Success};
 
 lazy_static! {
     static ref DATASOURCE: String = "kpi".to_string();
@@ -212,26 +214,28 @@ impl KpiData {
         }
     }
 
-    async fn create(&self, client: &mut Client) -> HttpResponse {
-        let mut result: HttpResponse = HttpResponse::Ok().body("KPI created");
+    async fn create(&self, client: &mut Client) -> Result<String, Error> {
+        let mut result: Result<String, Error> = Ok("KPI created".to_string());
         for granularity in GRANULARITIES.iter() {
             let query_result = self.get_kpi(granularity.to_string(), client).await;
             match query_result {
                 Err(e) => {
-                    result = HttpResponse::Conflict()
-                        .body(format!("Preparation failed: {}", e.to_string()))
+                    result = Err(Error {
+                        code: 409,
+                        message: format!("Preparation failed: {}", e.to_string()),
+                    })
                 }
                 Ok(kpi) => {
                     let query_result = kpi.trend_store_part.create(client).await;
-                    match query_result.status() {
-                        StatusCode::OK => {
+                    match query_result {
+                        Ok(_) => {
                             let query_result = kpi.materialization.create(client).await;
-                            match query_result.status() {
-                                StatusCode::OK => {}
-                                _ => result = query_result,
+                            match query_result {
+                                Err(e) => result = Err(e),
+                                Ok(_) => {}
                             }
                         }
-                        _ => result = query_result,
+                        Err(e) => result = Err(e),
                     }
                 }
             }
@@ -240,29 +244,57 @@ impl KpiData {
     }
 }
 
-// curl -H "Content-Type: application/json" -X POST -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc","L.DL.CRS.RateAvg"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),SUM(\"L.DL.CRS.RateAvg\") * 1000)"}' localhost:8080/kpi/new
+// curl -H "Content-Type: application/json" -X POST -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc","L.DL.CRS.RateAvg"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),SUM(\"L.DL.CRS.RateAvg\") * 1000)"}' localhost:8080/kpis
 
 #[utoipa::path(
     responses(
-	(status = 200, description = "Create a new KPI", body = String),
-	(status = 400, description = "Incorrect data format", body = String),
-	(status = 409, description = "KPI creation failed", body = String),
-	(status = 500, description = "Database unreachable", body = String),
+	(status = 200, description = "Create a new KPI", body = Success),
+	(status = 400, description = "Incorrect data format", body = Error),
+	(status = 409, description = "KPI creation failed", body = Error),
+	(status = 500, description = "Database unreachable", body = Error),
     )
 )]
-#[post("/kpi/new")]
+#[post("/kpis")]
 pub(super) async fn post_kpi(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> impl Responder {
     let input: Result<KpiData, serde_json::Error> = serde_json::from_str(&post);
     match input {
-        Err(e) => HttpResponse::BadRequest().body(e.to_string()),
+        Err(e) => HttpResponse::BadRequest().json(Error {
+            code: 400,
+            message: e.to_string(),
+        }),
         Ok(data) => {
             let client_query = pool.get().await;
             match client_query {
-                Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
-                Ok(mut client) => data.create(&mut client).await,
+                Err(e) => HttpResponse::InternalServerError().json(Error {
+                    code: 500,
+                    message: e.to_string(),
+                }),
+                Ok(mut client) => {
+                    let result = data.create(&mut client).await;
+                    match result {
+                        Ok(e) => HttpResponse::Ok().json(Success {
+                            code: 200,
+                            message: e,
+                        }),
+                        Err(Error {
+                            code: 409,
+                            message: e,
+                        }) => HttpResponse::Conflict().json(Error {
+                            code: 409,
+                            message: e,
+                        }),
+                        Err(Error {
+                            code: c,
+                            message: e,
+                        }) => HttpResponse::InternalServerError().json(Error {
+                            code: c,
+                            message: e,
+                        }),
+                    }
+                }
             }
         }
     }

@@ -57,6 +57,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        404:
+          description: Trend view materialization creation seems to succeed, but the created materialization cannot be found
+          content:
+            application/json:
+              schema:
+                $ref: '$/components/schemas/Error'
         default:
           description: Unexpected error
           content:
@@ -124,6 +130,10 @@ paths:
       responses:
         200:
           description: The trend view materialization was successfully deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
         401:
           description: User is not allowed to perform this operation on this trend view materialization
           content:
@@ -476,6 +486,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /kpis:
+    post:
+      summary: Create a new KPI
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/Kpi'
+      responses:
+        200:
+          description: KPI successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        400:
+          description: The input is incorrectly formatted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        409:
+          description: Creation of the KPI failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'      
+    put:
+      summary: Create a new KPI
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/Kpi'
+      responses:
+        200:
+          description: KPI successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        400:
+          description: The input is incorrectly formatted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: KPI to be changed does not exist (or is not a KPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        409:
+          description: Creation of the KPI failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'      
 components:
   schemas:
     TrendViewMaterialization:
@@ -652,6 +745,27 @@ components:
           type: string
         description:
           type: string
+    KPI:
+      type: object
+      properties:
+        name:
+          type: string
+          description: trend for which the KPI is defined
+        entity_type:
+          type: string
+        data_type:
+          type: string
+          description: data type of the KPI
+        enabled:
+          type: bool
+        source_trends:
+          type: array
+          items:
+            type: string
+          description: trends on which the KPI depends
+        definition:
+          type: string
+          description: SQL definition of the actual KPI definition
     Error:
       type: object
       properties:
@@ -660,3 +774,12 @@ components:
           format: int32
         message:
           type: string
+    Success:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+      
