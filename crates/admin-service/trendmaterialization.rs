@@ -80,9 +80,9 @@ impl TrendMaterializationFunctionFull {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-struct TrendMaterializationSourceIdentifier {
-    materialization: i32,
-    source: TrendMaterializationSourceData,
+pub struct TrendMaterializationSourceIdentifier {
+    pub materialization: i32,
+    pub source: TrendMaterializationSourceData,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
@@ -461,19 +461,7 @@ pub(super) async fn get_trend_function_materializations(
         }),
         Ok(client) => {
             let mut sources: Vec<TrendMaterializationSourceIdentifier> = vec![];
-            for row in client.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id", &[],).await.unwrap()
-	    {
-		let source = TrendMaterializationSourceIdentifier {
-		    materialization: row.get(0),
-		    source: TrendMaterializationSourceData {
-			trend_store_part: row.get(1),
-			mapping_function: row.get(2),
-		    },
-		};
-		sources.push(source)
-	    };
-
-            let query = client.query("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function  JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id LEFT JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname", &[],).await;
+            let query = client.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id", &[],).await;
             match query {
                 Err(e) => HttpResponse::InternalServerError().json(Error {
                     code: 500,
@@ -481,36 +469,56 @@ pub(super) async fn get_trend_function_materializations(
                 }),
                 Ok(query_result) => {
                     for row in query_result {
-                        let mat_id: i32 = row.get(1);
-
-                        let mut this_sources: Vec<TrendMaterializationSourceData> = vec![];
-                        for source in &sources {
-                            if source.materialization == mat_id {
-                                this_sources.push(source.source.clone())
-                            }
-                        }
-
-                        let materialization = TrendFunctionMaterializationFull {
-                            id: row.get(0),
-                            materialization_id: row.get(1),
-                            target_trend_store_part: row.get(3),
-                            enabled: row.get(7),
-                            processing_delay: parse_interval(row.get(4)).unwrap(),
-                            stability_delay: parse_interval(row.get(5)).unwrap(),
-                            reprocessing_period: parse_interval(row.get(6)).unwrap(),
-                            sources: this_sources,
-                            function: TrendMaterializationFunctionFull {
-                                name: row.get(2),
-                                return_type: row.get(9),
-                                src: row.get(10),
-                                language: row.get(11),
+                        let source = TrendMaterializationSourceIdentifier {
+                            materialization: row.get(0),
+                            source: TrendMaterializationSourceData {
+                                trend_store_part: row.get(1),
+                                mapping_function: row.get(2),
                             },
-                            fingerprint_function: row.get(8),
                         };
-
-                        m.push(materialization)
+                        sources.push(source)
                     }
-                    HttpResponse::Ok().json(m)
+
+                    let query = client.query("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function  JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id LEFT JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname", &[],).await;
+                    match query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(query_result) => {
+                            for row in query_result {
+                                let mat_id: i32 = row.get(1);
+
+                                let mut this_sources: Vec<TrendMaterializationSourceData> = vec![];
+                                for source in &sources {
+                                    if source.materialization == mat_id {
+                                        this_sources.push(source.source.clone())
+                                    }
+                                }
+
+                                let materialization = TrendFunctionMaterializationFull {
+                                    id: row.get(0),
+                                    materialization_id: row.get(1),
+                                    target_trend_store_part: row.get(3),
+                                    enabled: row.get(7),
+                                    processing_delay: parse_interval(row.get(4)).unwrap(),
+                                    stability_delay: parse_interval(row.get(5)).unwrap(),
+                                    reprocessing_period: parse_interval(row.get(6)).unwrap(),
+                                    sources: this_sources,
+                                    function: TrendMaterializationFunctionFull {
+                                        name: row.get(2),
+                                        return_type: row.get(9),
+                                        src: row.get(10),
+                                        language: row.get(11),
+                                    },
+                                    fingerprint_function: row.get(8),
+                                };
+
+                                m.push(materialization)
+                            }
+                            HttpResponse::Ok().json(m)
+                        }
+                    }
                 }
             }
         }

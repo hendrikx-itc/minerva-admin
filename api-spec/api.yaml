@@ -568,7 +568,28 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'      
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: KPIs
+      responses:
+        200:
+          description: An array of KPIs
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/KPI'
+        401:
+          description: User is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     TrendViewMaterialization:

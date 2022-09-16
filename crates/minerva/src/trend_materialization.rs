@@ -351,6 +351,7 @@ impl TrendFunctionMaterialization {
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
         self.define_materialization(client).await?;
+        self.connect_sources(client).await?;
 
         Ok(())
     }
@@ -390,6 +391,35 @@ impl TrendFunctionMaterialization {
         }
     }
 
+    async fn connect_sources(&self, client: &mut Client) -> Result<(), Error> {
+        let mut result: Result<(), Error> = Ok(());
+        for source in &self.sources {
+            let query = format!(
+                concat!(
+		    "INSERT INTO trend_directory.materialization_trend_store_link ",
+		    "SELECT m.id AS materialization_id, ",
+		    "stsp.id AS trend_store_part_id, ",
+		    "'{}' AS timestamp_mapping_func ",
+		    "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+		    "ON m.dst_trend_store_part_id = dstp.id, ",
+		    "trend_directory.trend_store_part stsp ",
+		    "WHERE dstp.name = '{}' AND stsp.name = '{}'"
+		),
+                &source.mapping_function, &self.target_trend_store_part, &source.trend_store_part
+            );
+            match client.query(&query, &[]).await {
+                Ok(_) => {}
+                Err(e) => {
+                    result = Err(Error::Database(DatabaseError::from_msg(format!(
+                        "Error connecting sources: {}",
+                        e
+                    ))))
+                }
+            }
+        }
+        result
+    }
+
     pub fn diff<'a>(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change + Send>> {
         let changes = Vec::new();
 
@@ -402,6 +432,9 @@ impl TrendFunctionMaterialization {
 
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
+
+        // self.drop_sources(client).await?;  // to be implemented
+        // self.cconnect_sources(client).await?;
 
         Ok(())
     }

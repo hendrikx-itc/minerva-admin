@@ -30,7 +30,7 @@ mod entitytype;
 use entitytype::{get_entity_type, get_entity_types, EntityType};
 
 mod kpi;
-use kpi::{post_kpi, KpiData};
+use kpi::{get_kpis, post_kpi, KpiData};
 
 mod error;
 
@@ -60,6 +60,7 @@ async fn main() -> std::io::Result<()> {
 	    datasource::get_data_source,
 	    entitytype::get_entity_types,
 	    entitytype::get_entity_type,
+	    kpi::get_kpis,
 	    kpi::post_kpi,
         ),
         components(TrendMaterializationSourceData, TrendMaterializationDef,
@@ -109,6 +110,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_data_source)
             .service(get_entity_types)
             .service(get_entity_type)
+            .service(get_kpis)
             .service(post_kpi)
     })
     .bind(("127.0.0.1", 8080))?

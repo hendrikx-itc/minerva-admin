@@ -7,7 +7,7 @@ use utoipa::Component;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{post, web::Data, HttpResponse, Responder};
+use actix_web::{get, post, web::Data, HttpResponse, Responder};
 
 use serde_json::json;
 use tokio_postgres::Client;
@@ -16,11 +16,11 @@ use minerva::interval::parse_interval;
 
 use crate::trendmaterialization::{
     TrendFunctionMaterializationData, TrendMaterializationFunctionData,
-    TrendMaterializationSourceData,
+    TrendMaterializationSourceData, TrendMaterializationSourceIdentifier,
 };
 use crate::trendstore::{TrendData, TrendStorePartCompleteData};
 
-use super::error::{Error, Success};
+use crate::error::{Error, Success};
 
 lazy_static! {
     static ref DATASOURCE: String = "kpi".to_string();
@@ -36,6 +36,7 @@ lazy_static! {
     static ref TIME_AGGREGATION: String = "SUM".to_string();
     static ref ENTITY_AGGREGATION: String = "SUM".to_string();
     static ref MAPPING_FUNCTION: String = "trend.mapping_id(timestamptz)".to_string();
+    static ref DEFAULT_GRANULARITY: String = "15m".to_string();
     static ref PROCESSING_DELAY: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("10m").unwrap()),
         ("1h".to_string(), parse_interval("10m").unwrap()),
@@ -241,6 +242,77 @@ impl KpiData {
             }
         }
         result
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "List of existing KPIs", body = [KpiData]),
+	(status = 500, description = "Database unreachable", body = Error),
+    )
+)]
+#[get("/kpis")]
+pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>) -> impl Responder {
+    let mut result: Vec<KpiData> = vec![];
+
+    let clientquery = pool.get().await;
+    match clientquery {
+        Err(e) => HttpResponse::InternalServerError().json(Error {
+            code: 500,
+            message: e.to_string(),
+        }),
+        Ok(client) => {
+            let mut sources: Vec<TrendMaterializationSourceIdentifier> = vec![];
+            let query = client.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id", &[],).await;
+            match query {
+                Err(e) => HttpResponse::InternalServerError().json(Error {
+                    code: 500,
+                    message: e.to_string(),
+                }),
+                Ok(query_result) => {
+                    for row in query_result {
+                        let source = TrendMaterializationSourceIdentifier {
+                            materialization: row.get(0),
+                            source: TrendMaterializationSourceData {
+                                trend_store_part: row.get(1),
+                                mapping_function: row.get(2),
+                            },
+                        };
+                        sources.push(source)
+                    }
+
+                    let query = client.query(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}'", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[]).await;
+                    match query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(query_result) => {
+                            for row in query_result {
+                                let mat_id: i32 = row.get(4);
+                                let mut this_sources: Vec<String> = vec![];
+                                for source in &sources {
+                                    if source.materialization == mat_id {
+                                        this_sources.push(source.source.trend_store_part.clone())
+                                    }
+                                }
+
+                                let kpi = KpiData {
+                                    name: row.get(0),
+                                    entity_type: row.get(1),
+                                    data_type: row.get(2),
+                                    enabled: row.get(3),
+                                    source_trends: this_sources,
+                                    definition: row.get(5),
+                                };
+                                result.push(kpi)
+                            }
+                            HttpResponse::Ok().json(result)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
