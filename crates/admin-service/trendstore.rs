@@ -980,8 +980,8 @@ pub(super) async fn get_trend_store(
     }
 }
 
-// curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_One_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8080/trend-store-parts/new
-// curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_Two_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8080/trend-store-parts/new
+// curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_One_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8000/trend-store-parts/new
+// curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_Two_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8000/trend-store-parts/new
 
 #[utoipa::path(
     responses(
