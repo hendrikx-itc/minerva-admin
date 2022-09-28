@@ -420,6 +420,25 @@ impl TrendFunctionMaterialization {
         result
     }
 
+    async fn drop_sources(&self, client: &mut Client) -> Result<(), Error> {
+        let query = format!(
+            concat!(
+		"DELETE FROM trend_directory.materialization_trend_store_link tsl ",
+		"USING trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+		"ON m.dst_trend_store_part_id = dstp.id ",
+		"WHERE dstp.name = '{}' AND tsl.materialization_id = m.id"
+	    ),
+            &self.target_trend_store_part
+        );
+        match client.query(&query, &[]).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+                "Error removing old sources: {}",
+                e
+            )))),
+        }
+    }
+
     pub fn diff<'a>(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change + Send>> {
         let changes = Vec::new();
 
@@ -429,12 +448,11 @@ impl TrendFunctionMaterialization {
     async fn update(&self, client: &mut Client) -> Result<(), Error> {
         self.drop_fingerprint_function(client).await?;
         self.drop_function(client).await?;
+        self.drop_sources(client).await?;
 
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
-
-        // self.drop_sources(client).await?;  // to be implemented
-        // self.cconnect_sources(client).await?;
+        self.connect_sources(client).await?;
 
         Ok(())
     }

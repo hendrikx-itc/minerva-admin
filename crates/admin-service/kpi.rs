@@ -7,7 +7,7 @@ use utoipa::Component;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{get, post, web::Data, HttpResponse, Responder};
+use actix_web::{get, post, put, web::Data, HttpResponse, Responder};
 
 use serde_json::json;
 use tokio_postgres::Client;
@@ -349,6 +349,87 @@ pub(super) async fn post_kpi(
                     match result {
                         Ok(e) => HttpResponse::Ok().json(Success {
                             code: 200,
+                            message: e,
+                        }),
+                        Err(Error {
+                            code: 409,
+                            message: e,
+                        }) => HttpResponse::Conflict().json(Error {
+                            code: 409,
+                            message: e,
+                        }),
+                        Err(Error {
+                            code: c,
+                            message: e,
+                        }) => HttpResponse::InternalServerError().json(Error {
+                            code: c,
+                            message: e,
+                        }),
+                    }
+                }
+            }
+        }
+    }
+}
+
+// curl -H "Content-Type: application/json" -X PUT -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),1000::numeric)"}' localhost:8000/kpis
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Updated KPI", body = Success),
+	(status = 400, description = "Input format incorrect", body = Error),
+	(status = 404, description = "KPI not found", body = Error),
+	(status = 409, description = "Update failed", body = Error),
+	(status = 500, description = "General error", body = Error)
+    )
+)]
+#[put("/kpis")]
+pub(super) async fn update_kpi(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    post: String,
+) -> impl Responder {
+    let input: Result<KpiData, serde_json::Error> = serde_json::from_str(&post);
+    match input {
+        Err(e) => HttpResponse::BadRequest().json(Error {
+            code: 400,
+            message: e.to_string(),
+        }),
+        Ok(data) => {
+            let client_query = pool.get().await;
+            match client_query {
+                Err(e) => HttpResponse::InternalServerError().json(Error {
+                    code: 500,
+                    message: e.to_string(),
+                }),
+                Ok(mut client) => {
+                    let mut result: Result<String, Error> = Ok("KPI changed".to_string());
+                    for granularity in GRANULARITIES.iter() {
+                        let kpiquery = data.get_kpi(granularity.to_string(), &mut client);
+                        match kpiquery.await {
+                            Err(e) => {
+                                result = Err(Error {
+                                    code: 404,
+                                    message: e,
+                                })
+                            }
+                            Ok(kpi) => {
+                                let updatequery = kpi.materialization.update(&mut client);
+                                match updatequery.await {
+                                    Err(e) => result = Err(e),
+                                    Ok(_) => {}
+                                }
+                            }
+                        }
+                    }
+                    match result {
+                        Ok(m) => HttpResponse::Ok().json(Success {
+                            code: 200,
+                            message: m,
+                        }),
+                        Err(Error {
+                            code: 404,
+                            message: e,
+                        }) => HttpResponse::NotFound().json(Error {
+                            code: 404,
                             message: e,
                         }),
                         Err(Error {

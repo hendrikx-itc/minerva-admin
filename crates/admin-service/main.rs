@@ -1,3 +1,4 @@
+use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 
 use bb8;
@@ -12,6 +13,7 @@ use trendmaterialization::{
     get_trend_function_materialization, get_trend_function_materializations,
     get_trend_materializations, get_trend_view_materialization, get_trend_view_materializations,
     post_trend_function_materialization, post_trend_view_materialization,
+    update_trend_function_materialization, update_trend_view_materialization,
     TrendFunctionMaterializationData, TrendFunctionMaterializationFull, TrendMaterializationDef,
     TrendMaterializationSourceData, TrendViewMaterializationData, TrendViewMaterializationFull,
 };
@@ -30,7 +32,7 @@ mod entitytype;
 use entitytype::{get_entity_type, get_entity_types, EntityType};
 
 mod kpi;
-use kpi::{get_kpis, post_kpi, KpiData};
+use kpi::{get_kpis, post_kpi, update_kpi, KpiData};
 
 mod error;
 
@@ -50,6 +52,8 @@ async fn main() -> std::io::Result<()> {
 	    trendmaterialization::post_trend_function_materialization,
 	    trendmaterialization::delete_trend_view_materialization,
 	    trendmaterialization::delete_trend_function_materialization,
+	    trendmaterialization::update_trend_function_materialization,
+	    trendmaterialization::update_trend_view_materialization,
 	    trendstore::get_trend_store_parts,
 	    trendstore::get_trend_store_part,
 	    trendstore::find_trend_store_part,
@@ -62,6 +66,7 @@ async fn main() -> std::io::Result<()> {
 	    entitytype::get_entity_type,
 	    kpi::get_kpis,
 	    kpi::post_kpi,
+	    kpi::update_kpi,
         ),
         components(TrendMaterializationSourceData, TrendMaterializationDef,
 		   TrendViewMaterializationFull, TrendFunctionMaterializationFull,
@@ -85,7 +90,11 @@ async fn main() -> std::io::Result<()> {
     let openapi = ApiDoc::openapi();
 
     HttpServer::new(move || {
+        let cors = Cors::permissive()
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+            .max_age(3600);
         App::new()
+            .wrap(cors)
             .wrap(Logger::default())
             .app_data(web::Data::new(pool.clone()))
             .service(
@@ -100,6 +109,8 @@ async fn main() -> std::io::Result<()> {
             .service(post_trend_function_materialization)
             .service(delete_trend_view_materialization)
             .service(delete_trend_function_materialization)
+            .service(update_trend_function_materialization)
+            .service(update_trend_view_materialization)
             .service(get_trend_store_parts)
             .service(get_trend_store_part)
             .service(find_trend_store_part)
@@ -112,6 +123,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_entity_type)
             .service(get_kpis)
             .service(post_kpi)
+            .service(update_kpi)
     })
     .bind(("127.0.0.1", 8000))?
     .run()

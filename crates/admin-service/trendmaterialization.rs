@@ -3,7 +3,7 @@ use std::time::Duration;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{delete, get, post, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
 use utoipa::Component;
@@ -13,6 +13,7 @@ use minerva::interval::parse_interval;
 use minerva::trend_materialization::{
     AddTrendMaterialization, TrendFunctionMaterialization, TrendMaterialization,
     TrendMaterializationFunction, TrendMaterializationSource, TrendViewMaterialization,
+    UpdateTrendMaterialization,
 };
 use tokio_postgres::Client;
 
@@ -169,6 +170,85 @@ impl TrendViewMaterializationData {
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }
+
+    pub async fn create(&self, client: &mut Client) -> Result<TrendViewMaterializationFull, Error> {
+        let action = AddTrendMaterialization {
+            trend_materialization: self.as_minerva(),
+        };
+        let result = action.apply(client).await;
+        match result {
+            Err(e) => Err(Error {
+                code: 409,
+                message: e.to_string(),
+            }),
+            Ok(_) => {
+                let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE tsp.name = $1", &[&self.target_trend_store_part],).await;
+                match query_result {
+		    Err(e) => Err( Error {
+			code: 404,
+			message: "Creation reported as succeeded, but could not find created view materialization afterward: ".to_owned() + &e.to_string()
+		    }),
+		    Ok(row) => {
+			let mut sources: Vec<TrendMaterializationSourceData> = vec![];
+			let id: i32 = row.get(0);
+			for inner_row in client.query("SELECT tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id WHERE vm.id = $1", &[&id],).await.unwrap()
+			{
+			    let source = TrendMaterializationSourceData {
+				trend_store_part: inner_row.get(0),
+				mapping_function: inner_row.get(1),
+			    };
+			    sources.push(source)
+			};
+			let materialization = TrendViewMaterializationFull {
+			    id: id,
+			    materialization_id: row.get(1),
+			    target_trend_store_part: row.get(3),
+			    enabled: row.get(7),
+			    processing_delay: parse_interval(row.get(4)).unwrap(),
+			    stability_delay: parse_interval(row.get(5)).unwrap(),
+			    reprocessing_period: parse_interval(row.get(6)).unwrap(),
+			    sources: sources,
+			    view: row.get(2),
+			    fingerprint_function: row.get(8),
+			};
+			Ok(materialization)
+		    }
+		}
+            }
+        }
+    }
+
+    pub async fn update(&self, client: &mut Client) -> Result<Success, Error> {
+        let query_result = client.query_one("SELECT vm.id, m.id FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id WHERE tsp.name=$1", &[&self.target_trend_store_part],).await;
+        match query_result {
+            Err(e) => {
+                return Err(Error {
+                    code: 404,
+                    message: format!(
+                        "No view materialization targetting {} found: {}",
+                        self.target_trend_store_part,
+                        e.to_string()
+                    ),
+                })
+            }
+            Ok(row) => {
+                let action = UpdateTrendMaterialization {
+                    trend_materialization: self.as_minerva(),
+                };
+                let result = action.apply(client).await;
+                match result {
+                    Err(e) => Err(Error {
+                        code: 500,
+                        message: "Update of materialization failed: ".to_owned() + &e.to_string(),
+                    }),
+                    Ok(_) => Ok(Success {
+                        code: 200,
+                        message: "Update of materialization succeeded.".to_string(),
+                    }),
+                }
+            }
+        }
+    }
 }
 
 impl TrendViewMaterializationFull {
@@ -260,6 +340,38 @@ impl TrendFunctionMaterializationData {
 			    }
 			}
 		    }
+                }
+            }
+        }
+    }
+
+    pub async fn update(&self, client: &mut Client) -> Result<Success, Error> {
+        let query_result = client.query_one("SELECT fm.id, m.id FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id WHERE tsp.name=$1", &[&self.target_trend_store_part],).await;
+        match query_result {
+            Err(e) => {
+                return Err(Error {
+                    code: 404,
+                    message: format!(
+                        "No function materialization targetting {} found: {}",
+                        self.target_trend_store_part,
+                        e.to_string()
+                    ),
+                })
+            }
+            Ok(row) => {
+                let action = UpdateTrendMaterialization {
+                    trend_materialization: self.as_minerva(),
+                };
+                let result = action.apply(client).await;
+                match result {
+                    Err(e) => Err(Error {
+                        code: 500,
+                        message: "Update of materialization failed: ".to_owned() + &e.to_string(),
+                    }),
+                    Ok(_) => Ok(Success {
+                        code: 200,
+                        message: "Update of materialization succeeded.".to_string(),
+                    }),
                 }
             }
         }
@@ -755,49 +867,21 @@ pub(super) async fn post_trend_view_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-                    let action = AddTrendMaterialization {
-                        trend_materialization: data.as_minerva(),
-                    };
-                    let result = action.apply(&mut client).await;
+                    let result = data.create(&mut client).await;
                     match result {
-                        Err(e) => HttpResponse::Conflict().json(Error {
+                        Ok(materialization) => HttpResponse::Ok().json(materialization),
+                        Err(Error {
+                            code: 404,
+                            message: e,
+                        }) => HttpResponse::NotFound().json(e),
+                        Err(Error {
                             code: 409,
-                            message: e.to_string(),
-                        }),
-                        Ok(_) => {
-                            let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE tsp.name = $1", &[&data.target_trend_store_part],).await;
-                            match query_result {
-				Err(e) => HttpResponse::NotFound().json( Error {
-				    code: 404,
-				    message: "Creation reported as succeeded, but could not find created view materialization afterward: ".to_owned() + &e.to_string()
-				}),
-				Ok(row) => {
-				    let mut sources: Vec<TrendMaterializationSourceData> = vec![];
-				    let id: i32 = row.get(0);
-				    for inner_row in client.query("SELECT tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id WHERE vm.id = $1", &[&id],).await.unwrap()
-				    {
-					let source = TrendMaterializationSourceData {
-					    trend_store_part: inner_row.get(0),
-					    mapping_function: inner_row.get(1),
-					};
-					sources.push(source)
-				    };
-				    let materialization = TrendViewMaterializationFull {
-					id: id,
-					materialization_id: row.get(1),
-					target_trend_store_part: row.get(3),
-					enabled: row.get(7),
-					processing_delay: parse_interval(row.get(4)).unwrap(),
-					stability_delay: parse_interval(row.get(5)).unwrap(),
-					reprocessing_period: parse_interval(row.get(6)).unwrap(),
-					sources: sources,
-					view: row.get(2),
-					fingerprint_function: row.get(8),
-				    };
-				    HttpResponse::Ok().json(materialization)
-				}
-			    }
-                        }
+                            message: e,
+                        }) => HttpResponse::Conflict().json(e),
+                        Err(Error {
+                            code: _,
+                            message: e,
+                        }) => HttpResponse::InternalServerError().json(e),
                     }
                 }
             }
@@ -807,7 +891,7 @@ pub(super) async fn post_trend_view_materialization(
 
 // To call this with curl:
 // first: DELETE FROM trend_directory.materialization;
-// curl -H "Content-Type: application/json" -X POST -d '{"target_trend_store_part":"u2020-4g-pm-traffic-sum_Cell_1month","enabled":true,"processing_delay":"30m","stability_delay":"5m","reprocessing_period":"3days","sources":[{"trend_store_part":"u2020-4g-pm_Cell_channel-l-ca_1month","mapping_function":"trend.mapping_id(timestamp with time zone)"}],"function":{"name":"trend.\"u2020-4g-pm-traffic-sum_Cell_1month\"","return_type":"TABLE(entity_id integer, \"timestamp\" timestamp with time zone, samples numeric, \"L.Traffic.DRB.QCI.1.SUM\" numeric)","src":" BEGIN\r\nRETURN QUERY EXECUTE $query$\r\n    SELECT\r\n      entity_id,\r\n      $2 AS timestamp,\r\n      sum(t.\"samples\") AS \"samples\",\r\n      SUM(t.\"L.Traffic.DRB.QCI.1.SUM\") AS \"L.Traffic.DRB.QCI.1.SUM\"\r\n    FROM trend.\"u2020-4g-pm-traffic-sum_Cell_1d\" AS t\r\n    WHERE $1 < timestamp AND timestamp <= $2\r\n    GROUP BY entity_id\r\n$query$ USING $1 - interval '\''1month'\'', $1;\r\nEND;\r\n","language":"PLPGSQL"},"fingerprint_function":"SELECT max(modified.last), format('\''{%s}'\'', string_agg(format('\''\"%s\":\"%s\"'\'', t, modified.last), '\'','\''))::jsonb\r\nFROM generate_series($1 - interval '\''1month'\'' + interval '\''1d'\'', $1, interval '\''1d'\'') t\r\nLEFT JOIN (\r\n  SELECT timestamp, last\r\n  FROM trend_directory.trend_store_part part\r\n  JOIN trend_directory.modified ON modified.trend_store_part_id = part.id\r\n  WHERE part.name = '\''u2020-4g-pm-traffic-sum_Cell_1d'\''\r\n) modified ON modified.timestamp = t;\r\n"}' localhost:8000/trend-function-materializations/new
+// curl -H "Content-Type: application/json" -X POST -d '{"target_trend_store_part":"u2020-4g-pm-traffic-sum_Cell_1month","enabled":true,"processing_delay":"30m","stability_delay":"5m","reprocessing_period":"3days","sources":[{"trend_store_part":"u2020-4g-pm_Cell_channel-l-ca_1month","mapping_function":"trend.mapping_id(timestamp with time zone)"}],"function":{"name":"trend.\"u2020-4g-pm-traffic-sum_Cell_1month\"","return_type":"TABLE(entity_id integer, \"timestamp\" timestamp with time zone, samples numeric, \"L.Traffic.DRB.QCI.1.SUM\" numeric)","src":" BEGIN\r\nRETURN QUERY EXECUTE $query$\r\n    SELECT\r\n      entity_id,\r\n      $2 AS timestamp,\r\n      sum(t.\"samples\") AS \"samples\",\r\n      SUM(t.\"L.Traffic.DRB.QCI.1.SUM\") AS \"L.Traffic.DRB.QCI.1.SUM\"\r\n    FROM trend.\"u2020-4g-pm-traffic-sum_Cell_1d\" AS t\r\n    WHERE $1 < timestamp AND timestamp <= $2\r\n    GROUP BY entity_id\r\n$query$ USING $1 - interval '\''1month'\'', $1;\r\nEND;\r\n","language":"PLPGSQL"},"fingerprint_function":"SELECT max(modified.last), format('\''{%s}'\'', string_agg(format('\''\"%s\":\"%s\"'\'', t, modified.last), '\'','\''))::jsonb\r\nFROM generate_series($1 - interval '\''1month'\'' + interval '\''1d'\'', $1, interval '\''1d'\'') t\r\nLEFT JOIN (\r\n  SELECT timestamp, last\r\n  FROM trend_directory.trend_store_part part\r\n  JOIN trend_directory.modified ON modified.trend_store_part_id = part.id\r\n  WHERE part.name = '\''u2020-4g-pm-traffic-sum_Cell_1d'\''\r\n) modified ON modified.timestamp = t;\r\n"}' localhost:8000/trend-function-materializations
 
 #[utoipa::path(
     responses(
@@ -817,7 +901,7 @@ pub(super) async fn post_trend_view_materialization(
 	(status = 409, description = "View materialization cannot be created with these data", body = Error),
     )
 )]
-#[post("/trend-function-materializations/new")]
+#[post("/trend-function-materializations")]
 pub(super) async fn post_trend_function_materialization(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
@@ -995,6 +1079,118 @@ pub(super) async fn delete_trend_function_materialization(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Updated view materialization", body = Success),
+	(status = 400, description = "Input format incorrect", body = Error),
+	(status = 404, description = "Function materialization not found", body = Error),
+	(status = 500, description = "Deletion failed fully or partially", body = Error)
+    )
+)]
+#[put("/trend-view-materializations")]
+pub(super) async fn update_trend_view_materialization(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    post: String,
+) -> impl Responder {
+    let input: Result<TrendFunctionMaterializationData, serde_json::Error> =
+        serde_json::from_str(&post);
+    match input {
+        Err(e) => HttpResponse::BadRequest().json(Error {
+            code: 400,
+            message: e.to_string(),
+        }),
+        Ok(data) => {
+            let result = pool.get().await;
+            match result {
+                Err(e) => HttpResponse::InternalServerError().json(Error {
+                    code: 500,
+                    message: e.to_string(),
+                }),
+                Ok(mut client) => match data.update(&mut client).await {
+                    Ok(success) => HttpResponse::Ok().json(success),
+                    Err(Error {
+                        code: 404,
+                        message: e,
+                    }) => HttpResponse::NotFound().json(Error {
+                        code: 404,
+                        message: e,
+                    }),
+                    Err(Error {
+                        code: 409,
+                        message: e,
+                    }) => HttpResponse::Conflict().json(Error {
+                        code: 409,
+                        message: e,
+                    }),
+                    Err(Error {
+                        code: c,
+                        message: e,
+                    }) => HttpResponse::InternalServerError().json(Error {
+                        code: c,
+                        message: e,
+                    }),
+                },
+            }
+        }
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Updated function materialization", body = TrendFunctionMaterializationFull),
+	(status = 400, description = "Input format incorrect", body = Error),
+	(status = 404, description = "Function materialization not found", body = Error),
+	(status = 500, description = "Deletion failed fully or partially", body = Error)
+    )
+)]
+#[put("/trend-function-materializations")]
+pub(super) async fn update_trend_function_materialization(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    post: String,
+) -> impl Responder {
+    let input: Result<TrendFunctionMaterializationData, serde_json::Error> =
+        serde_json::from_str(&post);
+    match input {
+        Err(e) => HttpResponse::BadRequest().json(Error {
+            code: 400,
+            message: e.to_string(),
+        }),
+        Ok(data) => {
+            let result = pool.get().await;
+            match result {
+                Err(e) => HttpResponse::InternalServerError().json(Error {
+                    code: 500,
+                    message: e.to_string(),
+                }),
+                Ok(mut client) => match data.update(&mut client).await {
+                    Ok(success) => HttpResponse::Ok().json(success),
+                    Err(Error {
+                        code: 404,
+                        message: e,
+                    }) => HttpResponse::NotFound().json(Error {
+                        code: 404,
+                        message: e,
+                    }),
+                    Err(Error {
+                        code: 409,
+                        message: e,
+                    }) => HttpResponse::Conflict().json(Error {
+                        code: 409,
+                        message: e,
+                    }),
+                    Err(Error {
+                        code: c,
+                        message: e,
+                    }) => HttpResponse::InternalServerError().json(Error {
+                        code: c,
+                        message: e,
+                    }),
+                },
             }
         }
     }
