@@ -145,6 +145,19 @@ impl GeneratedTrendFull {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct TrendDataWithTrendStorePart {
+    pub id: i32,
+    pub is_generated: bool,
+    pub name: String,
+    pub trend_store_part: String,
+    pub entity_type: String,
+    pub data_source: String,
+    #[serde(with = "humantime_serde")]
+    pub granularity: Duration,
+    pub data_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
 pub struct TrendStorePartFull {
     pub id: i32,
     pub name: String,
@@ -1020,5 +1033,128 @@ pub(super) async fn post_trend_store_part(
                 },
             }
         }
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "List all trend store parts", body = [TrendDataWithTrendStorePart]),
+	(status = 500, description = "Problem interacting with database", body = Error),
+    )
+)]
+#[get("/trends")]
+pub(super) async fn get_trends(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+) -> impl Responder {
+    let mut m: Vec<TrendDataWithTrendStorePart> = vec![];
+    let result = pool.get().await;
+    match result {
+        Err(e) => HttpResponse::InternalServerError().json(Error {
+            code: 500,
+            message: e.to_string(),
+        }),
+        Ok(client) => {
+            let query = client.query("SELECT t.id, t.name, tsp.name, et.name, ds.name, ts.granularity::text, t.data_type FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN directory.data_source ds ON ts.data_source_id = ds.id", &[],).await;
+            match query {
+                Err(e) => HttpResponse::InternalServerError().json(Error {
+                    code: 500,
+                    message: e.to_string(),
+                }),
+                Ok(query_result) => {
+		    for row in query_result {
+			m.push(TrendDataWithTrendStorePart {
+			    id: row.get(0),
+			    is_generated: false,
+			    name: row.get(1),
+			    trend_store_part: row.get(2),
+			    entity_type: row.get(3),
+			    data_source: row.get(4),
+			    granularity: parse_interval(row.get(5)).unwrap(),
+			    data_type: row.get(6)
+			})
+		    };
+		    let query = client.query("SELECT t.id, t.name, tsp.name, et.name, ds.name, ts.granularity::text, t.data_type FROM trend_directory.generated_table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN directory.data_source ds ON ts.data_source_id = ds.id", &[],).await;
+		    match query {
+			Err(e) => HttpResponse::InternalServerError().json(Error {
+			    code: 500,
+			    message: e.to_string(),
+			}),
+			Ok(query_result) => {
+			    for row in query_result {
+				m.push(TrendDataWithTrendStorePart {
+				    id: row.get(0),
+				    is_generated: true,
+				    name: row.get(1),
+				    trend_store_part: row.get(2),
+				    entity_type: row.get(3),
+				    data_source: row.get(4),
+				    granularity: parse_interval(row.get(5)).unwrap(),
+				    data_type: row.get(6)
+				})
+			    };
+			    HttpResponse::Ok().json(m)
+			}
+		    }
+		}
+	    }
+	}
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "List the name of trend store parts for an entity type", body = [String]),
+	(status = 500, description = "Problem interacting with database", body = Error),
+    )
+)]
+#[get("/trendsentitytype/{et}")]
+pub(super) async fn get_trends_by_entity_type(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    et: Path<String>
+) -> impl Responder {
+    let entity_type = et.into_inner();
+    let mut m: Vec<String> = vec![];
+    let result = pool.get().await;
+    match result {
+        Err(e) => HttpResponse::InternalServerError().json(Error {
+            code: 500,
+            message: e.to_string(),
+        }),
+        Ok(client) => {
+            let query = client.query("SELECT t.name, ts.granularity::text FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE et.name = $1 ORDER BY t.name, ts.granularity::text", &[&entity_type,],).await;
+	    match query {
+		Err(e) => HttpResponse::InternalServerError().json(Error {
+		    code: 500,
+		    message: e.to_string(),
+		}),
+		Ok(query_result) => {
+		    let mut lastname: String = "".to_string();
+		    let mut lastgranularity: String = "".to_string();
+		    for row in query_result {
+			let name: String = row.get(0);
+			let granularity: String = row.get(1);
+			if name == lastname {
+			    if granularity == lastgranularity {
+				lastgranularity = "skip".to_string()
+			    }
+			    else {
+				lastgranularity = granularity
+			    }
+			}
+			else {
+			    if lastname != "".to_string() && lastgranularity != "skip".to_string() {
+				m.push(lastname)
+			    };
+			    lastname = name;
+			    lastgranularity = granularity;
+			}
+		    };
+		    if lastname != "".to_string() && lastgranularity != "skip".to_string() {
+			m.push(lastname)
+		    };
+		    HttpResponse::Ok().json(m)
+		}
+	    }
+	}
     }
 }

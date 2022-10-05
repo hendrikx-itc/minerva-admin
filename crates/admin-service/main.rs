@@ -21,8 +21,9 @@ use trendmaterialization::{
 mod trendstore;
 use trendstore::{
     find_trend_store_part, get_trend_store, get_trend_store_part, get_trend_store_parts,
-    get_trend_stores, post_trend_store_part, GeneratedTrendFull, TrendFull, TrendStoreFull,
-    TrendStorePartFull,
+    get_trend_stores, post_trend_store_part, get_trends, get_trends_by_entity_type,
+    GeneratedTrendFull, TrendFull, TrendStoreFull, TrendStorePartFull,
+    TrendDataWithTrendStorePart,
 };
 
 mod datasource;
@@ -60,6 +61,8 @@ async fn main() -> std::io::Result<()> {
 	    trendstore::get_trend_stores,
 	    trendstore::get_trend_store,
 	    trendstore::post_trend_store_part,
+	    trendstore::get_trends,
+	    trendstore::get_trends_by_entity_type,
 	    datasource::get_data_sources,
 	    datasource::get_data_source,
 	    entitytype::get_entity_types,
@@ -117,6 +120,8 @@ async fn main() -> std::io::Result<()> {
             .service(post_trend_store_part)
             .service(get_trend_stores)
             .service(get_trend_store)
+	    .service(get_trends)
+	    .service(get_trends_by_entity_type)
             .service(get_data_sources)
             .service(get_data_source)
             .service(get_entity_types)
