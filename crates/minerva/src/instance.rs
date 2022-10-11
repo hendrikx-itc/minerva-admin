@@ -546,7 +546,7 @@ async fn initialize_custom<'a>(client: &'a mut Client, glob_pattern: &'a str) {
                                 },
                                 _ => {
                                     let metadata_result = path.metadata();
-    
+
                                     match metadata_result {
                                         Err(e) => {
                                             println!(
