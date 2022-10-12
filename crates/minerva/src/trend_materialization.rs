@@ -1,5 +1,6 @@
 use glob::glob;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use serde_yaml;
 use std::fmt;
 use std::path::Path;
@@ -35,15 +36,19 @@ pub struct TrendViewMaterialization {
     pub sources: Vec<TrendMaterializationSource>,
     pub view: String,
     pub fingerprint_function: String,
+    pub description: Value,
 }
 
 impl TrendViewMaterialization {
     async fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
-        let query = concat!(
-            "SELECT trend_directory.define_view_materialization(",
-            "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass",
-            ") ",
-            "FROM trend_directory.trend_store_part WHERE name = $5",
+        let query = format!(
+            concat!(
+		"SELECT trend_directory.define_view_materialization(",
+		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass, ",
+		"{}::jsonb) ",
+		"FROM trend_directory.trend_store_part WHERE name = $5",
+            ),
+            &self.description.to_string()
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -54,7 +59,7 @@ impl TrendViewMaterialization {
             &self.target_trend_store_part,
         ];
 
-        match client.query(query, query_args).await {
+        match client.query(&query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error defining view materialization: {}",
@@ -177,13 +182,17 @@ impl TrendViewMaterialization {
     }
 
     async fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
-        let query = concat!(
-            "UPDATE trend_directory.materialization ",
-            "SET processing_delay = $1::text::interval, ",
-            "stability_delay = $2::text::interval, ",
-            "reprocessing_period = $3::text::interval, ",
-            "enabled = $4 ",
-            "WHERE materialization::text = $5",
+        let query = format!(
+            concat!(
+                "UPDATE trend_directory.materialization ",
+                "SET processing_delay = $1::text::interval, ",
+                "stability_delay = $2::text::interval, ",
+                "reprocessing_period = $3::text::interval, ",
+                "enabled = $4, ",
+                "description = '{}'::jsonb ",
+                "WHERE materialization::text = $5",
+            ),
+            &self.description.to_string()
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -194,7 +203,7 @@ impl TrendViewMaterialization {
             &self.target_trend_store_part,
         ];
 
-        match client.execute(query, query_args).await {
+        match client.execute(&query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error updating view materialization attributes: {}",
@@ -283,15 +292,19 @@ pub struct TrendFunctionMaterialization {
     pub sources: Vec<TrendMaterializationSource>,
     pub function: TrendMaterializationFunction,
     pub fingerprint_function: String,
+    pub description: Value,
 }
 
 impl TrendFunctionMaterialization {
     async fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
-        let query = concat!(
-            "SELECT trend_directory.define_function_materialization(",
-            "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure",
-            ") ",
-            "FROM trend_directory.trend_store_part WHERE name = $5",
+        let query = format!(
+            concat!(
+		"SELECT trend_directory.define_function_materialization(",
+		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure, ",
+		"'{}'::jsonb) ",
+		"FROM trend_directory.trend_store_part WHERE name = $5",
+            ),
+            &self.description.to_string(),
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -305,7 +318,7 @@ impl TrendFunctionMaterialization {
             &self.target_trend_store_part,
         ];
 
-        match client.query(query, query_args).await {
+        match client.query(&query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error defining function materialization: {}",
@@ -445,11 +458,43 @@ impl TrendFunctionMaterialization {
         changes
     }
 
+    async fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
+        let query = format!(
+            concat!(
+                "UPDATE trend_directory.materialization ",
+                "SET processing_delay = $1::text::interval, ",
+                "stability_delay = $2::text::interval, ",
+                "reprocessing_period = $3::text::interval, ",
+                "enabled = $4, ",
+                "description = '{}'::jsonb ",
+                "WHERE materialization::text = $5",
+            ),
+            &self.description.to_string()
+        );
+
+        let query_args: &[&(dyn ToSql + Sync)] = &[
+            &format_duration(self.processing_delay).to_string(),
+            &format_duration(self.stability_delay).to_string(),
+            &format_duration(self.reprocessing_period).to_string(),
+            &self.enabled,
+            &self.target_trend_store_part,
+        ];
+
+        match client.execute(&query, query_args).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+                "Error updating view materialization attributes: {}",
+                e
+            )))),
+        }
+    }
+
     async fn update(&self, client: &mut Client) -> Result<(), Error> {
         self.drop_fingerprint_function(client).await?;
         self.drop_function(client).await?;
         self.drop_sources(client).await?;
 
+        self.update_attributes(client).await?;
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
         self.connect_sources(client).await?;
@@ -565,7 +610,7 @@ pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMateria
     let mut trend_materializations: Vec<TrendMaterialization> = Vec::new();
 
     let query = concat!(
-        "SELECT m.id, m.processing_delay::text, m.stability_delay::text, m.reprocessing_period::text, m.enabled, tsp.name, vm.src_view, fm.src_function ",
+        "SELECT m.id, m.processing_delay::text, m.stability_delay::text, m.reprocessing_period::text, m.enabled, m.description, tsp.name, vm.src_view, fm.src_function ",
         "FROM trend_directory.materialization AS m ",
         "JOIN trend_directory.trend_store_part AS tsp ON tsp.id = m.dst_trend_store_part_id ",
         "LEFT JOIN trend_directory.view_materialization AS vm ON vm.materialization_id = m.id ",
@@ -582,9 +627,10 @@ pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMateria
         let stability_delay: String = row.get(2);
         let reprocessing_period: String = row.get(3);
         let enabled: bool = row.get(4);
-        let target_trend_store_part: String = row.get(5);
-        let src_view: Option<String> = row.get(6);
-        let src_function: Option<String> = row.get(7);
+        let description: Value = row.get(5);
+        let target_trend_store_part: String = row.get(6);
+        let src_view: Option<String> = row.get(7);
+        let src_function: Option<String> = row.get(8);
 
         if let Some(view) = src_view {
             let view_def = get_view_def(conn, &view).await.unwrap();
@@ -599,6 +645,7 @@ pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMateria
                 sources,
                 stability_delay: parse_interval(&stability_delay).unwrap(),
                 view: view_def,
+                description: description.clone(),
             };
 
             let trend_materialization = TrendMaterialization::View(view_materialization);
@@ -625,6 +672,7 @@ pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMateria
                     src: function_def,
                     language: "plpgsql".into(),
                 },
+                description: description.clone(),
             };
 
             let trend_materialization = TrendMaterialization::Function(function_materialization);

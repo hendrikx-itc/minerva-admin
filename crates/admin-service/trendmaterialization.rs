@@ -1,3 +1,4 @@
+use serde_json::Value;
 use std::time::Duration;
 
 use bb8::Pool;
@@ -100,6 +101,7 @@ pub struct TrendViewMaterializationFull {
     pub reprocessing_period: Duration,
     pub sources: Vec<TrendMaterializationSourceData>,
     pub view: String,
+    pub description: Value,
     pub fingerprint_function: String,
 }
 
@@ -117,6 +119,7 @@ pub struct TrendFunctionMaterializationFull {
     pub reprocessing_period: Duration,
     pub sources: Vec<TrendMaterializationSourceData>,
     pub function: TrendMaterializationFunctionFull,
+    pub description: Value,
     pub fingerprint_function: String,
 }
 
@@ -132,6 +135,7 @@ pub struct TrendViewMaterializationData {
     pub reprocessing_period: Duration,
     pub sources: Vec<TrendMaterializationSourceData>,
     pub view: String,
+    pub description: Value,
     pub fingerprint_function: String,
 }
 
@@ -147,6 +151,7 @@ pub struct TrendFunctionMaterializationData {
     pub reprocessing_period: Duration,
     pub sources: Vec<TrendMaterializationSourceData>,
     pub function: TrendMaterializationFunctionData,
+    pub description: Value,
     pub fingerprint_function: String,
 }
 
@@ -167,6 +172,7 @@ impl TrendViewMaterializationData {
             reprocessing_period: self.reprocessing_period,
             sources: sources,
             view: self.view.to_string(),
+            description: self.description.clone(),
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }
@@ -182,7 +188,7 @@ impl TrendViewMaterializationData {
                 message: e.to_string(),
             }),
             Ok(_) => {
-                let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE tsp.name = $1", &[&self.target_trend_store_part],).await;
+                let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, m.description FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE tsp.name = $1", &[&self.target_trend_store_part],).await;
                 match query_result {
 		    Err(e) => Err( Error {
 			code: 404,
@@ -209,6 +215,7 @@ impl TrendViewMaterializationData {
 			    reprocessing_period: parse_interval(row.get(6)).unwrap(),
 			    sources: sources,
 			    view: row.get(2),
+			    description: row.get(9),
 			    fingerprint_function: row.get(8),
 			};
 			Ok(materialization)
@@ -231,7 +238,7 @@ impl TrendViewMaterializationData {
                     ),
                 })
             }
-            Ok(row) => {
+            Ok(_) => {
                 let action = UpdateTrendMaterialization {
                     trend_materialization: self.as_minerva(),
                 };
@@ -261,6 +268,7 @@ impl TrendViewMaterializationFull {
             reprocessing_period: self.reprocessing_period,
             sources: self.sources.to_vec(),
             view: self.view.to_string(),
+            description: self.description.clone(),
             fingerprint_function: self.fingerprint_function.to_string(),
         }
     }
@@ -281,6 +289,7 @@ impl TrendFunctionMaterializationData {
             reprocessing_period: self.reprocessing_period,
             sources: sources,
             function: self.function.as_minerva(),
+            description: self.description.clone(),
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }
@@ -299,7 +308,7 @@ impl TrendFunctionMaterializationData {
                 message: e.to_string(),
             }),
             Ok(_) => {
-                let query_result = client.query_one("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function LEFT JOIN pg_proc ON routine_name = proname WHERE tsp.name = $1", &[&self.target_trend_store_part],).await;
+                let query_result = client.query_one("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language, m.description FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function LEFT JOIN pg_proc ON routine_name = proname WHERE tsp.name = $1", &[&self.target_trend_store_part],).await;
                 match query_result {
 		    Err(e) => Err(Error {
 			code: 404,
@@ -334,6 +343,7 @@ impl TrendFunctionMaterializationData {
 					src: row.get(10),
 					language: row.get(11),
 				    },
+				    description: row.get(12),
 				    fingerprint_function: row.get(8),
 				};
 				Ok( materialization )
@@ -358,7 +368,7 @@ impl TrendFunctionMaterializationData {
                     ),
                 })
             }
-            Ok(row) => {
+            Ok(_) => {
                 let action = UpdateTrendMaterialization {
                     trend_materialization: self.as_minerva(),
                 };
@@ -388,6 +398,7 @@ impl TrendFunctionMaterializationFull {
             reprocessing_period: self.reprocessing_period,
             sources: self.sources.to_vec(),
             function: self.function.data(),
+            description: self.description.clone(),
             fingerprint_function: self.fingerprint_function.to_string(),
         }
     }
@@ -450,7 +461,7 @@ pub(super) async fn get_trend_view_materializations(
                         };
                         sources.push(source)
                     }
-                    let query = client.query("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"')", &[],).await;
+                    let query = client.query("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, m.description FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"')", &[],).await;
                     match query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
                             code: 500,
@@ -475,6 +486,7 @@ pub(super) async fn get_trend_view_materializations(
                                     reprocessing_period: parse_interval(row.get(6)).unwrap(),
                                     sources: this_sources,
                                     view: row.get(2),
+                                    description: row.get(9),
                                     fingerprint_function: row.get(8),
                                 };
                                 m.push(materialization);
@@ -510,7 +522,7 @@ pub(super) async fn get_trend_view_materialization(
             message: e.to_string(),
         }),
         Ok(client) => {
-            let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE vm.id = $1", &[&vm_id],).await;
+            let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, m.description FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE vm.id = $1", &[&vm_id],).await;
 
             match query_result {
                 Ok(row) => {
@@ -539,6 +551,7 @@ pub(super) async fn get_trend_view_materialization(
                                 reprocessing_period: parse_interval(row.get(6)).unwrap(),
                                 sources: sources,
                                 view: row.get(2),
+                                description: row.get(9),
                                 fingerprint_function: row.get(8),
                             };
                             HttpResponse::Ok().json(materialization)
@@ -591,7 +604,7 @@ pub(super) async fn get_trend_function_materializations(
                         sources.push(source)
                     }
 
-                    let query = client.query("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function  JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id LEFT JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname", &[],).await;
+                    let query = client.query("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language, m.description FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function  JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id LEFT JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname", &[],).await;
                     match query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
                             code: 500,
@@ -623,6 +636,7 @@ pub(super) async fn get_trend_function_materializations(
                                         src: row.get(10),
                                         language: row.get(11),
                                     },
+                                    description: row.get(12),
                                     fingerprint_function: row.get(8),
                                 };
 
@@ -658,7 +672,7 @@ pub(super) async fn get_trend_function_materialization(
             message: e.to_string(),
         }),
         Ok(client) => {
-            let query_result = client.query_one("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function LEFT JOIN pg_proc ON routine_name = proname WHERE fm.id = $1", &[&fm_id],).await;
+            let query_result = client.query_one("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language, m.description FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function LEFT JOIN pg_proc ON routine_name = proname WHERE fm.id = $1", &[&fm_id],).await;
 
             match query_result {
                 Err(e) => HttpResponse::NotFound().json(Error {
@@ -697,6 +711,7 @@ pub(super) async fn get_trend_function_materialization(
                                     src: row.get(10),
                                     language: row.get(11),
                                 },
+                                description: row.get(12),
                                 fingerprint_function: row.get(8),
                             };
 
@@ -745,7 +760,7 @@ pub(super) async fn get_trend_materializations(
                         };
                         sources.push(source)
                     }
-                    let query_result = client.query("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON FORMAT('%s.\"%s\"', schemaname, viewname) = src_view", &[],).await;
+                    let query_result = client.query("SELECT vm.id, m.id, pg_views.definition, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, m.description FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON FORMAT('%s.\"%s\"', schemaname, viewname) = src_view", &[],).await;
                     match query_result {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
                             code: 500,
@@ -773,13 +788,14 @@ pub(super) async fn get_trend_materializations(
                                         reprocessing_period: parse_interval(row.get(6)).unwrap(),
                                         sources: this_sources,
                                         view: row.get(2),
+                                        description: row.get(9),
                                         fingerprint_function: row.get(8),
                                     });
 
                                 m.push(materialization);
                             }
 
-                            let query_result = client.query("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function LEFT JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname", &[],).await;
+                            let query_result = client.query("SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language, m.description FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function LEFT JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname", &[],).await;
                             match query_result {
                                 Err(e) => HttpResponse::InternalServerError().json(Error {
                                     code: 500,
@@ -815,6 +831,7 @@ pub(super) async fn get_trend_materializations(
                                                     src: row.get(10),
                                                     language: row.get(11),
                                                 },
+                                                description: row.get(12),
                                                 fingerprint_function: row.get(8),
                                             },
                                         );

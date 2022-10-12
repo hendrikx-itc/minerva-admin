@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use utoipa::Component;
@@ -87,6 +88,7 @@ pub struct KpiData {
     pub enabled: bool,
     pub source_trends: Vec<String>,
     pub definition: String,
+    pub description: Value,
 }
 
 impl KpiData {
@@ -207,6 +209,7 @@ impl KpiData {
                             src: srcdef.clone(),
                             language: LANGUAGE.clone(),
                         },
+                        description: self.description.clone(),
                         fingerprint_function: fingerprint_function.to_string(),
                     },
                 })
@@ -281,7 +284,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                         sources.push(source)
                     }
 
-                    let query = client.query(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}'", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[]).await;
+                    let query = client.query(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}'", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[]).await;
                     match query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
                             code: 500,
@@ -304,6 +307,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                                     enabled: row.get(3),
                                     source_trends: this_sources,
                                     definition: row.get(5),
+                                    description: row.get(6),
                                 };
                                 result.push(kpi)
                             }
@@ -316,7 +320,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
     }
 }
 
-// curl -H "Content-Type: application/json" -X POST -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc","L.DL.CRS.RateAvg"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),SUM(\"L.DL.CRS.RateAvg\") * 1000)"}' localhost:8000/kpis
+// curl -H "Content-Type: application/json" -X POST -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc","L.DL.CRS.RateAvg"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),SUM(\"L.DL.CRS.RateAvg\") * 1000)","description":{"type": "ratio", "numerator": [{"type": "trend", "value": "L.Thrp.bits.UL.NsaDC"}], "denominator": [{"type": "constant", "value": "1000"}, {"type": "operator", "value": "*"}, {"type": "trend", "value": "L.DL.CRS.RateAvg"}]}}' localhost:8000/kpis
 
 #[utoipa::path(
     responses(
@@ -372,7 +376,7 @@ pub(super) async fn post_kpi(
     }
 }
 
-// curl -H "Content-Type: application/json" -X PUT -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),1000::numeric)"}' localhost:8000/kpis
+// curl -H "Content-Type: application/json" -X PUT -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),1000::numeric)","description":{"type": "ratio", "numerator": [{"type": "trend", "value": "L.Thrp.bits.UL.NsaDC"}], "denominator": [{"type": "constant", "value": "1000"}]}}' localhost:8000/kpis
 #[utoipa::path(
     responses(
 	(status = 200, description = "Updated KPI", body = Success),
