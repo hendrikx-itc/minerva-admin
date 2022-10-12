@@ -361,12 +361,22 @@ impl Cmd for DiffOpt {
             }
         };
 
+        let from_instance_descr = format!("dir('{}')", minerva_instance_root.to_string_lossy());
+        let to_instance_descr: String;
+
         let instance_def = MinervaInstance::load_from(&minerva_instance_root);
 
         let other_instance = match &self.with_dir {
-            Some(with_dir) => MinervaInstance::load_from(&with_dir),
+            Some(with_dir) => {
+                to_instance_descr = format!("dir('{}')", with_dir.to_string_lossy());
+                MinervaInstance::load_from(&with_dir)
+            },
             None => {
-                let mut client = connect_db().await?;
+                let db_config = get_db_config()?;
+
+                to_instance_descr = format!("database('{:?}')", db_config);
+
+                let mut client = connect_to_db(&db_config).await?;
 
                 MinervaInstance::load_from_db(&mut client).await?
             }
@@ -375,7 +385,7 @@ impl Cmd for DiffOpt {
         let changes = other_instance.diff(&instance_def);
 
         if !changes.is_empty() {
-            println!("Differences with database:");
+            println!("Differences {} -> {}", from_instance_descr, to_instance_descr);
 
             for change in changes {
                 println!("* {}", &change);
@@ -571,8 +581,8 @@ async fn main() {
     }
 }
 
-async fn connect_db() -> Result<Client, Error> {
-    let conn_config = match env::var(ENV_DB_CONN) {
+fn get_db_config() -> Result<Config, Error> {
+    let config = match env::var(ENV_DB_CONN) {
         Ok(value) => Config::new().options(&value).clone(),
         Err(_) => {
             // No single environment variable set, let's check for psql settings
@@ -604,9 +614,15 @@ async fn connect_db() -> Result<Client, Error> {
         }
     };
 
-    println!("Conn params: {:?}", &conn_config);
+    Ok(config)
+}
 
-    let client = if (true) {
+async fn connect_db() -> Result<Client, Error> {
+    connect_to_db(&get_db_config()?).await
+}
+
+async fn connect_to_db(config: &Config) -> Result<Client, Error> {
+    let client = if true {
         let mut roots = rustls::RootCertStore::empty();
 
         for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs")
@@ -620,7 +636,7 @@ async fn connect_db() -> Result<Client, Error> {
             .with_no_client_auth();
         let tls = MakeRustlsConnect::new(tls_config);
 
-        let (client, connection) = conn_config.connect(tls).await?;
+        let (client, connection) = config.connect(tls).await?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
@@ -630,7 +646,7 @@ async fn connect_db() -> Result<Client, Error> {
 
         client
     } else {
-        let (client, connection) = conn_config.connect(NoTls).await?;
+        let (client, connection) = config.connect(NoTls).await?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {

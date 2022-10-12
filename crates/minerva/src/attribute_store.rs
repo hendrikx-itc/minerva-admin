@@ -34,6 +34,16 @@ impl fmt::Display for AddAttributes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
+            "AddAttributes({}, {})",
+            &self.attribute_store, &self.attributes.len()
+        )
+    }
+}
+
+impl fmt::Debug for AddAttributes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "AddAttributes({}, {:?})",
             &self.attribute_store, &self.attributes
         )
