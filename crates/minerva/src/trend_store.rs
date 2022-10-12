@@ -156,6 +156,17 @@ impl fmt::Display for AddTrends {
             f,
             "AddTrends({}, {})",
             &self.trend_store_part,
+            self.trends.len()
+        )
+    }
+}
+
+impl fmt::Debug for AddTrends {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "AddTrends({}, {})",
+            &self.trend_store_part,
             &self
                 .trends
                 .iter()
@@ -216,6 +227,17 @@ pub struct ModifyTrendDataTypes {
 }
 
 impl fmt::Display for ModifyTrendDataTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ModifyTrendDataTypes({}, {})",
+            &self.trend_store_part,
+            self.modifications.len(),
+        )
+    }
+}
+
+impl fmt::Debug for ModifyTrendDataTypes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let modifications: Vec<String> = self
             .modifications
