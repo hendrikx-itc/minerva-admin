@@ -105,6 +105,17 @@ impl fmt::Display for RemoveTrends {
             f,
             "RemoveTrends({}, {})",
             &self.trend_store_part,
+            self.trends.len()
+        )
+    }
+}
+
+impl fmt::Debug for RemoveTrends {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RemoveTrends({}, {})",
+            &self.trend_store_part,
             &self
                 .trends
                 .iter()
