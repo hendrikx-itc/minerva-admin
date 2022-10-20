@@ -364,6 +364,7 @@ impl TrendFunctionMaterialization {
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
         self.define_materialization(client).await?;
+	if self.enabled { self.do_enable(client).await? };
         self.connect_sources(client).await?;
 
         Ok(())
@@ -404,6 +405,23 @@ impl TrendFunctionMaterialization {
         }
     }
 
+    async fn do_enable(&self, client: &mut Client) -> Result<(), Error> {
+	let query = concat!(
+	    "UPDATE trend_directory.materialization AS m ",
+	    "SET enabled = true ",
+	    "FROM trend_directory.trend_store_part AS dtsp ",
+	    "WHERE m.dst_trend_store_part_id = dtsp.id ",
+	    "AND dtsp.name = $1"
+	);
+	match client.query(query, &[&self.target_trend_store_part]).await {
+	    Ok(_) => Ok(()),
+	    Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+		"Unable to enable materialization: {}",
+		e
+	    ))))
+	}
+    }
+    
     async fn connect_sources(&self, client: &mut Client) -> Result<(), Error> {
         let mut result: Result<(), Error> = Ok(());
         for source in &self.sources {
