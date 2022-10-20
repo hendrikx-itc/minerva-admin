@@ -513,9 +513,9 @@ impl Cmd for TrendMaterializationUpdate {
 
 #[derive(Debug, StructOpt)]
 enum TrendMaterializationOpt {
-    #[structopt(about = "create an attribute store")]
+    #[structopt(about = "create a trend materialization")]
     Create(TrendMaterializationCreate),
-    #[structopt(about = "update an attribute store")]
+    #[structopt(about = "update a trend materialization")]
     Update(TrendMaterializationUpdate),
 }
 
