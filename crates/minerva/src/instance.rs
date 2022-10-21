@@ -93,17 +93,35 @@ impl MinervaInstance {
             .await
         }
 
-        initialize_attribute_stores(client, &self.attribute_stores).await;
+        match initialize_attribute_stores(client, &self.attribute_stores).await {
+            Err(e) => println!("Error: {}", e),
+            Ok(message) => println!(" - {}", &message)
+        }
 
-        initialize_trend_stores(client, &self.trend_stores).await;
+        match initialize_trend_stores(client, &self.trend_stores).await {
+            Err(e) => println!("Error: {}", e),
+            Ok(message) => println!(" - {}", &message)
+        }
 
-        initialize_notification_stores(client, &self.notification_stores).await;
+        match initialize_notification_stores(client, &self.notification_stores).await {
+            Err(e) => println!("Error: {}", e),
+            Ok(message) => println!(" - {}", &message)
+        }
 
-        initialize_virtual_entities(client, &self.virtual_entities).await;
+        match initialize_virtual_entities(client, &self.virtual_entities).await {
+            Err(e) => println!("Error: {}", e),
+            Ok(message) => println!(" - {}", &message)
+        }
 
-        initialize_relations(client, &self.relations).await;
+        match initialize_relations(client, &self.relations).await {
+            Err(e) => println!("Error: {}", e),
+            Ok(message) => println!(" - {}", &message)
+        }
 
-        initialize_trend_materializations(client, &self.trend_materializations).await;
+        match initialize_trend_materializations(client, &self.trend_materializations).await {
+            Err(e) => println!("Error: {}", e),
+            Ok(message) => println!(" - {}", &message)
+        }
 
         if let Some(instance_root) = &self.instance_root {
             initialize_custom(

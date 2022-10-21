@@ -556,7 +556,7 @@ pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMateria
         let src_function: Option<String> = row.get(7);
 
         if let Some(view) = src_view {
-            let view_def = get_view_def(conn, &view).await.unwrap();
+            let view_def = get_view_def(conn, &view).await.unwrap_or("N/A".into());
             let sources = load_sources(conn, materialization_id).await?;
 
             let view_materialization = TrendViewMaterialization {
