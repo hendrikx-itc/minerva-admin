@@ -8,7 +8,7 @@ use utoipa::Component;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{get, post, put, web::Data, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
 
 use serde_json::json;
 use tokio_postgres::Client;
@@ -31,7 +31,7 @@ lazy_static! {
         "1h".to_string(),
         "1d".to_string(),
         "1w".to_string(),
-        "1mon".to_string()
+        "1month".to_string()
     ];
     static ref LANGUAGE: String = "SQL".to_string();
     static ref TIME_AGGREGATION: String = "SUM".to_string();
@@ -43,28 +43,28 @@ lazy_static! {
         ("1h".to_string(), parse_interval("10m").unwrap()),
         ("1d".to_string(), parse_interval("30m").unwrap()),
         ("1w".to_string(), parse_interval("30m").unwrap()),
-        ("1mon".to_string(), parse_interval("30m").unwrap()),
+        ("1month".to_string(), parse_interval("30m").unwrap()),
     ]);
     static ref STABILITY_DELAY: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("5m").unwrap()),
         ("1h".to_string(), parse_interval("5m").unwrap()),
         ("1d".to_string(), parse_interval("5m").unwrap()),
         ("1w".to_string(), parse_interval("5m").unwrap()),
-        ("1mon".to_string(), parse_interval("5m").unwrap()),
+        ("1month".to_string(), parse_interval("5m").unwrap()),
     ]);
     static ref REPROCESSING_PERIOD: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("3 days").unwrap()),
         ("1h".to_string(), parse_interval("3 days").unwrap()),
         ("1d".to_string(), parse_interval("3 days").unwrap()),
         ("1w".to_string(), parse_interval("3 days").unwrap()),
-        ("1mon".to_string(), parse_interval("3 days").unwrap())
+        ("1month".to_string(), parse_interval("3 days").unwrap())
     ]);
     static ref PARTITION_SIZE: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("1d").unwrap()),
         ("1h".to_string(), parse_interval("4d").unwrap()),
         ("1d".to_string(), parse_interval("3mons").unwrap()),
         ("1w".to_string(), parse_interval("1y").unwrap()),
-        ("1mon".to_string(), parse_interval("5y").unwrap())
+        ("1month".to_string(), parse_interval("5y").unwrap())
     ]);
 }
 
@@ -81,7 +81,7 @@ pub struct TrendInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
-pub struct KpiData {
+pub struct KpiRawData {
     pub name: String,
     pub entity_type: String,
     pub data_type: String,
@@ -91,7 +91,76 @@ pub struct KpiData {
     pub description: Value,
 }
 
-impl KpiData {
+#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+pub struct KpiImplementedData {
+    pub name: String,
+    pub entity_type: String,
+    pub data_type: String,
+    pub enabled: bool,
+    pub source_trendstore_parts: Vec<String>,
+    pub definition: String,
+    pub description: Value,
+}
+
+impl KpiRawData {
+    async fn get_implemented_data(
+        &self,
+        client: &mut Client,
+    ) -> Result<KpiImplementedData, String> {
+        let mut sources: Vec<String> = vec![];
+        let mut result: Result<KpiImplementedData, String> = Err("Unexpected error".to_string());
+        let mut errormet = false;
+        for source_trend in self.source_trends.iter() {
+            let query_result = client.query_one(&format!("SELECT tsp.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'", source_trend, DEFAULT_GRANULARITY.to_string(), self.entity_type), &[],).await;
+            match query_result {
+                Err(e) => {
+                    result = Err(e.to_string());
+                    errormet = true
+                }
+                Ok(row) => {
+                    let tsp: String = row.get(0);
+                    if !sources.contains(&tsp) {
+                        sources.push(tsp.clone());
+                    }
+                }
+            }
+        }
+        if errormet {
+            result
+        } else {
+            Ok(KpiImplementedData {
+                name: self.name.clone(),
+                entity_type: self.entity_type.clone(),
+                data_type: self.data_type.clone(),
+                enabled: self.enabled.clone(),
+                source_trendstore_parts: sources,
+                definition: self.definition.clone(),
+                description: self.description.clone(),
+            })
+        }
+    }
+
+    async fn get_kpi(&self, granularity: String, client: &mut Client) -> Result<Kpi, String> {
+        let query = self.get_implemented_data(client).await;
+        match query {
+            Err(e) => Err(e),
+            Ok(implementedkpi) => Ok(implementedkpi.get_kpi(granularity)),
+        }
+    }
+
+    async fn create(&self, client: &mut Client) -> Result<String, Error> {
+        let query = self.get_implemented_data(client).await;
+        match query {
+            Err(e) => Err(Error {
+                code: 404,
+                message: e,
+            }),
+            Ok(implementedkpi) => implementedkpi.create(client).await,
+        }
+    }
+}
+
+impl KpiImplementedData {
     fn target_trend_store_part(&self, granularity: String) -> String {
         format!(
             "{}-{}_{}_{}",
@@ -102,49 +171,32 @@ impl KpiData {
         )
     }
 
-    async fn get_kpi(&self, granularity: String, client: &mut Client) -> Result<Kpi, String> {
-        let mut problem = "".to_string();
+    fn get_kpi(&self, granularity: String) -> Kpi {
         let mut sources: Vec<TrendMaterializationSourceData> = vec![];
-        let mut foundsources: Vec<String> = vec![];
-
         let mut modifieds: Vec<String> = vec![];
         let mut formats: Vec<String> = vec![];
         let mut partmodifieds: Vec<String> = vec![];
         let mut joins: Vec<String> = vec![];
         let mut i: i32 = 1;
-
-        for source_trend in self.source_trends.iter() {
-            let query_result = client.query_one(&format!("SELECT tsp.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'", source_trend, granularity, self.entity_type), &[],).await;
-            match query_result {
-                Err(_) => {
-                    problem = format!(
-                        "Trend {} not found or not unique for entity type {}",
-                        source_trend, self.entity_type
-                    )
-                }
-                Ok(row) => {
-                    let tsp: String = row.get(0);
-                    if !foundsources.contains(&tsp) {
-                        foundsources.push(tsp.clone());
-                        sources.push(TrendMaterializationSourceData {
-                            trend_store_part: tsp.clone(),
-                            mapping_function: MAPPING_FUNCTION.to_string(),
-                        });
-                        modifieds.push(format!("modified{}.last", i.to_string()));
-                        formats.push("{\"%s\": \"%s\"}".to_string());
-                        partmodifieds.push(format!(
-                            "part{}.name, modified{}.last",
-                            i.to_string(),
-                            i.to_string()
-                        ));
-                        joins.push(format!(
-			    "LEFT JOIN trend_directory.trend_store_part part{} ON part{}.name = '{}'\nJOIN trend_directory.modified modified{} ON modified{}.trend_store_part_id = part{}.id AND modified{}.timestamp = t.timestamp",
-			    i.to_string(), i.to_string(), tsp.clone(), i.to_string(), i.to_string(), i.to_string(), i.to_string()
-			));
-                        i = i + 1;
-                    }
-                }
-            }
+        for tsp in self.source_trendstore_parts.iter() {
+            let currenttsp =
+                tsp.replace(&DEFAULT_GRANULARITY.to_string(), &granularity.to_string());
+            sources.push(TrendMaterializationSourceData {
+                trend_store_part: currenttsp.clone(),
+                mapping_function: MAPPING_FUNCTION.to_string(),
+            });
+            modifieds.push(format!("modified{}.last", i.to_string()));
+            formats.push("{\"%s\": \"%s\"}".to_string());
+            partmodifieds.push(format!(
+                "part{}.name, modified{}.last",
+                i.to_string(),
+                i.to_string()
+            ));
+            joins.push(format!(
+		"LEFT JOIN trend_directory.trend_store_part part{} ON part{}.name = '{}'\nJOIN trend_directory.modified modified{} ON modified{}.trend_store_part_id = part{}.id AND modified{}.timestamp = t.timestamp",
+		i.to_string(), i.to_string(), currenttsp.clone(), i.to_string(), i.to_string(), i.to_string(), i.to_string()
+	    ));
+            i = i + 1;
         }
         let fingerprint_function = format!("SELECT\n  greatest({}),\n  format('{}', {})::jsonb\nFROM (values($1)) as t(timestamp)\n{}",
 					   modifieds.join(", "),
@@ -153,95 +205,80 @@ impl KpiData {
 					   joins.join("\n")
 					   );
 
-        match problem.as_str() {
-            "" => {
-                let mut sourcestrings: Vec<String> = vec![];
-                let mut counter = 1;
-                for source in &sources {
-                    match counter {
-			1 => sourcestrings.push(format!("trend.\"{}\" t{}", source.trend_store_part, counter)),
-			_ => sourcestrings.push(format!("trend.\"{}\" t{} ON t1.entity_id = t{}.entity_id and t1.timestamp = t{}.timestamp", source.trend_store_part, counter, counter, counter)),
-		    };
-                    counter = counter + 1
-                }
-                let srcdef = format!(
-		    "SELECT t1.entity_id, $1 as timestamp, {} as \"{}\"\n FROM {}\nWHERE t1.timestamp = $1\nGROUP BY t1.entity_id",
-		    self.definition, self.name, sourcestrings.join("\nJOIN ")
-		);
-                Ok(Kpi {
-                    trend_store_part: TrendStorePartCompleteData {
-                        name: self.target_trend_store_part(granularity.clone()),
-                        entity_type: self.entity_type.clone(),
-                        data_source: DATASOURCE.to_string(),
-                        granularity: parse_interval(&granularity).unwrap(),
-                        partition_size: *PARTITION_SIZE.get(granularity.as_str()).unwrap(),
-                        trends: vec![TrendData {
-                            name: self.name.clone(),
-                            data_type: self.data_type.clone(),
-                            time_aggregation: TIME_AGGREGATION.clone(),
-                            entity_aggregation: ENTITY_AGGREGATION.clone(),
-                            extra_data: json!("{}"),
-                            description: DESCRIPTION.clone(),
-                        }],
-                        generated_trends: vec![],
-                    },
-                    materialization: TrendFunctionMaterializationData {
-                        enabled: self.enabled,
-                        target_trend_store_part: self.target_trend_store_part(granularity.clone()),
-                        processing_delay: PROCESSING_DELAY
-                            .get(granularity.as_str())
-                            .unwrap()
-                            .to_owned(),
-                        stability_delay: STABILITY_DELAY
-                            .get(granularity.as_str())
-                            .unwrap()
-                            .to_owned(),
-                        reprocessing_period: REPROCESSING_PERIOD
-                            .get(granularity.as_str())
-                            .unwrap()
-                            .to_owned(),
-                        sources: sources,
-                        function: TrendMaterializationFunctionData {
-                            return_type: format!(
-                                "TABLE (entity_id integer, \"timestamp\" timestamptz, \"{}\" {})",
-                                self.name, self.data_type
-                            ),
-                            src: srcdef.clone(),
-                            language: LANGUAGE.clone(),
-                        },
-                        description: self.description.clone(),
-                        fingerprint_function: fingerprint_function.to_string(),
-                    },
-                })
-            }
-            error => Err(error.to_string()),
+        let mut sourcestrings: Vec<String> = vec![];
+        let mut counter = 1;
+        for source in &sources {
+            match counter {
+		1 => sourcestrings.push(format!("trend.\"{}\" t{}", source.trend_store_part, counter)),
+		_ => sourcestrings.push(format!("trend.\"{}\" t{} ON t1.entity_id = t{}.entity_id and t1.timestamp = t{}.timestamp", source.trend_store_part, counter, counter, counter)),
+	    };
+            counter = counter + 1
+        }
+        let srcdef = format!(
+	    "SELECT t1.entity_id, $1 as timestamp, {} as \"{}\"\n FROM {}\nWHERE t1.timestamp = $1\nGROUP BY t1.entity_id",
+	    self.definition, self.name, sourcestrings.join("\nJOIN ")
+	);
+        Kpi {
+            trend_store_part: TrendStorePartCompleteData {
+                name: self.target_trend_store_part(granularity.clone()),
+                entity_type: self.entity_type.clone(),
+                data_source: DATASOURCE.to_string(),
+                granularity: parse_interval(&granularity).unwrap(),
+                partition_size: *PARTITION_SIZE.get(granularity.as_str()).unwrap(),
+                trends: vec![TrendData {
+                    name: self.name.clone(),
+                    data_type: self.data_type.clone(),
+                    time_aggregation: TIME_AGGREGATION.clone(),
+                    entity_aggregation: ENTITY_AGGREGATION.clone(),
+                    extra_data: json!("{}"),
+                    description: DESCRIPTION.clone(),
+                }],
+                generated_trends: vec![],
+            },
+            materialization: TrendFunctionMaterializationData {
+                enabled: self.enabled,
+                target_trend_store_part: self.target_trend_store_part(granularity.clone()),
+                processing_delay: PROCESSING_DELAY
+                    .get(granularity.as_str())
+                    .unwrap()
+                    .to_owned(),
+                stability_delay: STABILITY_DELAY
+                    .get(granularity.as_str())
+                    .unwrap()
+                    .to_owned(),
+                reprocessing_period: REPROCESSING_PERIOD
+                    .get(granularity.as_str())
+                    .unwrap()
+                    .to_owned(),
+                sources: sources,
+                function: TrendMaterializationFunctionData {
+                    return_type: format!(
+                        "TABLE (entity_id integer, \"timestamp\" timestamptz, \"{}\" {})",
+                        self.name, self.data_type
+                    ),
+                    src: srcdef.clone(),
+                    language: LANGUAGE.clone(),
+                },
+                description: self.description.clone(),
+                fingerprint_function: fingerprint_function.to_string(),
+            },
         }
     }
 
     async fn create(&self, client: &mut Client) -> Result<String, Error> {
         let mut result: Result<String, Error> = Ok("KPI created".to_string());
         for granularity in GRANULARITIES.iter() {
-            let query_result = self.get_kpi(granularity.to_string(), client).await;
+            let kpi = self.get_kpi(granularity.to_string());
+            let query_result = kpi.trend_store_part.create(client).await;
             match query_result {
-                Err(e) => {
-                    result = Err(Error {
-                        code: 409,
-                        message: format!("Preparation failed: {}", e.to_string()),
-                    })
-                }
-                Ok(kpi) => {
-                    let query_result = kpi.trend_store_part.create(client).await;
+                Ok(_) => {
+                    let query_result = kpi.materialization.create(client).await;
                     match query_result {
-                        Ok(_) => {
-                            let query_result = kpi.materialization.create(client).await;
-                            match query_result {
-                                Err(e) => result = Err(e),
-                                Ok(_) => {}
-                            }
-                        }
                         Err(e) => result = Err(e),
+                        Ok(_) => {}
                     }
                 }
+                Err(e) => result = Err(e),
             }
         }
         result
@@ -250,13 +287,13 @@ impl KpiData {
 
 #[utoipa::path(
     responses(
-	(status = 200, description = "List of existing KPIs", body = [KpiData]),
+	(status = 200, description = "List of existing KPIs", body = [KpiImplementedData]),
 	(status = 500, description = "Database unreachable", body = Error),
     )
 )]
 #[get("/kpis")]
 pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>) -> impl Responder {
-    let mut result: Vec<KpiData> = vec![];
+    let mut result: Vec<KpiImplementedData> = vec![];
 
     let clientquery = pool.get().await;
     match clientquery {
@@ -300,17 +337,74 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                                     }
                                 }
 
-                                let kpi = KpiData {
+                                let kpi = KpiImplementedData {
                                     name: row.get(0),
                                     entity_type: row.get(1),
                                     data_type: row.get(2),
                                     enabled: row.get(3),
-                                    source_trends: this_sources,
+                                    source_trendstore_parts: this_sources,
                                     definition: row.get(5),
                                     description: row.get(6),
                                 };
                                 result.push(kpi)
                             }
+                            HttpResponse::Ok().json(result)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Content of KPI", body = [KpiImplementedData]),
+	(status = 404, description = "KPI does not exist", body = Error),
+	(status = 500, description = "Database unreachable", body = Error),
+    )
+)]
+#[get("/kpis/{name}")]
+pub(super) async fn get_kpi(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    name: Path<String>,
+) -> impl Responder {
+    let kpiname = name.into_inner().replace('_', &" ".to_string());
+    let clientquery = pool.get().await;
+    match clientquery {
+        Err(e) => HttpResponse::InternalServerError().json(Error {
+            code: 500,
+            message: e.to_string(),
+        }),
+        Ok(client) => {
+            let query = client.query_one(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' AND t.name = $1", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[&kpiname]).await;
+            match query {
+                Err(_e) => HttpResponse::NotFound().json(Error {
+                    code: 404,
+                    message: format!("KPI {} not found", &kpiname),
+                }),
+                Ok(kpi) => {
+                    let materialization_id: i32 = kpi.get(4);
+                    let query = client.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id WHERE materialization_id=$1", &[&materialization_id],).await;
+                    match query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(query_result) => {
+                            let mut sources: Vec<String> = vec![];
+                            for row in query_result {
+                                sources.push(row.get(1))
+                            }
+                            let result = KpiImplementedData {
+                                name: kpi.get(0),
+                                entity_type: kpi.get(1),
+                                data_type: kpi.get(2),
+                                enabled: kpi.get(3),
+                                source_trendstore_parts: sources,
+                                definition: kpi.get(5),
+                                description: kpi.get(6),
+                            };
                             HttpResponse::Ok().json(result)
                         }
                     }
@@ -335,7 +429,7 @@ pub(super) async fn post_kpi(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> impl Responder {
-    let input: Result<KpiData, serde_json::Error> = serde_json::from_str(&post);
+    let input: Result<KpiRawData, serde_json::Error> = serde_json::from_str(&post);
     match input {
         Err(e) => HttpResponse::BadRequest().json(Error {
             code: 400,
@@ -391,7 +485,7 @@ pub(super) async fn update_kpi(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> impl Responder {
-    let input: Result<KpiData, serde_json::Error> = serde_json::from_str(&post);
+    let input: Result<KpiRawData, serde_json::Error> = serde_json::from_str(&post);
     match input {
         Err(e) => HttpResponse::BadRequest().json(Error {
             code: 400,
@@ -407,8 +501,8 @@ pub(super) async fn update_kpi(
                 Ok(mut client) => {
                     let mut result: Result<String, Error> = Ok("KPI changed".to_string());
                     for granularity in GRANULARITIES.iter() {
-                        let kpiquery = data.get_kpi(granularity.to_string(), &mut client);
-                        match kpiquery.await {
+                        let kpiquery = data.get_kpi(granularity.to_string(), &mut client).await;
+                        match kpiquery {
                             Err(e) => {
                                 result = Err(Error {
                                     code: 404,
@@ -450,6 +544,106 @@ pub(super) async fn update_kpi(
                             code: c,
                             message: e,
                         }),
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[utoipa::path(
+    responses(
+	(status = 200, description = "Updated KPI", body = Success),
+	(status = 400, description = "Input format incorrect", body = Error),
+	(status = 404, description = "KPI not found", body = Error),
+	(status = 409, description = "Update failed", body = Error),
+	(status = 500, description = "General error", body = Error)
+    )
+)]
+#[delete("/kpis/{name}")]
+pub(super) async fn delete_kpi(
+    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    name: Path<String>,
+) -> impl Responder {
+    let kpiname = name.into_inner().replace('_', &" ".to_string());
+    let clientquery = pool.get().await;
+    match clientquery {
+        Err(e) => HttpResponse::InternalServerError().json(Error {
+            code: 500,
+            message: e.to_string(),
+        }),
+        Ok(mut client) => {
+            let query = client.query_one(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' AND t.name = $1", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[&kpiname]).await;
+            match query {
+                Err(_e) => HttpResponse::NotFound().json(Error {
+                    code: 404,
+                    message: format!("KPI {} not found", &kpiname),
+                }),
+                Ok(kpi) => {
+                    let materialization_id: i32 = kpi.get(4);
+                    let query = client.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id WHERE materialization_id=$1", &[&materialization_id],).await;
+                    match query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(query_result) => {
+                            let mut sources: Vec<String> = vec![];
+                            for row in query_result {
+                                sources.push(row.get(1))
+                            }
+                            let kpidata = KpiImplementedData {
+                                name: kpi.get(0),
+                                entity_type: kpi.get(1),
+                                data_type: kpi.get(2),
+                                enabled: kpi.get(3),
+                                source_trendstore_parts: sources,
+                                definition: kpi.get(5),
+                                description: kpi.get(6),
+                            };
+                            let mut result: Result<String, Error> = Ok("KPI changed".to_string());
+                            for granularity in GRANULARITIES.iter() {
+                                let kpi = kpidata.get_kpi(granularity.to_string());
+                                let deletionquery =
+                                    kpi.materialization.as_minerva().delete(&mut client).await;
+                                match deletionquery {
+                                    Err(error) => {
+                                        result = Err(Error {
+                                            code: 409,
+                                            message: error.to_string(),
+                                        })
+                                    }
+                                    Ok(_) => {}
+                                }
+                            }
+                            match result {
+                                Ok(m) => HttpResponse::Ok().json(Success {
+                                    code: 200,
+                                    message: m,
+                                }),
+                                Err(Error {
+                                    code: 404,
+                                    message: e,
+                                }) => HttpResponse::NotFound().json(Error {
+                                    code: 404,
+                                    message: e,
+                                }),
+                                Err(Error {
+                                    code: 409,
+                                    message: e,
+                                }) => HttpResponse::Conflict().json(Error {
+                                    code: 409,
+                                    message: e,
+                                }),
+                                Err(Error {
+                                    code: c,
+                                    message: e,
+                                }) => HttpResponse::InternalServerError().json(Error {
+                                    code: c,
+                                    message: e,
+                                }),
+                            }
+                        }
                     }
                 }
             }

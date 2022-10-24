@@ -279,7 +279,7 @@ impl TrendViewMaterializationFull {
 }
 
 impl TrendFunctionMaterializationData {
-    fn as_minerva(&self) -> TrendMaterialization {
+    pub fn as_minerva(&self) -> TrendMaterialization {
         let sources = as_minerva(&(self.sources));
         TrendMaterialization::Function(TrendFunctionMaterialization {
             target_trend_store_part: self.target_trend_store_part.clone(),

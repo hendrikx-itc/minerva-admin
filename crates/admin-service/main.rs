@@ -32,7 +32,7 @@ mod entitytype;
 use entitytype::{get_entity_type, get_entity_types, EntityType};
 
 mod kpi;
-use kpi::{get_kpis, post_kpi, update_kpi, KpiData};
+use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedData, KpiRawData};
 
 mod error;
 
@@ -69,12 +69,14 @@ async fn main() -> std::io::Result<()> {
 	    kpi::get_kpis,
 	    kpi::post_kpi,
 	    kpi::update_kpi,
+	    kpi::get_kpi,
+	    kpi::delete_kpi,
         ),
         components(TrendMaterializationSourceData, TrendMaterializationDef,
 		   TrendViewMaterializationFull, TrendFunctionMaterializationFull,
 		   TrendViewMaterializationData, TrendFunctionMaterializationData,
 		   TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
-		   DataSource, EntityType, KpiData),
+		   DataSource, EntityType, KpiRawData, KpiImplementedData),
         tags(
             (name = "Trend Materialization", description = "Trend materialization management endpoints.")
         ),
@@ -128,6 +130,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_kpis)
             .service(post_kpi)
             .service(update_kpi)
+            .service(get_kpi)
+            .service(delete_kpi)
     })
     .bind(("127.0.0.1", 8000))?
     .run()

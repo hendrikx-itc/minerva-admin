@@ -181,6 +181,12 @@ impl TrendViewMaterialization {
         Ok(())
     }
 
+    async fn delete(&self, client: &mut Client) -> Result<(), Error> {
+        self.drop_view(client).await?;
+        self.drop_fingerprint_function(client).await?;
+        Ok(())
+    }
+
     async fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
         let query = format!(
             concat!(
@@ -364,7 +370,9 @@ impl TrendFunctionMaterialization {
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
         self.define_materialization(client).await?;
-	if self.enabled { self.do_enable(client).await? };
+        if self.enabled {
+            self.do_enable(client).await?
+        };
         self.connect_sources(client).await?;
 
         Ok(())
@@ -406,22 +414,22 @@ impl TrendFunctionMaterialization {
     }
 
     async fn do_enable(&self, client: &mut Client) -> Result<(), Error> {
-	let query = concat!(
-	    "UPDATE trend_directory.materialization AS m ",
-	    "SET enabled = true ",
-	    "FROM trend_directory.trend_store_part AS dtsp ",
-	    "WHERE m.dst_trend_store_part_id = dtsp.id ",
-	    "AND dtsp.name = $1"
-	);
-	match client.query(query, &[&self.target_trend_store_part]).await {
-	    Ok(_) => Ok(()),
-	    Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-		"Unable to enable materialization: {}",
-		e
-	    ))))
-	}
+        let query = concat!(
+            "UPDATE trend_directory.materialization AS m ",
+            "SET enabled = true ",
+            "FROM trend_directory.trend_store_part AS dtsp ",
+            "WHERE m.dst_trend_store_part_id = dtsp.id ",
+            "AND dtsp.name = $1"
+        );
+        match client.query(query, &[&self.target_trend_store_part]).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+                "Unable to enable materialization: {}",
+                e
+            )))),
+        }
     }
-    
+
     async fn connect_sources(&self, client: &mut Client) -> Result<(), Error> {
         let mut result: Result<(), Error> = Ok(());
         for source in &self.sources {
@@ -507,6 +515,20 @@ impl TrendFunctionMaterialization {
         }
     }
 
+    async fn drop_materialization(&self, client: &mut Client) -> Result<(), Error> {
+        let query = "DELETE FROM trend_directory.materialization WHERE materialization::text = $1";
+        match client
+            .execute(query, &[&self.target_trend_store_part])
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+                "Error deleting view materialization: {}",
+                e
+            )))),
+        }
+    }
+
     async fn update(&self, client: &mut Client) -> Result<(), Error> {
         self.drop_fingerprint_function(client).await?;
         self.drop_function(client).await?;
@@ -517,6 +539,13 @@ impl TrendFunctionMaterialization {
         self.create_fingerprint_function(client).await?;
         self.connect_sources(client).await?;
 
+        Ok(())
+    }
+
+    async fn delete(&self, client: &mut Client) -> Result<(), Error> {
+        self.drop_sources(client).await?;
+        self.drop_materialization(client).await?;
+        self.drop_fingerprint_function(client).await?;
         Ok(())
     }
 }
@@ -564,6 +593,13 @@ impl TrendMaterialization {
         match self {
             TrendMaterialization::View(m) => m.create(client).await,
             TrendMaterialization::Function(m) => m.create(client).await,
+        }
+    }
+
+    pub async fn delete(&self, client: &mut Client) -> Result<(), Error> {
+        match self {
+            TrendMaterialization::View(m) => m.delete(client).await,
+            TrendMaterialization::Function(m) => m.delete(client).await,
         }
     }
 
