@@ -9,14 +9,14 @@ use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Resp
 use serde::{Deserialize, Serialize};
 use utoipa::Component;
 
-use minerva::change::Change;
+use minerva::change::{Change, GenericChange};
 use minerva::interval::parse_interval;
 use minerva::trend_materialization::{
     AddTrendMaterialization, TrendFunctionMaterialization, TrendMaterialization,
     TrendMaterializationFunction, TrendMaterializationSource, TrendViewMaterialization,
     UpdateTrendMaterialization,
 };
-use tokio_postgres::Client;
+use tokio_postgres::{Client, GenericClient};
 
 use crate::error::{Error, Success};
 
@@ -225,7 +225,7 @@ impl TrendViewMaterializationData {
         }
     }
 
-    pub async fn update(&self, client: &mut Client) -> Result<Success, Error> {
+    pub async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<Success, Error> {
         let query_result = client.query_one("SELECT vm.id, m.id FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id WHERE tsp.name=$1", &[&self.target_trend_store_part],).await;
         match query_result {
             Err(e) => {
@@ -242,7 +242,7 @@ impl TrendViewMaterializationData {
                 let action = UpdateTrendMaterialization {
                     trend_materialization: self.as_minerva(),
                 };
-                let result = action.apply(client).await;
+                let result = action.generic_apply(client).await;
                 match result {
                     Err(e) => Err(Error {
                         code: 500,
@@ -354,8 +354,8 @@ impl TrendFunctionMaterializationData {
             }
         }
     }
-
-    pub async fn update(&self, client: &mut Client) -> Result<Success, Error> {
+    
+    pub async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<Success, Error> {
         let query_result = client.query_one("SELECT fm.id, m.id FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id WHERE tsp.name=$1", &[&self.target_trend_store_part],).await;
         match query_result {
             Err(e) => {
@@ -372,7 +372,7 @@ impl TrendFunctionMaterializationData {
                 let action = UpdateTrendMaterialization {
                     trend_materialization: self.as_minerva(),
                 };
-                let result = action.apply(client).await;
+                let result = action.generic_apply(client).await;
                 match result {
                     Err(e) => Err(Error {
                         code: 500,
@@ -385,6 +385,10 @@ impl TrendFunctionMaterializationData {
                 }
             }
         }
+    }
+
+    pub async fn client_update(&self, client: &mut Client) -> Result<Success, Error> {
+	self.update(client).await
     }
 }
 
@@ -1128,7 +1132,7 @@ pub(super) async fn update_trend_view_materialization(
                     code: 500,
                     message: e.to_string(),
                 }),
-                Ok(mut client) => match data.update(&mut client).await {
+                Ok(mut client) => match data.client_update(&mut client).await {
                     Ok(success) => HttpResponse::Ok().json(success),
                     Err(Error {
                         code: 404,
@@ -1184,7 +1188,7 @@ pub(super) async fn update_trend_function_materialization(
                     code: 500,
                     message: e.to_string(),
                 }),
-                Ok(mut client) => match data.update(&mut client).await {
+                Ok(mut client) => match data.client_update(&mut client).await {
                     Ok(success) => HttpResponse::Ok().json(success),
                     Err(Error {
                         code: 404,

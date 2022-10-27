@@ -2,7 +2,8 @@ use std::fmt;
 
 use super::error::Error;
 use async_trait::async_trait;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, GenericClient};
+use std::marker::{Send, Sync};
 
 pub type ChangeResult = Result<String, Error>;
 
@@ -10,3 +11,9 @@ pub type ChangeResult = Result<String, Error>;
 pub trait Change: fmt::Display + Send + Sync {
     async fn apply(&self, client: &mut Client) -> ChangeResult;
 }
+
+#[async_trait]
+pub trait GenericChange: fmt::Display + Send + Sync {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult;
+}
+

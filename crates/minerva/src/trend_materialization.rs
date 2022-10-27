@@ -5,15 +5,16 @@ use serde_yaml;
 use std::fmt;
 use std::path::Path;
 use std::time::Duration;
+use std::marker::{Send, Sync};
 
 use postgres_protocol::escape::escape_identifier;
-use tokio_postgres::{types::ToSql, Client};
+use tokio_postgres::{types::ToSql, GenericClient, Client};
 
 use humantime::format_duration;
 
 use async_trait::async_trait;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, GenericChange, ChangeResult};
 use super::error::{DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
 
@@ -72,7 +73,7 @@ impl TrendViewMaterialization {
         format!("_{}", &self.target_trend_store_part)
     }
 
-    pub async fn drop_view(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn drop_view<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             "DROP VIEW IF EXISTS trend.{}",
             &escape_identifier(&self.view_name()),
@@ -87,7 +88,7 @@ impl TrendViewMaterialization {
         }
     }
 
-    pub async fn create_view(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn create_view<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             "CREATE VIEW trend.{} AS {}",
             &escape_identifier(&self.view_name()),
@@ -115,7 +116,7 @@ impl TrendViewMaterialization {
         format!("{}_fingerprint", self.target_trend_store_part)
     }
 
-    async fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create_fingerprint_function<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(concat!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
             "{}\n",
@@ -131,7 +132,7 @@ impl TrendViewMaterialization {
         }
     }
 
-    async fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_fingerprint_function<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
             escape_identifier(&self.fingerprint_function_name())
@@ -169,7 +170,7 @@ impl TrendViewMaterialization {
         changes
     }
 
-    async fn update(&self, client: &mut Client) -> Result<(), Error> {
+    async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.drop_fingerprint_function(client).await?;
         self.drop_view(client).await?;
 
@@ -187,7 +188,7 @@ impl TrendViewMaterialization {
         Ok(())
     }
 
-    async fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
+    async fn update_attributes<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             concat!(
                 "UPDATE trend_directory.materialization ",
@@ -333,7 +334,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn drop_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_function<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
             &escape_identifier(&self.target_trend_store_part),
@@ -348,7 +349,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn create_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create_function<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS {} AS $function$\n{}\n$function$ LANGUAGE {}",
             &escape_identifier(&self.target_trend_store_part),
@@ -382,7 +383,7 @@ impl TrendFunctionMaterialization {
         format!("{}_fingerprint", self.target_trend_store_part)
     }
 
-    async fn create_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create_fingerprint_function<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(concat!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS trend_directory.fingerprint AS $$\n",
             "{}\n",
@@ -398,7 +399,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn drop_fingerprint_function(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_fingerprint_function<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
             escape_identifier(&self.fingerprint_function_name())
@@ -430,7 +431,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn connect_sources(&self, client: &mut Client) -> Result<(), Error> {
+    async fn connect_sources<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let mut result: Result<(), Error> = Ok(());
         for source in &self.sources {
             let query = format!(
@@ -459,7 +460,7 @@ impl TrendFunctionMaterialization {
         result
     }
 
-    async fn drop_sources(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_sources<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             concat!(
 		"DELETE FROM trend_directory.materialization_trend_store_link tsl ",
@@ -484,7 +485,7 @@ impl TrendFunctionMaterialization {
         changes
     }
 
-    async fn update_attributes(&self, client: &mut Client) -> Result<(), Error> {
+    async fn update_attributes<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             concat!(
                 "UPDATE trend_directory.materialization ",
@@ -529,7 +530,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn update(&self, client: &mut Client) -> Result<(), Error> {
+    async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.drop_fingerprint_function(client).await?;
         self.drop_function(client).await?;
         self.drop_sources(client).await?;
@@ -582,7 +583,7 @@ impl TrendMaterialization {
         }
     }
 
-    pub async fn update(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         match self {
             TrendMaterialization::View(m) => m.update(client).await,
             TrendMaterialization::Function(m) => m.update(client).await,
@@ -845,8 +846,8 @@ impl fmt::Display for UpdateTrendMaterialization {
 }
 
 #[async_trait]
-impl Change for UpdateTrendMaterialization {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for UpdateTrendMaterialization {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         match self.trend_materialization.update(client).await {
             Ok(_) => Ok(format!(
                 "Updated trend materialization '{}'",
@@ -859,5 +860,12 @@ impl Change for UpdateTrendMaterialization {
                 ),
             })),
         }
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTrendMaterialization {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
