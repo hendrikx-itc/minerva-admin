@@ -4,14 +4,14 @@ use std::time::Duration;
 
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
-use tokio_postgres::Client;
+use tokio_postgres::GenericClient;
 
 use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
 use utoipa::{Component, IntoParams};
 
-use minerva::change::Change;
+use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
 use minerva::trend_store::{
     load_trend_store, AddTrendStore, AddTrendStorePart, AddTrends, GeneratedTrend, Trend,
@@ -236,7 +236,7 @@ pub struct TrendStoreBasicData {
 }
 
 impl TrendStoreBasicData {
-    async fn as_minerva(&self, client: &mut Client) -> Result<TrendStore, String> {
+    async fn as_minerva<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<TrendStore, String> {
         let result = load_trend_store(
             client,
             &self.data_source,
@@ -257,7 +257,7 @@ impl TrendStoreBasicData {
                 let result = AddTrendStore {
                     trend_store: new_trend_store.clone(),
                 }
-                .apply(client)
+                .generic_apply(client)
                 .await;
                 match result {
                     Ok(_) => Ok(new_trend_store),
@@ -309,7 +309,7 @@ impl TrendStorePartCompleteData {
         }
     }
 
-    pub async fn create(&self, client: &mut Client) -> Result<TrendStorePartFull, Error> {
+    pub async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<TrendStorePartFull, Error> {
         let trendstore_query = self.trend_store().as_minerva(client).await;
         match trendstore_query {
             Err(e) => Err(Error {
@@ -321,7 +321,7 @@ impl TrendStorePartCompleteData {
                     trend_store: trendstore,
                     trend_store_part: self.trend_store_part().as_minerva(),
                 };
-                let result = action.apply(client).await;
+                let result = action.generic_apply(client).await;
                 match result {
                     Err(e) => Err(Error {
                         code: 409,
@@ -332,7 +332,7 @@ impl TrendStorePartCompleteData {
                             trend_store_part: self.trend_store_part().as_minerva(),
                             trends: self.trend_store_part().as_minerva().trends,
                         };
-                        let result = action.apply(client).await;
+                        let result = action.generic_apply(client).await;
                         match result {
 			    Err(e) => Err( Error {
 				code: 409,
@@ -1023,15 +1023,39 @@ pub(super) async fn post_trend_store_part(
                     code: 500,
                     message: e.to_string(),
                 }),
-                Ok(mut client) => match data.create(&mut client).await {
-                    Ok(tsp) => HttpResponse::Ok().json(tsp),
-                    Err(e) => match e.code {
-                        404 => HttpResponse::NotFound().json(e),
-                        409 => HttpResponse::Conflict().json(e),
-                        _ => HttpResponse::InternalServerError().json(e),
-                    },
-                },
-            }
+                Ok(mut client) => {
+		    let transaction_query = client.transaction().await;
+		    match transaction_query {
+			Err(e) => HttpResponse::InternalServerError().json(Error {
+			    code: 500,
+			    message: e.to_string(),
+			}),
+			Ok(mut transaction) => {
+			    match data.create(&mut transaction).await {
+				Ok(tsp) => {
+				    let commission = transaction.commit().await;
+				    match commission {
+					Err(e) => {
+					    HttpResponse::InternalServerError().json(Error {
+						code: 500,
+						message: e.to_string(),
+					    })
+					},
+					Ok(_) => {
+					    HttpResponse::Ok().json(tsp)
+					}
+				    }
+				},
+				Err(e) => match e.code {
+				    404 => HttpResponse::NotFound().json(e),
+				    409 => HttpResponse::Conflict().json(e),
+				    _ => HttpResponse::InternalServerError().json(e),
+				}
+			    }
+			}
+		    }
+		}
+	    }
         }
     }
 }

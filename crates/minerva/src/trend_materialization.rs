@@ -41,7 +41,7 @@ pub struct TrendViewMaterialization {
 }
 
 impl TrendViewMaterialization {
-    async fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
+    async fn define_materialization<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             concat!(
 		"SELECT trend_directory.define_view_materialization(",
@@ -104,7 +104,7 @@ impl TrendViewMaterialization {
         }
     }
 
-    async fn create(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.create_view(client).await?;
         self.define_materialization(client).await?;
         self.create_fingerprint_function(client).await?;
@@ -182,7 +182,7 @@ impl TrendViewMaterialization {
         Ok(())
     }
 
-    async fn delete(&self, client: &mut Client) -> Result<(), Error> {
+    async fn delete<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.drop_view(client).await?;
         self.drop_fingerprint_function(client).await?;
         Ok(())
@@ -225,13 +225,20 @@ pub struct UpdateTrendViewMaterializationAttributes {
 }
 
 #[async_trait]
-impl Change for UpdateTrendViewMaterializationAttributes {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for UpdateTrendViewMaterializationAttributes {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         self.trend_view_materialization
             .update_attributes(client)
             .await?;
 
         Ok("Updated attributes of view materialization".into())
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTrendViewMaterializationAttributes {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 
@@ -250,8 +257,8 @@ pub struct UpdateView {
 }
 
 #[async_trait]
-impl Change for UpdateView {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for UpdateView {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         self.trend_view_materialization
             .drop_view(client)
             .await
@@ -265,6 +272,13 @@ impl Change for UpdateView {
             "Updated view {}",
             self.trend_view_materialization.view_name()
         ))
+    }
+}
+
+#[async_trait]
+impl Change for UpdateView {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 
@@ -303,7 +317,7 @@ pub struct TrendFunctionMaterialization {
 }
 
 impl TrendFunctionMaterialization {
-    async fn define_materialization(&self, client: &mut Client) -> Result<(), Error> {
+    async fn define_materialization<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = format!(
             concat!(
 		"SELECT trend_directory.define_function_materialization(",
@@ -367,7 +381,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn create(&self, client: &mut Client) -> Result<(), Error> {
+    async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.create_function(client).await?;
         self.create_fingerprint_function(client).await?;
         self.define_materialization(client).await?;
@@ -414,7 +428,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn do_enable(&self, client: &mut Client) -> Result<(), Error> {
+    async fn do_enable<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = concat!(
             "UPDATE trend_directory.materialization AS m ",
             "SET enabled = true ",
@@ -516,7 +530,7 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn drop_materialization(&self, client: &mut Client) -> Result<(), Error> {
+    async fn drop_materialization<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         let query = "DELETE FROM trend_directory.materialization WHERE materialization::text = $1";
         match client
             .execute(query, &[&self.target_trend_store_part])
@@ -543,7 +557,7 @@ impl TrendFunctionMaterialization {
         Ok(())
     }
 
-    async fn delete(&self, client: &mut Client) -> Result<(), Error> {
+    async fn delete<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.drop_sources(client).await?;
         self.drop_materialization(client).await?;
         self.drop_fingerprint_function(client).await?;
@@ -590,14 +604,14 @@ impl TrendMaterialization {
         }
     }
 
-    pub async fn create(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         match self {
             TrendMaterialization::View(m) => m.create(client).await,
             TrendMaterialization::Function(m) => m.create(client).await,
         }
     }
 
-    pub async fn delete(&self, client: &mut Client) -> Result<(), Error> {
+    pub async fn delete<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<(), Error> {
         match self {
             TrendMaterialization::View(m) => m.delete(client).await,
             TrendMaterialization::Function(m) => m.delete(client).await,
@@ -661,7 +675,7 @@ pub fn load_materializations_from(
         })
 }
 
-pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMaterialization>, Error> {
+pub async fn load_materializations<T:GenericClient+Send+Sync>(conn: &mut T) -> Result<Vec<TrendMaterialization>, Error> {
     let mut trend_materializations: Vec<TrendMaterialization> = Vec::new();
 
     let query = concat!(
@@ -739,8 +753,8 @@ pub async fn load_materializations(conn: &mut Client) -> Result<Vec<TrendMateria
     Ok(trend_materializations)
 }
 
-async fn load_sources(
-    conn: &mut Client,
+async fn load_sources<T:GenericClient+Send+Sync>(
+    conn: &mut T,
     materialization_id: i32,
 ) -> Result<Vec<TrendMaterializationSource>, Error> {
     let mut sources: Vec<TrendMaterializationSource> = Vec::new();
@@ -773,7 +787,7 @@ async fn load_sources(
 }
 
 // Load the body of a function by specifying it's full name
-pub async fn get_view_def(client: &mut Client, view: &str) -> Option<String> {
+pub async fn get_view_def<T:GenericClient+Send+Sync>(client: &mut T, view: &str) -> Option<String> {
     let query = format!(concat!("SELECT pg_get_viewdef('{}'::regclass::oid);"), view);
 
     match client.query_one(query.as_str(), &[]).await {
@@ -782,7 +796,7 @@ pub async fn get_view_def(client: &mut Client, view: &str) -> Option<String> {
     }
 }
 
-pub async fn get_function_def(client: &mut Client, function: &str) -> Option<String> {
+pub async fn get_function_def<T:GenericClient+Send+Sync>(client: &mut T, function: &str) -> Option<String> {
     let query = format!("SELECT prosrc FROM pg_proc WHERE proname = $1");
 
     match client.query_one(query.as_str(), &[&function]).await {
@@ -806,8 +820,8 @@ impl fmt::Display for AddTrendMaterialization {
 }
 
 #[async_trait]
-impl Change for AddTrendMaterialization {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for AddTrendMaterialization {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         match self.trend_materialization.create(client).await {
             Ok(_) => Ok(format!(
                 "Added trend materialization '{}'",
@@ -820,6 +834,13 @@ impl Change for AddTrendMaterialization {
                 ),
             })),
         }
+    }
+}
+
+#[async_trait]
+impl Change for AddTrendMaterialization {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 

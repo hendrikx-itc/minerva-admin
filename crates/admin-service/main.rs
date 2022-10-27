@@ -22,7 +22,7 @@ mod trendstore;
 use trendstore::{
     find_trend_store_part, get_trend_store, get_trend_store_part, get_trend_store_parts,
     get_trend_stores, get_trends, get_trends_by_entity_type, post_trend_store_part,
-    GeneratedTrendFull, TrendDataWithTrendStorePart, TrendFull, TrendStoreFull, TrendStorePartFull,
+    GeneratedTrendFull, TrendFull, TrendStoreFull, TrendStorePartFull,
 };
 
 mod datasource;

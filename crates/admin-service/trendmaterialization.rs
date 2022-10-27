@@ -9,7 +9,7 @@ use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Resp
 use serde::{Deserialize, Serialize};
 use utoipa::Component;
 
-use minerva::change::{Change, GenericChange};
+use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
 use minerva::trend_materialization::{
     AddTrendMaterialization, TrendFunctionMaterialization, TrendMaterialization,
@@ -41,6 +41,10 @@ fn as_minerva(sources: &Vec<TrendMaterializationSourceData>) -> Vec<TrendMateria
         result.push(source.as_minerva())
     }
     result
+}
+
+fn as_client(client: Client) -> Client {
+    client
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Component)]
@@ -177,11 +181,11 @@ impl TrendViewMaterializationData {
         })
     }
 
-    pub async fn create(&self, client: &mut Client) -> Result<TrendViewMaterializationFull, Error> {
+    pub async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<TrendViewMaterializationFull, Error> {
         let action = AddTrendMaterialization {
             trend_materialization: self.as_minerva(),
         };
-        let result = action.apply(client).await;
+        let result = action.generic_apply(client).await;
         match result {
             Err(e) => Err(Error {
                 code: 409,
@@ -294,14 +298,14 @@ impl TrendFunctionMaterializationData {
         })
     }
 
-    pub async fn create(
+    pub async fn create<T:GenericClient+Send+Sync>(
         &self,
-        client: &mut Client,
+        client: &mut T,
     ) -> Result<TrendFunctionMaterializationFull, Error> {
         let action = AddTrendMaterialization {
             trend_materialization: self.as_minerva(),
         };
-        let result = action.apply(client).await;
+        let result = action.generic_apply(client).await;
         match result {
             Err(e) => Err(Error {
                 code: 409,
@@ -387,7 +391,7 @@ impl TrendFunctionMaterializationData {
         }
     }
 
-    pub async fn client_update(&self, client: &mut Client) -> Result<Success, Error> {
+    pub async fn client_update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<Success, Error> {
 	self.update(client).await
     }
 }
@@ -888,21 +892,30 @@ pub(super) async fn post_trend_view_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-                    let result = data.create(&mut client).await;
-                    match result {
-                        Ok(materialization) => HttpResponse::Ok().json(materialization),
-                        Err(Error {
-                            code: 404,
-                            message: e,
-                        }) => HttpResponse::NotFound().json(e),
-                        Err(Error {
-                            code: 409,
-                            message: e,
-                        }) => HttpResponse::Conflict().json(e),
-                        Err(Error {
-                            code: _,
-                            message: e,
-                        }) => HttpResponse::InternalServerError().json(e),
+		    let transaction_query = client.transaction().await;
+		    match transaction_query {
+			Err(e) => HttpResponse::InternalServerError().json(Error {
+			    code: 500,
+			    message: e.to_string(),
+			}),
+			Ok(mut transaction) => {
+			    let result = data.create(&mut transaction).await;
+			    match result {
+				Ok(materialization) => HttpResponse::Ok().json(materialization),
+				Err(Error {
+				    code: 404,
+				    message: e,
+				}) => HttpResponse::NotFound().json(e),
+				Err(Error {
+				    code: 409,
+				    message: e,
+				}) => HttpResponse::Conflict().json(e),
+				Err(Error {
+				    code: _,
+				    message: e,
+				}) => HttpResponse::InternalServerError().json(e),
+			    }
+			}
                     }
                 }
             }
@@ -942,21 +955,30 @@ pub(super) async fn post_trend_function_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-                    let result = data.create(&mut client).await;
-                    match result {
-                        Ok(materialization) => HttpResponse::Ok().json(materialization),
-                        Err(Error {
-                            code: 404,
-                            message: e,
-                        }) => HttpResponse::NotFound().json(e),
-                        Err(Error {
-                            code: 409,
-                            message: e,
-                        }) => HttpResponse::Conflict().json(e),
-                        Err(Error {
-                            code: _,
-                            message: e,
-                        }) => HttpResponse::InternalServerError().json(e),
+		    let transaction_query = client.transaction().await;
+		    match transaction_query {
+			Err(e) => HttpResponse::InternalServerError().json(Error {
+			    code: 500,
+			    message: e.to_string(),
+			}),
+			Ok(mut transaction) => {
+			    let result = data.create(&mut transaction).await;
+			    match result {
+				Ok(materialization) => HttpResponse::Ok().json(materialization),
+				Err(Error {
+				    code: 404,
+				    message: e,
+				}) => HttpResponse::NotFound().json(e),
+				Err(Error {
+				    code: 409,
+				    message: e,
+				}) => HttpResponse::Conflict().json(e),
+				Err(Error {
+				    code: _,
+				    message: e,
+				}) => HttpResponse::InternalServerError().json(e),
+			    }
+			}
                     }
                 }
             }
@@ -1132,30 +1154,54 @@ pub(super) async fn update_trend_view_materialization(
                     code: 500,
                     message: e.to_string(),
                 }),
-                Ok(mut client) => match data.client_update(&mut client).await {
-                    Ok(success) => HttpResponse::Ok().json(success),
-                    Err(Error {
-                        code: 404,
-                        message: e,
-                    }) => HttpResponse::NotFound().json(Error {
-                        code: 404,
-                        message: e,
-                    }),
-                    Err(Error {
-                        code: 409,
-                        message: e,
-                    }) => HttpResponse::Conflict().json(Error {
-                        code: 409,
-                        message: e,
-                    }),
-                    Err(Error {
-                        code: c,
-                        message: e,
-                    }) => HttpResponse::InternalServerError().json(Error {
-                        code: c,
-                        message: e,
-                    }),
-                },
+                Ok(mut client) => {
+		    let transaction_query = client.transaction().await;
+		    match transaction_query {
+			Err(e) => HttpResponse::InternalServerError().json(Error {
+			    code: 500,
+			    message: e.to_string(),
+			}),
+			Ok(mut transaction) => {
+			    match data.client_update(&mut transaction).await {
+				Ok(success) => {
+				    let commission = transaction.commit().await;
+				    match commission {
+					Err(e) => {
+					    HttpResponse::InternalServerError().json(Error {
+						code: 500,
+						message: e.to_string(),
+					    })
+					},
+					Ok(_) => {
+					    HttpResponse::Ok().json(success)
+					}
+				    }
+				},
+				Err(Error {
+				    code: 404,
+				    message: e,
+				}) => HttpResponse::NotFound().json(Error {
+				    code: 404,
+				    message: e,
+				}),
+				Err(Error {
+				    code: 409,
+				    message: e,
+				}) => HttpResponse::Conflict().json(Error {
+				    code: 409,
+				    message: e,
+				}),
+				Err(Error {
+				    code: c,
+				    message: e,
+				}) => HttpResponse::InternalServerError().json(Error {
+				    code: c,
+				    message: e,
+				})
+			    }
+			}
+                    }
+		}
             }
         }
     }
@@ -1188,30 +1234,54 @@ pub(super) async fn update_trend_function_materialization(
                     code: 500,
                     message: e.to_string(),
                 }),
-                Ok(mut client) => match data.client_update(&mut client).await {
-                    Ok(success) => HttpResponse::Ok().json(success),
-                    Err(Error {
-                        code: 404,
-                        message: e,
-                    }) => HttpResponse::NotFound().json(Error {
-                        code: 404,
-                        message: e,
-                    }),
-                    Err(Error {
-                        code: 409,
-                        message: e,
-                    }) => HttpResponse::Conflict().json(Error {
-                        code: 409,
-                        message: e,
-                    }),
-                    Err(Error {
-                        code: c,
-                        message: e,
-                    }) => HttpResponse::InternalServerError().json(Error {
-                        code: c,
-                        message: e,
-                    }),
-                },
+                Ok(mut client) => {
+		    let transaction_query = client.transaction().await;
+		    match transaction_query {
+			Err(e) => HttpResponse::InternalServerError().json(Error {
+			    code: 500,
+			    message: e.to_string(),
+			}),
+			Ok(mut transaction) => {
+			    match data.client_update(&mut transaction).await {
+				Ok(success) => {
+				    let commission = transaction.commit().await;
+				    match commission {
+					Err(e) => {
+					    HttpResponse::InternalServerError().json(Error {
+						code: 500,
+						message: e.to_string(),
+					    })
+					},
+					Ok(_) => {
+					    HttpResponse::Ok().json(success)
+					}
+				    }
+				},
+				Err(Error {
+				    code: 404,
+				    message: e,
+				}) => HttpResponse::NotFound().json(Error {
+				    code: 404,
+				    message: e,
+				}),
+				Err(Error {
+				    code: 409,
+				    message: e,
+				}) => HttpResponse::Conflict().json(Error {
+				    code: 409,
+				    message: e,
+				}),
+				Err(Error {
+				    code: c,
+				    message: e,
+				}) => HttpResponse::InternalServerError().json(Error {
+				    code: c,
+				    message: e,
+				})
+			    }
+			}
+                    }
+		}
             }
         }
     }

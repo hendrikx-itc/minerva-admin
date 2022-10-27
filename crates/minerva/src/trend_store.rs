@@ -5,7 +5,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_postgres::types::ToSql;
-use tokio_postgres::{Client, Row};
+use tokio_postgres::{Client, GenericClient, Row};
 
 use humantime::format_duration;
 
@@ -13,7 +13,7 @@ use chrono::{DateTime, FixedOffset};
 
 use async_trait::async_trait;
 
-use super::change::{Change, ChangeResult};
+use super::change::{Change, GenericChange, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
 
@@ -116,8 +116,8 @@ impl fmt::Display for RemoveTrends {
 }
 
 #[async_trait]
-impl Change for RemoveTrends {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for RemoveTrends {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         let query = concat!(
             "SELECT trend_directory.remove_table_trend(table_trend) ",
             "FROM trend_directory.table_trend ",
@@ -145,6 +145,13 @@ impl Change for RemoveTrends {
     }
 }
 
+#[async_trait]
+impl Change for RemoveTrends {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
+    }
+}
+
 pub struct AddTrends {
     pub trend_store_part: TrendStorePart,
     pub trends: Vec<Trend>,
@@ -167,8 +174,8 @@ impl fmt::Display for AddTrends {
 }
 
 #[async_trait]
-impl Change for AddTrends {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for AddTrends {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         let query = concat!(
             "SELECT trend_directory.create_table_trends(trend_store_part, $1) ",
             "FROM trend_directory.trend_store_part WHERE name = $2",
@@ -186,6 +193,13 @@ impl Change for AddTrends {
             &self.trends.len(),
             &self.trend_store_part.name
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddTrends {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 
@@ -233,8 +247,8 @@ impl fmt::Display for ModifyTrendDataTypes {
 }
 
 #[async_trait]
-impl Change for ModifyTrendDataTypes {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for ModifyTrendDataTypes {
+    async fn generic_apply<T:GenericClient+Sync+Send>(&self, client: &mut T) -> ChangeResult {
         let transaction = client
             .transaction()
             .await
@@ -330,6 +344,13 @@ impl Change for ModifyTrendDataTypes {
             "Altered trend data types for trend store part '{}'",
             &self.trend_store_part.name
         ))
+    }
+}
+
+#[async_trait]
+impl Change for ModifyTrendDataTypes {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 
@@ -453,8 +474,8 @@ pub struct AddTrendStorePart {
 }
 
 #[async_trait]
-impl Change for AddTrendStorePart {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for AddTrendStorePart {
+    async fn generic_apply<T:GenericClient+Send+Sync>(&self, client: &mut T) -> ChangeResult {
         let query = concat!(
             "SELECT trend_directory.create_trend_store_part(trend_store.id, $1) ",
             "FROM trend_directory.trend_store ",
@@ -490,6 +511,13 @@ impl Change for AddTrendStorePart {
             "Added trend store part '{}' to trend store '{}'",
             &self.trend_store_part.name, &self.trend_store
         ))
+    }
+}
+
+#[async_trait]
+impl Change for AddTrendStorePart {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 
@@ -593,8 +621,8 @@ pub async fn delete_trend_store(conn: &mut Client, id: i32) -> Result<(), Delete
     }
 }
 
-pub async fn load_trend_store(
-    conn: &mut Client,
+pub async fn load_trend_store<T:GenericClient>(
+    conn: &mut T,
     data_source: &str,
     entity_type: &str,
     granularity: &Duration,
@@ -627,7 +655,7 @@ pub async fn load_trend_store(
     })
 }
 
-async fn load_trend_store_parts(conn: &mut Client, trend_store_id: i32) -> Vec<TrendStorePart> {
+async fn load_trend_store_parts<T:GenericClient>(conn: &mut T, trend_store_id: i32) -> Vec<TrendStorePart> {
     let trend_store_part_query =
         "SELECT id, name FROM trend_directory.trend_store_part WHERE trend_store_id = $1";
 
@@ -742,8 +770,8 @@ impl fmt::Display for AddTrendStore {
 }
 
 #[async_trait]
-impl Change for AddTrendStore {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
+impl GenericChange for AddTrendStore {
+    async fn generic_apply<T:GenericClient+Sync+Send>(&self, client: &mut T) -> ChangeResult {
         let query = concat!(
             "SELECT id ",
             "FROM trend_directory.create_trend_store(",
@@ -771,6 +799,13 @@ impl Change for AddTrendStore {
             .map_err(|e| DatabaseError::from_msg(format!("Error creating trend store: {}", e)))?;
 
         Ok(format!("Added trend store {}", &self.trend_store))
+    }
+}
+
+#[async_trait]
+impl Change for AddTrendStore {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+	self.generic_apply(client).await
     }
 }
 
