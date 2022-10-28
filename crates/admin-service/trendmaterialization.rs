@@ -181,7 +181,10 @@ impl TrendViewMaterializationData {
         })
     }
 
-    pub async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<TrendViewMaterializationFull, Error> {
+    pub async fn create<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<TrendViewMaterializationFull, Error> {
         let action = AddTrendMaterialization {
             trend_materialization: self.as_minerva(),
         };
@@ -229,7 +232,10 @@ impl TrendViewMaterializationData {
         }
     }
 
-    pub async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<Success, Error> {
+    pub async fn update<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<Success, Error> {
         let query_result = client.query_one("SELECT vm.id, m.id FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id WHERE tsp.name=$1", &[&self.target_trend_store_part],).await;
         match query_result {
             Err(e) => {
@@ -298,7 +304,7 @@ impl TrendFunctionMaterializationData {
         })
     }
 
-    pub async fn create<T:GenericClient+Send+Sync>(
+    pub async fn create<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
     ) -> Result<TrendFunctionMaterializationFull, Error> {
@@ -358,8 +364,11 @@ impl TrendFunctionMaterializationData {
             }
         }
     }
-    
-    pub async fn update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<Success, Error> {
+
+    pub async fn update<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<Success, Error> {
         let query_result = client.query_one("SELECT fm.id, m.id FROM trend_directory.function_materialization fm JOIN trend_directory.materialization m ON fm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id WHERE tsp.name=$1", &[&self.target_trend_store_part],).await;
         match query_result {
             Err(e) => {
@@ -391,8 +400,11 @@ impl TrendFunctionMaterializationData {
         }
     }
 
-    pub async fn client_update<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<Success, Error> {
-	self.update(client).await
+    pub async fn client_update<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<Success, Error> {
+        self.update(client).await
     }
 }
 
@@ -892,30 +904,30 @@ pub(super) async fn post_trend_view_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-		    let transaction_query = client.transaction().await;
-		    match transaction_query {
-			Err(e) => HttpResponse::InternalServerError().json(Error {
-			    code: 500,
-			    message: e.to_string(),
-			}),
-			Ok(mut transaction) => {
-			    let result = data.create(&mut transaction).await;
-			    match result {
-				Ok(materialization) => HttpResponse::Ok().json(materialization),
-				Err(Error {
-				    code: 404,
-				    message: e,
-				}) => HttpResponse::NotFound().json(e),
-				Err(Error {
-				    code: 409,
-				    message: e,
-				}) => HttpResponse::Conflict().json(e),
-				Err(Error {
-				    code: _,
-				    message: e,
-				}) => HttpResponse::InternalServerError().json(e),
-			    }
-			}
+                    let transaction_query = client.transaction().await;
+                    match transaction_query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(mut transaction) => {
+                            let result = data.create(&mut transaction).await;
+                            match result {
+                                Ok(materialization) => HttpResponse::Ok().json(materialization),
+                                Err(Error {
+                                    code: 404,
+                                    message: e,
+                                }) => HttpResponse::NotFound().json(e),
+                                Err(Error {
+                                    code: 409,
+                                    message: e,
+                                }) => HttpResponse::Conflict().json(e),
+                                Err(Error {
+                                    code: _,
+                                    message: e,
+                                }) => HttpResponse::InternalServerError().json(e),
+                            }
+                        }
                     }
                 }
             }
@@ -955,30 +967,30 @@ pub(super) async fn post_trend_function_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-		    let transaction_query = client.transaction().await;
-		    match transaction_query {
-			Err(e) => HttpResponse::InternalServerError().json(Error {
-			    code: 500,
-			    message: e.to_string(),
-			}),
-			Ok(mut transaction) => {
-			    let result = data.create(&mut transaction).await;
-			    match result {
-				Ok(materialization) => HttpResponse::Ok().json(materialization),
-				Err(Error {
-				    code: 404,
-				    message: e,
-				}) => HttpResponse::NotFound().json(e),
-				Err(Error {
-				    code: 409,
-				    message: e,
-				}) => HttpResponse::Conflict().json(e),
-				Err(Error {
-				    code: _,
-				    message: e,
-				}) => HttpResponse::InternalServerError().json(e),
-			    }
-			}
+                    let transaction_query = client.transaction().await;
+                    match transaction_query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(mut transaction) => {
+                            let result = data.create(&mut transaction).await;
+                            match result {
+                                Ok(materialization) => HttpResponse::Ok().json(materialization),
+                                Err(Error {
+                                    code: 404,
+                                    message: e,
+                                }) => HttpResponse::NotFound().json(e),
+                                Err(Error {
+                                    code: 409,
+                                    message: e,
+                                }) => HttpResponse::Conflict().json(e),
+                                Err(Error {
+                                    code: _,
+                                    message: e,
+                                }) => HttpResponse::InternalServerError().json(e),
+                            }
+                        }
                     }
                 }
             }
@@ -1155,53 +1167,47 @@ pub(super) async fn update_trend_view_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-		    let transaction_query = client.transaction().await;
-		    match transaction_query {
-			Err(e) => HttpResponse::InternalServerError().json(Error {
-			    code: 500,
-			    message: e.to_string(),
-			}),
-			Ok(mut transaction) => {
-			    match data.client_update(&mut transaction).await {
-				Ok(success) => {
-				    let commission = transaction.commit().await;
-				    match commission {
-					Err(e) => {
-					    HttpResponse::InternalServerError().json(Error {
-						code: 500,
-						message: e.to_string(),
-					    })
-					},
-					Ok(_) => {
-					    HttpResponse::Ok().json(success)
-					}
-				    }
-				},
-				Err(Error {
-				    code: 404,
-				    message: e,
-				}) => HttpResponse::NotFound().json(Error {
-				    code: 404,
-				    message: e,
-				}),
-				Err(Error {
-				    code: 409,
-				    message: e,
-				}) => HttpResponse::Conflict().json(Error {
-				    code: 409,
-				    message: e,
-				}),
-				Err(Error {
-				    code: c,
-				    message: e,
-				}) => HttpResponse::InternalServerError().json(Error {
-				    code: c,
-				    message: e,
-				})
-			    }
-			}
+                    let transaction_query = client.transaction().await;
+                    match transaction_query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(mut transaction) => match data.client_update(&mut transaction).await {
+                            Ok(success) => {
+                                let commission = transaction.commit().await;
+                                match commission {
+                                    Err(e) => HttpResponse::InternalServerError().json(Error {
+                                        code: 500,
+                                        message: e.to_string(),
+                                    }),
+                                    Ok(_) => HttpResponse::Ok().json(success),
+                                }
+                            }
+                            Err(Error {
+                                code: 404,
+                                message: e,
+                            }) => HttpResponse::NotFound().json(Error {
+                                code: 404,
+                                message: e,
+                            }),
+                            Err(Error {
+                                code: 409,
+                                message: e,
+                            }) => HttpResponse::Conflict().json(Error {
+                                code: 409,
+                                message: e,
+                            }),
+                            Err(Error {
+                                code: c,
+                                message: e,
+                            }) => HttpResponse::InternalServerError().json(Error {
+                                code: c,
+                                message: e,
+                            }),
+                        },
                     }
-		}
+                }
             }
         }
     }
@@ -1235,53 +1241,47 @@ pub(super) async fn update_trend_function_materialization(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-		    let transaction_query = client.transaction().await;
-		    match transaction_query {
-			Err(e) => HttpResponse::InternalServerError().json(Error {
-			    code: 500,
-			    message: e.to_string(),
-			}),
-			Ok(mut transaction) => {
-			    match data.client_update(&mut transaction).await {
-				Ok(success) => {
-				    let commission = transaction.commit().await;
-				    match commission {
-					Err(e) => {
-					    HttpResponse::InternalServerError().json(Error {
-						code: 500,
-						message: e.to_string(),
-					    })
-					},
-					Ok(_) => {
-					    HttpResponse::Ok().json(success)
-					}
-				    }
-				},
-				Err(Error {
-				    code: 404,
-				    message: e,
-				}) => HttpResponse::NotFound().json(Error {
-				    code: 404,
-				    message: e,
-				}),
-				Err(Error {
-				    code: 409,
-				    message: e,
-				}) => HttpResponse::Conflict().json(Error {
-				    code: 409,
-				    message: e,
-				}),
-				Err(Error {
-				    code: c,
-				    message: e,
-				}) => HttpResponse::InternalServerError().json(Error {
-				    code: c,
-				    message: e,
-				})
-			    }
-			}
+                    let transaction_query = client.transaction().await;
+                    match transaction_query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(mut transaction) => match data.client_update(&mut transaction).await {
+                            Ok(success) => {
+                                let commission = transaction.commit().await;
+                                match commission {
+                                    Err(e) => HttpResponse::InternalServerError().json(Error {
+                                        code: 500,
+                                        message: e.to_string(),
+                                    }),
+                                    Ok(_) => HttpResponse::Ok().json(success),
+                                }
+                            }
+                            Err(Error {
+                                code: 404,
+                                message: e,
+                            }) => HttpResponse::NotFound().json(Error {
+                                code: 404,
+                                message: e,
+                            }),
+                            Err(Error {
+                                code: 409,
+                                message: e,
+                            }) => HttpResponse::Conflict().json(Error {
+                                code: 409,
+                                message: e,
+                            }),
+                            Err(Error {
+                                code: c,
+                                message: e,
+                            }) => HttpResponse::InternalServerError().json(Error {
+                                code: c,
+                                message: e,
+                            }),
+                        },
                     }
-		}
+                }
             }
         }
     }

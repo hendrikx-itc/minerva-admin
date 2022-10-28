@@ -236,7 +236,10 @@ pub struct TrendStoreBasicData {
 }
 
 impl TrendStoreBasicData {
-    async fn as_minerva<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<TrendStore, String> {
+    async fn as_minerva<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<TrendStore, String> {
         let result = load_trend_store(
             client,
             &self.data_source,
@@ -309,7 +312,10 @@ impl TrendStorePartCompleteData {
         }
     }
 
-    pub async fn create<T:GenericClient+Send+Sync>(&self, client: &mut T) -> Result<TrendStorePartFull, Error> {
+    pub async fn create<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<TrendStorePartFull, Error> {
         let trendstore_query = self.trend_store().as_minerva(client).await;
         match trendstore_query {
             Err(e) => Err(Error {
@@ -1024,38 +1030,32 @@ pub(super) async fn post_trend_store_part(
                     message: e.to_string(),
                 }),
                 Ok(mut client) => {
-		    let transaction_query = client.transaction().await;
-		    match transaction_query {
-			Err(e) => HttpResponse::InternalServerError().json(Error {
-			    code: 500,
-			    message: e.to_string(),
-			}),
-			Ok(mut transaction) => {
-			    match data.create(&mut transaction).await {
-				Ok(tsp) => {
-				    let commission = transaction.commit().await;
-				    match commission {
-					Err(e) => {
-					    HttpResponse::InternalServerError().json(Error {
-						code: 500,
-						message: e.to_string(),
-					    })
-					},
-					Ok(_) => {
-					    HttpResponse::Ok().json(tsp)
-					}
-				    }
-				},
-				Err(e) => match e.code {
-				    404 => HttpResponse::NotFound().json(e),
-				    409 => HttpResponse::Conflict().json(e),
-				    _ => HttpResponse::InternalServerError().json(e),
-				}
-			    }
-			}
-		    }
-		}
-	    }
+                    let transaction_query = client.transaction().await;
+                    match transaction_query {
+                        Err(e) => HttpResponse::InternalServerError().json(Error {
+                            code: 500,
+                            message: e.to_string(),
+                        }),
+                        Ok(mut transaction) => match data.create(&mut transaction).await {
+                            Ok(tsp) => {
+                                let commission = transaction.commit().await;
+                                match commission {
+                                    Err(e) => HttpResponse::InternalServerError().json(Error {
+                                        code: 500,
+                                        message: e.to_string(),
+                                    }),
+                                    Ok(_) => HttpResponse::Ok().json(tsp),
+                                }
+                            }
+                            Err(e) => match e.code {
+                                404 => HttpResponse::NotFound().json(e),
+                                409 => HttpResponse::Conflict().json(e),
+                                _ => HttpResponse::InternalServerError().json(e),
+                            },
+                        },
+                    }
+                }
+            }
         }
     }
 }
