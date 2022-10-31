@@ -37,7 +37,7 @@ lazy_static! {
     static ref TIME_AGGREGATION: String = "SUM".to_string();
     static ref ENTITY_AGGREGATION: String = "SUM".to_string();
     static ref MAPPING_FUNCTION: String = "trend.mapping_id(timestamptz)".to_string();
-    static ref DEFAULT_GRANULARITY: String = "15m".to_string();
+    static ref DEFAULT_GRANULARITY: String = "1h".to_string();
     static ref PROCESSING_DELAY: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("10m").unwrap()),
         ("1h".to_string(), parse_interval("10m").unwrap()),
@@ -114,7 +114,7 @@ impl KpiRawData {
             let query_result = client.query_one(&format!("SELECT tsp.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'", source_trend, DEFAULT_GRANULARITY.to_string(), self.entity_type), &[],).await;
             match query_result {
                 Err(e) => {
-                    result = Err(e.to_string());
+                    result = Err(format!("SELECT tsp.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'", source_trend, DEFAULT_GRANULARITY.to_string(), self.entity_type));
                     errormet = true
                 }
                 Ok(row) => {
@@ -160,9 +160,9 @@ impl KpiRawData {
         match query {
             Err(e) => Err(Error {
                 code: 404,
-                message: e,
+                message: format!("C: {}", e),
             }),
-            Ok(implementedkpi) => implementedkpi.create(client).await,
+            Ok(implementedkpi) => implementedkpi.create(client).await
         }
     }
 }
@@ -284,11 +284,11 @@ impl KpiImplementedData {
                 Ok(_) => {
                     let query_result = kpi.materialization.create(client).await;
                     match query_result {
-                        Err(e) => result = Err(e),
+                        Err(e) => result = Err(Error{code: e.code, message: format!("A: {} - {}", granularity, e.message)}),
                         Ok(_) => {}
                     }
                 }
-                Err(e) => result = Err(e),
+                Err(e) => result = Err(Error{code: e.code, message: format!("A: {} - {}", granularity, e.message)})
             }
         }
         result
@@ -452,7 +452,7 @@ pub(super) async fn post_kpi(
                     code: 500,
                     message: e.to_string(),
                 }),
-                Ok(mut client) => {
+		Ok(mut client) => {
                     let transaction_query = client.transaction().await;
                     match transaction_query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
@@ -460,12 +460,27 @@ pub(super) async fn post_kpi(
                             message: e.to_string(),
                         }),
                         Ok(mut transaction) => {
-                            let result = data.create(&mut transaction).await;
+                            let mut result = data.create(&mut transaction).await;
                             match result {
-                                Ok(e) => HttpResponse::Ok().json(Success {
-                                    code: 200,
-                                    message: e,
-                                }),
+                                Ok(_) => {
+				    let commission = transaction.commit().await;
+                                    match commission {
+                                        Err(e2) => {
+                                            result = Err(Error {
+                                                code: 500,
+                                                message: e2.to_string(),
+                                            })
+                                        },
+				    	Ok(_) => {}
+				    }
+				},
+				Err(_) => {}
+			    };
+			    match result {
+				Ok(e) => HttpResponse::Ok().json(Success {
+					code: 200,
+					message: e,
+				}),
                                 Err(Error {
                                     code: 409,
                                     message: e,
@@ -485,7 +500,7 @@ pub(super) async fn post_kpi(
                     }
                 }
             }
-        }
+	}
     }
 }
 
@@ -556,7 +571,7 @@ pub(super) async fn update_kpi(
                                                 code: 500,
                                                 message: e.to_string(),
                                             })
-                                        }
+                                        },
                                         Ok(_) => {}
                                     }
                                 }
