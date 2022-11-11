@@ -160,7 +160,7 @@ impl KpiRawData {
         match query {
             Err(e) => Err(Error {
                 code: 404,
-                message: format!("C: {}", e),
+                message: e,
             }),
             Ok(implementedkpi) => implementedkpi.create(client).await
         }
@@ -284,11 +284,11 @@ impl KpiImplementedData {
                 Ok(_) => {
                     let query_result = kpi.materialization.create(client).await;
                     match query_result {
-                        Err(e) => result = Err(Error{code: e.code, message: format!("A: {} - {}", granularity, e.message)}),
+                        Err(e) => result = Err(Error{code: e.code, message: e.message}),
                         Ok(_) => {}
                     }
                 }
-                Err(e) => result = Err(Error{code: e.code, message: format!("A: {} - {}", granularity, e.message)})
+                Err(e) => result = Err(Error{code: e.code, message: e.message})
             }
         }
         result
