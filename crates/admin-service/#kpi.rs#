@@ -8,7 +8,7 @@ use utoipa::Component;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};undefined
 
 use serde_json::json;
 use tokio_postgres::GenericClient;
@@ -37,7 +37,7 @@ lazy_static! {
     static ref TIME_AGGREGATION: String = "SUM".to_string();
     static ref ENTITY_AGGREGATION: String = "SUM".to_string();
     static ref MAPPING_FUNCTION: String = "trend.mapping_id(timestamptz)".to_string();
-    static ref DEFAULT_GRANULARITY: String = "1w".to_string();
+    static ref DEFAULT_GRANULARITY: String = "1h".to_string();
     static ref PROCESSING_DELAY: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("10m").unwrap()),
         ("1h".to_string(), parse_interval("10m").unwrap()),

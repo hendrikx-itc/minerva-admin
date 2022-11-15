@@ -37,6 +37,7 @@ lazy_static! {
             parse_interval("5y").unwrap()
         ),
     ]);
+    static ref DEFAULT_GRANULARITY: String = "7 days".to_string();
 }
 
 #[derive(Debug, Serialize, Deserialize, IntoParams)]
@@ -1145,7 +1146,7 @@ pub(super) async fn get_trends_by_entity_type(
             message: e.to_string(),
         }),
         Ok(client) => {
-            let query = client.query("SELECT t.name, ts.granularity::text FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE et.name = $1 ORDER BY t.name, ts.granularity::text", &[&entity_type,],).await;
+            let query = client.query("SELECT t.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE et.name = $1 AND ts.granularity::text = $2 ORDER BY t.name", &[&entity_type, &DEFAULT_GRANULARITY.to_string()],).await;
             match query {
                 Err(e) => HttpResponse::InternalServerError().json(Error {
                     code: 500,
@@ -1153,25 +1154,19 @@ pub(super) async fn get_trends_by_entity_type(
                 }),
                 Ok(query_result) => {
                     let mut lastname: String = "".to_string();
-                    let mut lastgranularity: String = "".to_string();
+		    let mut skip: bool = false;
                     for row in query_result {
                         let name: String = row.get(0);
-                        let granularity: String = row.get(1);
                         if name == lastname {
-                            if granularity == lastgranularity {
-                                lastgranularity = "skip".to_string()
-                            } else {
-                                lastgranularity = granularity
-                            }
+			    skip = true;
                         } else {
-                            if lastname != "".to_string() && lastgranularity != "skip".to_string() {
+                            if !skip {
                                 m.push(lastname)
                             };
                             lastname = name;
-                            lastgranularity = granularity;
                         }
                     }
-                    if lastname != "".to_string() && lastgranularity != "skip".to_string() {
+                    if !skip {
                         m.push(lastname)
                     };
                     HttpResponse::Ok().json(m)
