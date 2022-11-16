@@ -1163,6 +1163,7 @@ pub(super) async fn get_trends_by_entity_type(
                             if !skip {
                                 m.push(lastname)
                             };
+			    skip = false;
                             lastname = name;
                         }
                     }
