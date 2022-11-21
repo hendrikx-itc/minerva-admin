@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
-use utoipa::Component;
+use utoipa::ToSchema;
 
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{get, post, put, delete, web::Data, web::Path, HttpResponse, Responder};
 
 use serde_json::json;
 use tokio_postgres::GenericClient;
@@ -68,19 +68,19 @@ lazy_static! {
     ]);
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct Kpi {
     pub trend_store_part: TrendStorePartCompleteData,
     pub materialization: TrendFunctionMaterializationData,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendInfo {
     pub name: String,
     pub data_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct KpiRawData {
     pub name: String,
     pub entity_type: String,
@@ -91,7 +91,7 @@ pub struct KpiRawData {
     pub description: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct KpiImplementedData {
     pub name: String,
     pub entity_type: String,
@@ -296,6 +296,8 @@ impl KpiImplementedData {
 }
 
 #[utoipa::path(
+    get,
+    path="/kpis",
     responses(
 	(status = 200, description = "List of existing KPIs", body = [KpiImplementedData]),
 	(status = 500, description = "Database unreachable", body = Error),
@@ -368,6 +370,8 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
 }
 
 #[utoipa::path(
+    get,
+    path="/kpis/{name}",
     responses(
 	(status = 200, description = "Content of KPI", body = [KpiImplementedData]),
 	(status = 404, description = "KPI does not exist", body = Error),
@@ -427,6 +431,8 @@ pub(super) async fn get_kpi(
 // curl -H "Content-Type: application/json" -X POST -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc","L.DL.CRS.RateAvg"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),SUM(\"L.DL.CRS.RateAvg\") * 1000)","description":{"type": "ratio", "numerator": [{"type": "trend", "value": "L.Thrp.bits.UL.NsaDC"}], "denominator": [{"type": "constant", "value": "1000"}, {"type": "operator", "value": "*"}, {"type": "trend", "value": "L.DL.CRS.RateAvg"}]}}' localhost:8000/kpis
 
 #[utoipa::path(
+    post,
+    path="/kpis",
     responses(
 	(status = 200, description = "Create a new KPI", body = Success),
 	(status = 400, description = "Incorrect data format", body = Error),
@@ -506,6 +512,8 @@ pub(super) async fn post_kpi(
 
 // curl -H "Content-Type: application/json" -X PUT -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),1000::numeric)","description":{"type": "ratio", "numerator": [{"type": "trend", "value": "L.Thrp.bits.UL.NsaDC"}], "denominator": [{"type": "constant", "value": "1000"}]}}' localhost:8000/kpis
 #[utoipa::path(
+    put,
+    path="/kpis",
     responses(
 	(status = 200, description = "Updated KPI", body = Success),
 	(status = 400, description = "Input format incorrect", body = Error),
@@ -613,6 +621,8 @@ pub(super) async fn update_kpi(
 }
 
 #[utoipa::path(
+    delete,
+    path="/kpis/{name}",
     responses(
 	(status = 200, description = "Updated KPI", body = Success),
 	(status = 400, description = "Input format incorrect", body = Error),

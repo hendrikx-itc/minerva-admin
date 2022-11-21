@@ -9,7 +9,7 @@ use tokio_postgres::GenericClient;
 use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
-use utoipa::{Component, IntoParams};
+use utoipa::{ToSchema, IntoParams};
 
 use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
@@ -45,7 +45,7 @@ pub struct QueryData {
     pub name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendFull {
     pub id: i32,
     pub trend_store_part: i32,
@@ -57,7 +57,7 @@ pub struct TrendFull {
     pub description: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendData {
     pub name: String,
     pub data_type: String,
@@ -97,7 +97,7 @@ impl TrendFull {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct GeneratedTrendFull {
     pub id: i32,
     pub trend_store_part: i32,
@@ -108,7 +108,7 @@ pub struct GeneratedTrendFull {
     pub description: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct GeneratedTrendData {
     pub name: String,
     pub data_type: String,
@@ -145,7 +145,7 @@ impl GeneratedTrendFull {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendDataWithTrendStorePart {
     pub id: i32,
     pub is_generated: bool,
@@ -158,7 +158,7 @@ pub struct TrendDataWithTrendStorePart {
     pub data_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendStorePartFull {
     pub id: i32,
     pub name: String,
@@ -167,7 +167,7 @@ pub struct TrendStorePartFull {
     pub generated_trends: Vec<GeneratedTrendFull>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendStorePartData {
     pub name: String,
     pub trends: Vec<TrendData>,
@@ -214,7 +214,7 @@ impl TrendStorePartFull {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendStoreFull {
     pub id: i32,
     pub entity_type: String,
@@ -228,7 +228,7 @@ pub struct TrendStoreFull {
     pub trend_store_parts: Vec<TrendStorePartFull>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendStoreBasicData {
     pub entity_type: String,
     pub data_source: String,
@@ -275,7 +275,7 @@ impl TrendStoreBasicData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendStorePartCompleteData {
     pub name: String,
     pub entity_type: String,
@@ -413,13 +413,14 @@ impl TrendStorePartCompleteData {
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-store-parts",
     responses(
 	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull]),
 	(status = 500, description = "Problem interacting with database", body = Error),
     )
 )]
 #[get("/trend-store-parts")]
-
 pub(super) async fn get_trend_store_parts(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> impl Responder {
@@ -524,6 +525,8 @@ pub(super) async fn get_trend_store_parts(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-store-part/{id}",
     responses(
 	(status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
 	(status = 404, description = "Trend store part not found", body = Error),
@@ -619,6 +622,8 @@ pub(super) async fn get_trend_store_part(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-store-parts/find",
     responses(
 	(status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
 	(status = 404, description = "Trend store part not found", body = Error),
@@ -715,6 +720,8 @@ pub(super) async fn find_trend_store_part(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-stores",
     responses(
 	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull]),
 	(status = 500, description = "Problems interacting with database", body = Error),
@@ -859,6 +866,8 @@ pub(super) async fn get_trend_stores(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-stores/{id}",
     responses(
 	(status = 200, description = "Get a specific trend store", body = TrendStorePartFull),
 	(status = 404, description = "Trend store not found", body = Error),
@@ -1004,6 +1013,8 @@ pub(super) async fn get_trend_store(
 // curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_Two_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8000/trend-store-parts/new
 
 #[utoipa::path(
+    post,
+    path="/trend-store-parts/new",
     responses(
 	(status = 200, description = "Create a new trend store part", body = TrendStorePartData),
 	(status = 400, description = "Incorrect data format", body = Error),
@@ -1062,6 +1073,8 @@ pub(super) async fn post_trend_store_part(
 }
 
 #[utoipa::path(
+    get,
+    path="/trends",
     responses(
 	(status = 200, description = "List all trend store parts", body = [TrendDataWithTrendStorePart]),
 	(status = 500, description = "Problem interacting with database", body = Error),
@@ -1127,6 +1140,8 @@ pub(super) async fn get_trends(
 }
 
 #[utoipa::path(
+    get,
+    path="/trendsentitytype/{et}",
     responses(
 	(status = 200, description = "List the name of trend store parts for an entity type", body = [String]),
 	(status = 500, description = "Problem interacting with database", body = Error),

@@ -36,47 +36,52 @@ use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedDat
 
 mod error;
 
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     #[derive(OpenApi)]
     #[openapi(
-        handlers(
+        paths(
             trendmaterialization::get_trend_view_materializations,
-	    trendmaterialization::get_trend_view_materialization,
+            trendmaterialization::get_trend_view_materialization,
             trendmaterialization::get_trend_function_materializations,
-	    trendmaterialization::get_trend_function_materialization,
-	    trendmaterialization::get_trend_materializations,
-	    trendmaterialization::post_trend_view_materialization,
-	    trendmaterialization::post_trend_function_materialization,
-	    trendmaterialization::delete_trend_view_materialization,
-	    trendmaterialization::delete_trend_function_materialization,
-	    trendmaterialization::update_trend_function_materialization,
-	    trendmaterialization::update_trend_view_materialization,
-	    trendstore::get_trend_store_parts,
-	    trendstore::get_trend_store_part,
-	    trendstore::find_trend_store_part,
-	    trendstore::get_trend_stores,
-	    trendstore::get_trend_store,
-	    trendstore::post_trend_store_part,
-	    trendstore::get_trends,
-	    trendstore::get_trends_by_entity_type,
-	    datasource::get_data_sources,
-	    datasource::get_data_source,
-	    entitytype::get_entity_types,
-	    entitytype::get_entity_type,
-	    kpi::get_kpis,
-	    kpi::post_kpi,
-	    kpi::update_kpi,
-	    kpi::get_kpi,
-	    kpi::delete_kpi,
+            trendmaterialization::get_trend_function_materialization,
+            trendmaterialization::get_trend_materializations,
+            trendmaterialization::post_trend_view_materialization,
+            trendmaterialization::post_trend_function_materialization,
+            trendmaterialization::delete_trend_view_materialization,
+            trendmaterialization::delete_trend_function_materialization,
+            trendmaterialization::update_trend_function_materialization,
+            trendmaterialization::update_trend_view_materialization,
+            trendstore::get_trend_store_parts,
+            trendstore::get_trend_store_part,
+            trendstore::find_trend_store_part,
+            trendstore::get_trend_stores,
+            trendstore::get_trend_store,
+            trendstore::post_trend_store_part,
+            trendstore::get_trends,
+            trendstore::get_trends_by_entity_type,
+            datasource::get_data_sources,
+            datasource::get_data_source,
+            entitytype::get_entity_types,
+            entitytype::get_entity_type,
+            kpi::get_kpis,
+            kpi::post_kpi,
+            kpi::update_kpi,
+            kpi::get_kpi,
+            kpi::delete_kpi,
         ),
-        components(TrendMaterializationSourceData, TrendMaterializationDef,
-		   TrendViewMaterializationFull, TrendFunctionMaterializationFull,
-		   TrendViewMaterializationData, TrendFunctionMaterializationData,
-		   TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
-		   DataSource, EntityType, KpiRawData, KpiImplementedData),
+        components(
+            schemas(
+                TrendMaterializationSourceData, TrendMaterializationDef,
+                TrendViewMaterializationFull, TrendFunctionMaterializationFull,
+                TrendViewMaterializationData, TrendFunctionMaterializationData,
+                TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
+                DataSource, EntityType, KpiRawData, KpiImplementedData
+            )
+        ),
         tags(
             (name = "Trend Materialization", description = "Trend materialization management endpoints.")
         ),

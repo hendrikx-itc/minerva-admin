@@ -4,11 +4,11 @@ use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use actix_web::{get, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
-use utoipa::Component;
+use utoipa::ToSchema;
 
 use super::error::Error;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct EntityType {
     pub id: i32,
     pub name: String,
@@ -16,6 +16,8 @@ pub struct EntityType {
 }
 
 #[utoipa::path(
+    get,
+    path="/entity-types",
     responses(
 	(status = 200, description = "List all entity types", body = [EntityType]),
 	(status = 500, description = "Unable to interact with database", body = Error)
@@ -61,6 +63,8 @@ pub(super) async fn get_entity_types(
 }
 
 #[utoipa::path(
+    get,
+    path="/entity-types/{id}",
     responses(
 	(status = 200, description = "Get a specific entity type", body = TrendStorePart),
 	(status = 404, description = "Entity type not found", body = Error),

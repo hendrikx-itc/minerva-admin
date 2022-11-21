@@ -4,10 +4,10 @@ use std::time::Duration;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{get, post, delete, put, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
-use utoipa::Component;
+use utoipa::ToSchema;
 
 use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
@@ -20,7 +20,7 @@ use tokio_postgres::{Client, GenericClient};
 
 use crate::error::{Error, Success};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationSourceData {
     pub trend_store_part: String,
     pub mapping_function: String,
@@ -47,7 +47,7 @@ fn as_client(client: Client) -> Client {
     client
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationFunctionFull {
     pub name: String,
     pub return_type: String,
@@ -55,7 +55,7 @@ pub struct TrendMaterializationFunctionFull {
     pub language: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationFunctionData {
     pub return_type: String,
     pub src: String,
@@ -85,13 +85,13 @@ impl TrendMaterializationFunctionFull {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationSourceIdentifier {
     pub materialization: i32,
     pub source: TrendMaterializationSourceData,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendViewMaterializationFull {
     pub id: i32,
     pub materialization_id: i32,
@@ -109,7 +109,7 @@ pub struct TrendViewMaterializationFull {
     pub fingerprint_function: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendFunctionMaterializationFull {
     pub id: i32,
     pub materialization_id: i32,
@@ -127,7 +127,7 @@ pub struct TrendFunctionMaterializationFull {
     pub fingerprint_function: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendViewMaterializationData {
     pub target_trend_store_part: String,
     pub enabled: bool,
@@ -143,7 +143,7 @@ pub struct TrendViewMaterializationData {
     pub fingerprint_function: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendFunctionMaterializationData {
     pub enabled: bool,
     pub target_trend_store_part: String,
@@ -159,7 +159,7 @@ pub struct TrendFunctionMaterializationData {
     pub fingerprint_function: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub enum TrendMaterializationDef {
     View(TrendViewMaterializationFull),
     Function(TrendFunctionMaterializationFull),
@@ -446,6 +446,8 @@ impl TrendMaterializationDef {
 /// curl localhost:8000/trend-view-materializations
 /// ```
 #[utoipa::path(
+    get,
+    path="/trend-view-materializations",
     responses(
         (status = 200, description = "List current trend view materialization items", body = [TrendViewMaterializationFull]),
 	(status = 500, description = "Problem interacting with database", body = Error)
@@ -522,6 +524,8 @@ pub(super) async fn get_trend_view_materializations(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-view-materializations/{id}",
     responses(
 	(status = 200, description = "Get a specific view materialization", body = TrendViewMaterializationFull),
 	(status = 404, description = "View materialization not found", body = Error),
@@ -588,10 +592,11 @@ pub(super) async fn get_trend_view_materialization(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-function-materializations",
     responses(
         (status = 200, description = "List current trend function materialization items", body = [TrendFunctionMaterializationFull])
     )
-
 )]
 #[get("/trend-function-materializations")]
 pub(super) async fn get_trend_function_materializations(
@@ -672,6 +677,8 @@ pub(super) async fn get_trend_function_materializations(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-function-materializations/{id}",
     responses(
 	(status = 200, description = "Get a specific function materialization", body = TrendFunctionMaterializationFull),
 	(status = 404, description = "View function not found", body = Error),
@@ -745,6 +752,8 @@ pub(super) async fn get_trend_function_materialization(
 }
 
 #[utoipa::path(
+    get,
+    path="/trend-materializations",
     responses(
         (status = 200, description = "List current trend materializations", body = [TrendFunctionMaterializationFull]),
 	(status = 500, description = "Unable to correctly interact with database", body = Error)
@@ -876,6 +885,8 @@ pub(super) async fn get_trend_materializations(
 // curl -H "Content-Type: application/json" -X POST -d '{"target_trend_store_part":"u2020-4g-pm_v-site_lcs_1w","enabled":true,"processing_delay":"30m","stability_delay":"5m","reprocessing_period":"3days","sources":[{"trend_store_part": "u2020-4g-pm-kpi_v-cell_capacity-management_15m", "mapping_function": "trend.mapping_id(timestamp with time zone)"}, {"trend_store_part": "u2020-4g-pm-kpi_v-cell_integrity_15m", "mapping_function": "trend.mapping_id(timestamp with time zone)"}],"view":"SELECT r.target_id AS entity_id, t.\"timestamp\", sum(t.samples) AS samples, sum(t.\"L.LCS.EcidMeas.Req\") AS \"L.LCS.EcidMeas.Req\", sum(t.\"L.LCS.EcidMeas.Succ\") AS \"L.LCS.EcidMeas.Succ\", sum(t.\"L.LCS.OTDOAInterFreqRSTDMeas.Succ\") AS \"L.LCS.OTDOAInterFreqRSTDMeas.Succ\" FROM (trend.\"u2020-4g-pm_Cell_lcs_1w\" t JOIN relation.\"Cell->v-site\" r ON (t.entity_id = r.source_id)) GROUP BY t.\"timestamp\", r.target_id;", "fingerprint_function":"SELECT modified.last, '\''{}'\''::jsonb FROM trend_directory.modified JOIN trend_directory.trend_store_part ttsp ON ttsp.id = modified.trend_store_part_id WHERE modified.timestamp = $1;"}' localhost:8000/trend-view-materializations
 
 #[utoipa::path(
+    post,
+    path="/trend-view-materializations",
     responses(
 	(status = 200, description = "Create a new view materialization", body = TrendViewMaterializationFull),
 	(status = 400, description = "Incorrect data format", body = Error),
@@ -940,6 +951,8 @@ pub(super) async fn post_trend_view_materialization(
 // curl -H "Content-Type: application/json" -X POST -d '{"target_trend_store_part":"u2020-4g-pm-traffic-sum_Cell_1month","enabled":true,"processing_delay":"30m","stability_delay":"5m","reprocessing_period":"3days","sources":[{"trend_store_part":"u2020-4g-pm_Cell_channel-l-ca_1month","mapping_function":"trend.mapping_id(timestamp with time zone)"}],"function":{"name":"trend.\"u2020-4g-pm-traffic-sum_Cell_1month\"","return_type":"TABLE(entity_id integer, \"timestamp\" timestamp with time zone, samples numeric, \"L.Traffic.DRB.QCI.1.SUM\" numeric)","src":" BEGIN\r\nRETURN QUERY EXECUTE $query$\r\n    SELECT\r\n      entity_id,\r\n      $2 AS timestamp,\r\n      sum(t.\"samples\") AS \"samples\",\r\n      SUM(t.\"L.Traffic.DRB.QCI.1.SUM\") AS \"L.Traffic.DRB.QCI.1.SUM\"\r\n    FROM trend.\"u2020-4g-pm-traffic-sum_Cell_1d\" AS t\r\n    WHERE $1 < timestamp AND timestamp <= $2\r\n    GROUP BY entity_id\r\n$query$ USING $1 - interval '\''1month'\'', $1;\r\nEND;\r\n","language":"PLPGSQL"},"fingerprint_function":"SELECT max(modified.last), format('\''{%s}'\'', string_agg(format('\''\"%s\":\"%s\"'\'', t, modified.last), '\'','\''))::jsonb\r\nFROM generate_series($1 - interval '\''1month'\'' + interval '\''1d'\'', $1, interval '\''1d'\'') t\r\nLEFT JOIN (\r\n  SELECT timestamp, last\r\n  FROM trend_directory.trend_store_part part\r\n  JOIN trend_directory.modified ON modified.trend_store_part_id = part.id\r\n  WHERE part.name = '\''u2020-4g-pm-traffic-sum_Cell_1d'\''\r\n) modified ON modified.timestamp = t;\r\n"}' localhost:8000/trend-function-materializations
 
 #[utoipa::path(
+    post,
+    path="/trend-function-materializations",
     responses(
 	(status = 200, description = "Create a new view materialization", body = TrendViewMaterializationFull),
 	(status = 400, description = "Incorrect data format", body = Error),
@@ -1001,6 +1014,8 @@ pub(super) async fn post_trend_function_materialization(
 // curl -X DELETE localhost:8000/trend-view-materializations/1
 
 #[utoipa::path(
+    delete,
+    path="/trend-view-materializations/{id}",
     responses(
 	(status = 200, description = "Deleted function materialization", body = Success),
 	(status = 404, description = "Function materialization not found", body = Error),
@@ -1069,6 +1084,8 @@ pub(super) async fn delete_trend_view_materialization(
 }
 
 #[utoipa::path(
+    delete,
+    path="/trend-function-materializations/{id}",
     responses(
 	(status = 200, description = "Deleted function materialization", body = Success),
 	(status = 404, description = "Function materialization not found", body = Error),
@@ -1140,6 +1157,8 @@ pub(super) async fn delete_trend_function_materialization(
 }
 
 #[utoipa::path(
+    put,
+    path="/trend-view-materializations",
     responses(
 	(status = 200, description = "Updated view materialization", body = Success),
 	(status = 400, description = "Input format incorrect", body = Error),
@@ -1214,6 +1233,8 @@ pub(super) async fn update_trend_view_materialization(
 }
 
 #[utoipa::path(
+    put,
+    path="/trend-function-materializations",
     responses(
 	(status = 200, description = "Updated function materialization", body = TrendFunctionMaterializationFull),
 	(status = 400, description = "Input format incorrect", body = Error),

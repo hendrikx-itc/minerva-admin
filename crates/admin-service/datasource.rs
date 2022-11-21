@@ -4,11 +4,11 @@ use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use actix_web::{get, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
-use utoipa::Component;
+use utoipa::ToSchema;
 
 use super::error::Error;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Component)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct DataSource {
     pub id: i32,
     pub name: String,
@@ -16,6 +16,8 @@ pub struct DataSource {
 }
 
 #[utoipa::path(
+    get,
+    path="/data-sources",
     responses(
 	(status = 200, description = "List all data sources", body = [DataSource]),
 	(status = 500, description = "Problem interacting with database", body = Error)
@@ -61,6 +63,8 @@ pub(super) async fn get_data_sources(
 }
 
 #[utoipa::path(
+    get,
+    path="/data-sources/{id}",
     responses(
 	(status = 200, description = "Get a specific data source", body = TrendStorePart),
 	(status = 404, description = "Data source not found", body = Error),
