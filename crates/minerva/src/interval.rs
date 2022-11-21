@@ -13,7 +13,8 @@ pub fn parse_interval(interval_str: &str) -> Result<Duration, humantime::Duratio
         }
         None => interval_str
             .replace("mon", "month")
-            .replace("mons", "month"),
+            .replace("mons", "month")
+            .replace("monthth", "month"),
     };
 
     humantime::parse_duration(&interval_str)

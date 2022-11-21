@@ -1,0 +1,15 @@
+[package]
+name = "minerva-service"
+version = "0.1.0"
+authors = ["Alfred Blokland <alfred.blokland@hendrikx-itc.nl>"]
+edition = "2021"
+
+[[bin]]
+name = "minerva-service"
+path = "main.rs"
+
+[dependencies]
+actix-web = "4.1"
+actix-cors = "0.6"
+utoipa = "1.1"
+lazy_static = "1.4.0"

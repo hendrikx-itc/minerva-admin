@@ -24,3 +24,9 @@ Created attribute store 'NotificationStore(trigger-notification)'
 Added trend materialization TrendViewMaterialization('hub-kpi_node_main_15m')
 Executed sql examples/tiny_instance_v1/custom/post-init/01_report_view.sql
 ```
+
+To run the web API using the previously started database:
+
+```
+$ cargo run --bin minerva-service
+```
