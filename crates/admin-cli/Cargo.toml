@@ -11,9 +11,9 @@ path = "main.rs"
 name = "minerva-admin"
 
 [dependencies]
-clap = "3.1"
+clap = "4.0"
 structopt = "0.3"
-minerva = { version = "0.1.0", path = "crates/minerva" }
+minerva = { version = "0.1.0", path = "../minerva" }
 tokio = { version = "1.20", features = ["full"] }
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
 rustls = "0.20"
@@ -35,7 +35,5 @@ actix-web = "4.1"
 actix-cors = "0.6"
 bb8 = "0.8"
 bb8-postgres = "0.8"
-utoipa = { version = "1.1", features = ["actix_extras", "chrono"] }
-utoipa-swagger-ui = { version = "1.1", features = ["actix-web"] }
 env_logger = "0.9"
 lazy_static = "1.4.0"

@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "crates/minerva",
+    "crates/admin-cli",
     "crates/admin-service"
 ]
