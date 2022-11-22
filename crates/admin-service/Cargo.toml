@@ -1,6 +1,6 @@
 [package]
 name = "minerva-service"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Alfred Blokland <alfred.blokland@hendrikx-itc.nl>"]
 edition = "2021"
 
