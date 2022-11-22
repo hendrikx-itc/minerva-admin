@@ -1,11 +1,17 @@
+use std::env;
+
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
+
+use tokio_postgres::{Config, config::SslMode};
 
 use bb8;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+
+use minerva::error::{ConfigurationError, Error, RuntimeError};
 
 mod trendmaterialization;
 use trendmaterialization::{
@@ -35,6 +41,8 @@ mod kpi;
 use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedData, KpiRawData};
 
 mod error;
+
+static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
 
 
 #[actix_web::main]
@@ -88,13 +96,7 @@ async fn main() -> std::io::Result<()> {
     )]
     struct ApiDoc;
 
-    let manager = PostgresConnectionManager::new(
-        "host=127.0.0.1 user=postgres dbname=minerva"
-            .parse()
-            .unwrap(),
-        NoTls,
-    );
-    let pool = bb8::Pool::builder().build(manager).await.unwrap();
+    let pool = connect_db().await.unwrap();
 
     let openapi = ApiDoc::openapi();
 
@@ -141,4 +143,55 @@ async fn main() -> std::io::Result<()> {
     .bind(("127.0.0.1", 8000))?
     .run()
     .await
+}
+
+
+fn get_db_config() -> Result<Config, Error> {
+    let config = match env::var(ENV_DB_CONN) {
+        Ok(value) => Config::new().options(&value).clone(),
+        Err(_) => {
+            // No single environment variable set, let's check for psql settings
+            let port: u16 = env::var("PGPORT").unwrap_or("5432".into()).parse().unwrap();
+            let mut config = Config::new();
+
+            let env_sslmode = env::var("PGSSLMODE").unwrap_or("prefer".into());
+
+            let sslmode = match env_sslmode.to_lowercase().as_str() {
+                "disable" => SslMode::Disable,
+                "prefer" => SslMode::Prefer,
+                "require" => SslMode::Require,
+                _ => return Err(Error::Configuration(ConfigurationError { msg: format!("Unsupported SSL mode '{}'", &env_sslmode) }))
+            };
+
+            let config = config
+                .host(&env::var("PGHOST").unwrap_or("localhost".into()))
+                .port(port)
+                .user(&env::var("PGUSER").unwrap_or("postgres".into()))
+                .dbname(&env::var("PGDATABASE").unwrap_or("postgres".into()))
+                .ssl_mode(sslmode);
+
+            let pg_password = env::var("PGPASSWORD");
+
+            match pg_password {
+                Ok(password) => config.password(password).clone(),
+                Err(_) => config.clone(),
+            }
+        }
+    };
+
+    Ok(config)
+}
+
+async fn connect_db() -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
+    connect_to_db(&get_db_config()?).await
+}
+
+async fn connect_to_db(config: &Config) -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
+    let manager = PostgresConnectionManager::new(
+        config.clone(),
+        NoTls,
+    );
+    let pool = bb8::Pool::builder().build(manager).await.unwrap();
+
+    Ok(pool)
 }
