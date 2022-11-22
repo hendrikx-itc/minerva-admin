@@ -5,6 +5,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH \
     RUST_VERSION=1.65.0
 
+ENV DEBIAN_FRONTEND noninteractive
+
 VOLUME ["/root/.cargo"]
 
 RUN apt-get update && apt-get install -y \
