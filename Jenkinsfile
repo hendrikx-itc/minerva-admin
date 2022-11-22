@@ -21,7 +21,7 @@ pipeline {
             steps {
                 unstash name: 'deb'
                 script {
-                    publishPackages 'target/debian', 'kpn/bionic/stable', 'bionic'
+                    publishPackages 'target/debian', 'kpn/focal/stable', 'focal'
                 }
             }
         }
