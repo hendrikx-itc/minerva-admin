@@ -12,9 +12,8 @@ pipeline {
                 }
             }
             steps {
-                dir('dispatcher') {
-                    sh "CARGO_HOME=${WORKSPACE} cargo deb"
-                }
+                sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-service"
+
                 stash name: 'deb', includes: 'target/debian/*.deb'
             }
         }
