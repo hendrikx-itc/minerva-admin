@@ -43,6 +43,7 @@ use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedDat
 mod error;
 
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
+static ENV_PORT: &str = "SERVICE_PORT";
 
 
 #[actix_web::main]
@@ -96,6 +97,8 @@ async fn main() -> std::io::Result<()> {
     )]
     struct ApiDoc;
 
+    let service_port: u16 = env::var(ENV_PORT).unwrap().parse().unwrap();
+
     let pool = connect_db().await.unwrap();
 
     let openapi = ApiDoc::openapi();
@@ -140,7 +143,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_kpi)
             .service(delete_kpi)
     })
-    .bind(("127.0.0.1", 8000))?
+    .bind(("127.0.0.1", service_port))?
     .run()
     .await
 }
