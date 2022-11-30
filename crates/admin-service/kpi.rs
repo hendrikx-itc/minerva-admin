@@ -193,7 +193,7 @@ impl KpiImplementedData {
                 mapping_function: MAPPING_FUNCTION.to_string(),
             });
             modifieds.push(format!("modified{}.last", i.to_string()));
-            formats.push("{\"%s\": \"%s\"}".to_string());
+            formats.push("\"%s\": \"%s\"".to_string());
             partmodifieds.push(format!(
                 "part{}.name, modified{}.last",
                 i.to_string(),
@@ -207,7 +207,7 @@ impl KpiImplementedData {
         }
         let fingerprint_function = format!("SELECT\n  greatest({}),\n  format('{}', {})::jsonb\nFROM (values($1)) as t(timestamp)\n{}",
 					   modifieds.join(", "),
-					   formats.join(", "),
+					   "{".to_owned() + &formats.join(", ") + "}",
 					   partmodifieds.join(", "),
 					   joins.join("\n")
 					   );
