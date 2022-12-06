@@ -35,6 +35,10 @@ notification: |-
       ],
       E'\n'
   )
+data: |-
+  SELECT json_build_object(
+    'power_kwh', $1.power_kwh
+  )
 tags: ['online']
 fingerprint: |-
   SELECT trigger.modified_to_fingerprint(

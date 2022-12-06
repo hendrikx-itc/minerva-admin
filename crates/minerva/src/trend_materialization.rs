@@ -45,14 +45,11 @@ impl TrendViewMaterialization {
         &self,
         client: &mut T,
     ) -> Result<(), Error> {
-        let query = format!(
-            concat!(
+        let query = concat!(
 		"SELECT trend_directory.define_view_materialization(",
-		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass, ",
-		"{}::jsonb) ",
-		"FROM trend_directory.trend_store_part WHERE name = $5",
-            ),
-            &self.description.to_string()
+		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass, $5::jsonb",
+		") ",
+		"FROM trend_directory.trend_store_part WHERE name = $6",
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -60,10 +57,11 @@ impl TrendViewMaterialization {
             &format_duration(self.stability_delay).to_string(),
             &format_duration(self.reprocessing_period).to_string(),
             &format!("trend.{}", escape_identifier(&self.view_name())),
+            &self.description,
             &self.target_trend_store_part,
         ];
 
-        match client.query(&query, query_args).await {
+        match client.query(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error defining view materialization: {}",
@@ -339,14 +337,11 @@ impl TrendFunctionMaterialization {
         &self,
         client: &mut T,
     ) -> Result<(), Error> {
-        let query = format!(
-            concat!(
+        let query = concat!(
 		"SELECT trend_directory.define_function_materialization(",
-		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure, ",
-		"'{}'::jsonb) ",
-		"FROM trend_directory.trend_store_part WHERE name = $5",
-            ),
-            &self.description.to_string(),
+		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure, $5::jsonb",
+		") ",
+		"FROM trend_directory.trend_store_part WHERE name = $6",
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -357,10 +352,11 @@ impl TrendFunctionMaterialization {
                 "trend.{}(timestamp with time zone)",
                 escape_identifier(&self.target_trend_store_part)
             ),
+            &self.description,
             &self.target_trend_store_part,
         ];
 
-        match client.query(&query, query_args).await {
+        match client.query(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
                 "Error defining function materialization: {}",
@@ -486,10 +482,10 @@ impl TrendFunctionMaterialization {
         for source in &self.sources {
             let query = format!(
                 concat!(
-		    "INSERT INTO trend_directory.materialization_trend_store_link ",
-		    "SELECT m.id AS materialization_id, ",
-		    "stsp.id AS trend_store_part_id, ",
-		    "'{}' AS timestamp_mapping_func ",
+		    "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
+		    "SELECT m.id, ",
+		    "stsp.id, ",
+		    "'{}(timestamptz)' ",
 		    "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
 		    "ON m.dst_trend_store_part_id = dstp.id, ",
 		    "trend_directory.trend_store_part stsp ",

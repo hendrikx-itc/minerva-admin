@@ -43,3 +43,4 @@ fingerprint_function: |
     JOIN trend_directory.modified ON modified.trend_store_part_id = part.id
     WHERE part.name = 'hub_node_main_15m'
   ) modified ON modified.timestamp = t;
+description: {}
