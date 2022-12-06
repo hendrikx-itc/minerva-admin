@@ -4,7 +4,7 @@ use structopt::StructOpt;
 use async_trait::async_trait;
 
 use minerva::change::Change;
-use minerva::trigger::{list_triggers, AddTrigger, DeleteTrigger, load_trigger_from_file};
+use minerva::trigger::{list_triggers, AddTrigger, DeleteTrigger, UpdateTriggerData, load_trigger_from_file};
 
 use super::common::{Cmd, CmdResult, connect_db};
 
@@ -74,6 +74,30 @@ impl Cmd for TriggerDelete {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TriggerUpdateData {
+    #[structopt(help = "trigger definition file")]
+    definition: PathBuf,
+}
+
+#[async_trait]
+impl Cmd for TriggerUpdateData {
+    async fn run(&self) -> CmdResult {
+        let trigger = load_trigger_from_file(&self.definition)?;
+        let trigger_name = trigger.name.clone();
+
+        let mut client = connect_db().await?;
+
+        let change = UpdateTriggerData { trigger };
+
+        change.apply(&mut client).await?;
+
+        println!("Update data definition of trigger '{}'", &trigger_name);
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TriggerOpt {
     #[structopt(about = "list configured triggers")]
     List(TriggerList),
@@ -81,6 +105,8 @@ pub enum TriggerOpt {
     Create(TriggerCreate),
     #[structopt(about = "delete a trigger")]
     Delete(TriggerDelete),
+    #[structopt(about = "update data definition of a trigger")]
+    UpdateData(TriggerUpdateData),
 }
 
 impl TriggerOpt {
@@ -89,6 +115,7 @@ impl TriggerOpt {
             TriggerOpt::List(list) => list.run().await,
             TriggerOpt::Create(create) => create.run().await,
             TriggerOpt::Delete(delete) => delete.run().await,
+            TriggerOpt::UpdateData(update_data) => update_data.run().await,
         }
     }
 }

@@ -414,3 +414,33 @@ pub fn load_trigger_from_file(path: &PathBuf) -> Result<Trigger, Error> {
         .into());
     }
 }
+
+pub struct UpdateTriggerData {
+    pub trigger: Trigger,
+}
+
+impl fmt::Display for UpdateTriggerData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "UpdateTriggerData({})", &self.trigger)
+    }
+}
+
+#[async_trait]
+impl GenericChange for UpdateTriggerData {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        define_notification_data(&self.trigger, &mut transaction).await?;
+
+        transaction.commit().await?;
+
+        Ok(format!("Update data definition of trigger '{}'", &self.trigger.name))
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTriggerData {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
