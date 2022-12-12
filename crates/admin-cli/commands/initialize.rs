@@ -1,16 +1,14 @@
 use std::env;
 use std::path::PathBuf;
 
-use structopt::StructOpt;
 use async_trait::async_trait;
+use structopt::StructOpt;
 
-use minerva::error::{Error, ConfigurationError};
+use minerva::error::{ConfigurationError, Error};
 use minerva::instance::MinervaInstance;
-use minerva::trend_store::{
-    create_partitions,
-};
+use minerva::trend_store::create_partitions;
 
-use super::common::{Cmd, CmdResult, connect_db, ENV_MINERVA_INSTANCE_ROOT};
+use super::common::{connect_db, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 
 #[derive(Debug, StructOpt)]
 pub struct InitializeOpt {

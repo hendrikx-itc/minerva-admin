@@ -1,9 +1,9 @@
-pub mod common;
-pub mod trigger;
-pub mod trendstore;
 pub mod attributestore;
-pub mod trendmaterialization;
-pub mod update;
-pub mod initialize;
+pub mod common;
 pub mod diff;
 pub mod dump;
+pub mod initialize;
+pub mod trendmaterialization;
+pub mod trendstore;
+pub mod trigger;
+pub mod update;

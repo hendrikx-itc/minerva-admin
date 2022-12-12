@@ -3,16 +3,16 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
-use structopt::StructOpt;
 use async_trait::async_trait;
 use dialoguer::Confirm;
+use structopt::StructOpt;
 
 use tokio_postgres::Client;
 
-use minerva::error::{Error, RuntimeError, ConfigurationError};
+use minerva::error::{ConfigurationError, Error, RuntimeError};
 use minerva::instance::MinervaInstance;
 
-use super::common::{Cmd, CmdResult, connect_db, ENV_MINERVA_INSTANCE_ROOT};
+use super::common::{connect_db, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 
 #[derive(Debug, StructOpt)]
 pub struct UpdateOpt {

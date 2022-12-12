@@ -4,15 +4,15 @@ use tokio;
 
 pub mod commands;
 
-use crate::commands::common::Cmd;
-use crate::commands::trigger::TriggerOpt;
-use crate::commands::trendstore::TrendStoreOpt;
 use crate::commands::attributestore::AttributeStoreOpt;
-use crate::commands::trendmaterialization::TrendMaterializationOpt;
-use crate::commands::update::UpdateOpt;
-use crate::commands::initialize::InitializeOpt;
+use crate::commands::common::Cmd;
 use crate::commands::diff::DiffOpt;
 use crate::commands::dump::DumpOpt;
+use crate::commands::initialize::InitializeOpt;
+use crate::commands::trendmaterialization::TrendMaterializationOpt;
+use crate::commands::trendstore::TrendStoreOpt;
+use crate::commands::trigger::TriggerOpt;
+use crate::commands::update::UpdateOpt;
 
 #[derive(Debug, StructOpt)]
 enum Opt {

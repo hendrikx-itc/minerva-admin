@@ -190,6 +190,25 @@ async fn create_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, 
     Ok(format!("Added KPI function for trigger '{}'", &trigger.name))
 }
 
+async fn drop_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+    let function_name = format!("{}_kpi", &trigger.name);
+
+    let query = format!(
+        "DROP FUNCTION IF EXISTS trigger_rule.{}(timestamp with time zone);",
+        &escape_identifier(&function_name),
+    );
+
+    client
+        .execute(
+            &query,
+            &[],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error dropping KPI function: {}", e)))?;
+
+    Ok(format!("Dropped KPI function for trigger '{}'", &trigger.name))
+}
+
 async fn create_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
     let query = format!(
         "SELECT * FROM trigger.create_rule($1, array[{}]::trigger.threshold_def[])",
@@ -440,6 +459,39 @@ impl GenericChange for UpdateTriggerData {
 
 #[async_trait]
 impl Change for UpdateTriggerData {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub struct UpdateTriggerKPIFunction {
+    pub trigger: Trigger,
+}
+
+impl fmt::Display for UpdateTriggerKPIFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "UpdateTriggerKPIFunction({})", &self.trigger)
+    }
+}
+
+#[async_trait]
+impl GenericChange for UpdateTriggerKPIFunction {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        // Drop the function first, because in the case of return type changes, a CREATE OR REPLACE would not work.
+        drop_kpi_function(&self.trigger, &mut transaction).await?;
+
+        create_kpi_function(&self.trigger, &mut transaction).await?;
+
+        transaction.commit().await?;
+
+        Ok(format!("Updated KPI function of trigger '{}'", &self.trigger.name))
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTriggerKPIFunction {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.generic_apply(client).await
     }

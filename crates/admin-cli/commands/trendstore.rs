@@ -4,8 +4,8 @@ use std::time::Duration;
 use chrono::DateTime;
 use chrono::FixedOffset;
 
-use structopt::StructOpt;
 use async_trait::async_trait;
+use structopt::StructOpt;
 
 use term_table::{
     row::Row,
@@ -21,7 +21,7 @@ use minerva::trend_store::{
     AddTrendStore,
 };
 
-use super::common::{Cmd, CmdResult, connect_db};
+use super::common::{connect_db, Cmd, CmdResult};
 
 #[derive(Debug, StructOpt)]
 pub struct DeleteOpt {

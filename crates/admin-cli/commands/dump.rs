@@ -1,9 +1,9 @@
-use structopt::StructOpt;
 use async_trait::async_trait;
+use structopt::StructOpt;
 
 use minerva::instance::dump;
 
-use super::common::{Cmd, CmdResult, connect_db};
+use super::common::{connect_db, Cmd, CmdResult};
 
 #[derive(Debug, StructOpt)]
 pub struct DumpOpt {}
@@ -14,7 +14,7 @@ impl Cmd for DumpOpt {
         let mut client = connect_db().await?;
 
         dump(&mut client).await;
-    
+
         Ok(())
     }
 }

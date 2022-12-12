@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use structopt::StructOpt;
 use async_trait::async_trait;
+use structopt::StructOpt;
 
 use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
@@ -10,7 +10,7 @@ use minerva::trend_materialization::{
     trend_materialization_from_config, AddTrendMaterialization, UpdateTrendMaterialization,
 };
 
-use super::common::{Cmd, CmdResult, connect_db};
+use super::common::{connect_db, Cmd, CmdResult};
 
 #[derive(Debug, StructOpt)]
 pub struct TrendMaterializationCreate {

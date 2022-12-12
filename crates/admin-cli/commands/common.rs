@@ -4,11 +4,11 @@ use async_trait::async_trait;
 
 use rustls::ClientConfig as RustlsClientConfig;
 use tokio;
-use tokio_postgres::{Config, config::SslMode};
+use tokio_postgres::{config::SslMode, Config};
 use tokio_postgres::{Client, NoTls};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
-use minerva::error::{Error, ConfigurationError};
+use minerva::error::{ConfigurationError, Error};
 
 pub type CmdResult = Result<(), Error>;
 
@@ -35,7 +35,11 @@ pub fn get_db_config() -> Result<Config, Error> {
                 "disable" => SslMode::Disable,
                 "prefer" => SslMode::Prefer,
                 "require" => SslMode::Require,
-                _ => return Err(Error::Configuration(ConfigurationError { msg: format!("Unsupported SSL mode '{}'", &env_sslmode) }))
+                _ => {
+                    return Err(Error::Configuration(ConfigurationError {
+                        msg: format!("Unsupported SSL mode '{}'", &env_sslmode),
+                    }))
+                }
             };
 
             let default_user_name = env::var("USER").unwrap_or("postgres".into());

@@ -1,13 +1,13 @@
 use std::env;
 use std::path::PathBuf;
 
-use structopt::StructOpt;
 use async_trait::async_trait;
+use structopt::StructOpt;
 
-use minerva::error::{Error, ConfigurationError};
+use minerva::error::{ConfigurationError, Error};
 use minerva::instance::MinervaInstance;
 
-use super::common::{Cmd, CmdResult, get_db_config, connect_to_db, ENV_MINERVA_INSTANCE_ROOT};
+use super::common::{connect_to_db, get_db_config, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 
 #[derive(Debug, StructOpt)]
 pub struct DiffOpt {
@@ -42,7 +42,7 @@ impl Cmd for DiffOpt {
             Some(with_dir) => {
                 to_instance_descr = format!("dir('{}')", with_dir.to_string_lossy());
                 MinervaInstance::load_from(&with_dir)
-            },
+            }
             None => {
                 let db_config = get_db_config()?;
 
@@ -57,7 +57,10 @@ impl Cmd for DiffOpt {
         let changes = other_instance.diff(&instance_def);
 
         if !changes.is_empty() {
-            println!("Differences {} -> {}", from_instance_descr, to_instance_descr);
+            println!(
+                "Differences {} -> {}",
+                from_instance_descr, to_instance_descr
+            );
 
             for change in changes {
                 println!("* {}", &change);

@@ -2,13 +2,13 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use minerva::change::Change;
-use minerva::error::{Error, RuntimeError};
 use minerva::attribute_store::{
     load_attribute_store, load_attribute_store_from_file, AddAttributeStore, AttributeStore,
 };
+use minerva::change::Change;
+use minerva::error::{Error, RuntimeError};
 
-use super::common::{CmdResult, connect_db};
+use super::common::{connect_db, CmdResult};
 
 #[derive(Debug, StructOpt)]
 pub struct AttributeStoreCreate {
