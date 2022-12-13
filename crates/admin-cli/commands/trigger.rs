@@ -9,8 +9,7 @@ use comfy_table::presets::UTF8_HORIZONTAL_ONLY;
 use minerva::error::DatabaseError;
 use minerva::change::Change;
 use minerva::trigger::{
-    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTriggerData,
-    UpdateTriggerKPIFunction, UpdateTrigger,
+    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTrigger,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -88,54 +87,6 @@ impl Cmd for TriggerDelete {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct TriggerUpdateData {
-    #[structopt(help = "trigger definition file")]
-    definition: PathBuf,
-}
-
-#[async_trait]
-impl Cmd for TriggerUpdateData {
-    async fn run(&self) -> CmdResult {
-        let trigger = load_trigger_from_file(&self.definition)?;
-        let trigger_name = trigger.name.clone();
-
-        let mut client = connect_db().await?;
-
-        let change = UpdateTriggerData { trigger };
-
-        change.apply(&mut client).await?;
-
-        println!("Updated data definition of trigger '{}'", &trigger_name);
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, StructOpt)]
-pub struct TriggerUpdateKPIFunction {
-    #[structopt(help = "trigger definition file")]
-    definition: PathBuf,
-}
-
-#[async_trait]
-impl Cmd for TriggerUpdateKPIFunction {
-    async fn run(&self) -> CmdResult {
-        let trigger = load_trigger_from_file(&self.definition)?;
-        let trigger_name = trigger.name.clone();
-
-        let mut client = connect_db().await?;
-
-        let change = UpdateTriggerKPIFunction { trigger };
-
-        change.apply(&mut client).await?;
-
-        println!("Updated KPI function of trigger '{}'", &trigger_name);
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, StructOpt)]
 pub struct TriggerUpdate {
     #[structopt(help = "trigger definition file")]
     definition: PathBuf,
@@ -170,10 +121,6 @@ pub enum TriggerOpt {
     Delete(TriggerDelete),
     #[structopt(about = "update a trigger")]
     Update(TriggerUpdate),
-    #[structopt(about = "update data definition of a trigger")]
-    UpdateData(TriggerUpdateData),
-    #[structopt(about = "update KPI function of a trigger")]
-    UpdateKPIFunction(TriggerUpdateKPIFunction),
 }
 
 impl TriggerOpt {
@@ -183,8 +130,6 @@ impl TriggerOpt {
             TriggerOpt::Create(create) => create.run().await,
             TriggerOpt::Delete(delete) => delete.run().await,
             TriggerOpt::Update(update) => update.run().await,
-            TriggerOpt::UpdateData(update_data) => update_data.run().await,
-            TriggerOpt::UpdateKPIFunction(update_kpi_function) => update_kpi_function.run().await,
         }
     }
 }
