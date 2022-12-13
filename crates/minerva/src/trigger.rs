@@ -10,6 +10,8 @@ use tokio_postgres::{Client, GenericClient, Row};
 
 use async_trait::async_trait;
 
+use crate::interval::parse_interval;
+
 use super::change::{Change, ChangeResult, GenericChange};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
@@ -144,7 +146,7 @@ impl GenericChange for AddTrigger {
         let mut check_result: String = "No check has run".to_string();
 
         if self.verify {
-            check_result = run_checks(&self.trigger, &mut transaction).await?;
+            check_result = run_checks(&self.trigger.name, &mut transaction).await?;
         }
 
         transaction.commit().await?;
@@ -549,12 +551,14 @@ where
 }
 
 async fn run_checks<T: GenericClient + Sync + Send>(
-    trigger: &Trigger,
+    trigger_name: &str,
     client: &mut T,
 ) -> ChangeResult {
+    let trigger = load_trigger(client, trigger_name).await?;
+
     let query = format!(
         "SELECT * FROM trigger_rule.{}($1::timestamptz)",
-        escape_identifier(&trigger.name)
+        escape_identifier(trigger_name)
     );
 
     let reference_timestamp = chrono::offset::Local::now();
@@ -567,8 +571,8 @@ async fn run_checks<T: GenericClient + Sync + Send>(
         .map_err(|e| DatabaseError::from_msg(format!("Error running check: {}", e)))?;
 
     Ok(format!(
-        "Checks run successfully for '{}'; '{}'",
-        &trigger.name, &check_timestamp
+        "Checks run successfully for '{}': '{}'",
+        trigger_name, &check_timestamp
     ))
 }
 async fn unlink_trend_stores<T: GenericClient + Sync + Send>(
@@ -729,7 +733,7 @@ impl GenericChange for UpdateTrigger {
         let mut check_result: String = "No check has run".to_string();
 
         if self.verify {
-            check_result = run_checks(&self.trigger, &mut transaction).await?;
+            check_result = run_checks(&self.trigger.name, &mut transaction).await?;
         }
 
         transaction.commit().await?;
@@ -748,4 +752,72 @@ impl Change for UpdateTrigger {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.generic_apply(client).await
     }
+}
+
+pub struct VerifyTrigger {
+    pub trigger_name: String,
+}
+
+impl fmt::Display for VerifyTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "VerifyTrigger({})", &self.trigger_name)
+    }
+}
+
+#[async_trait]
+impl GenericChange for VerifyTrigger {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        let message = run_checks(&self.trigger_name, &mut transaction).await?;
+
+        Ok(message)
+    }
+}
+
+#[async_trait]
+impl Change for VerifyTrigger {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub async fn load_trigger<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+    name: &str,
+) -> Result<Trigger, Error> {
+    let query = "SELECT name, granularity::text FROM trigger.rule WHERE name = $1";
+
+    let row = conn.query_one(query, &[&String::from(name)]).await.map_err(|e| {
+        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+    })?;
+
+    let granularity_str: String = row.get(1);
+
+    let granularity = parse_interval(&granularity_str).unwrap();
+
+    Ok(Trigger {
+        name: String::from(name),
+        condition: String::from(""),
+        data: String::from(""),
+        fingerprint: String::from(""),
+        granularity: granularity,
+        kpi_data: Vec::<KPIDataColumn>::new(),
+        kpi_function: String::from(""),
+        mapping_functions: Vec::<MappingFunction>::new(),
+        notification: String::from(""),
+        notification_store: String::from(""),
+        tags: Vec::<String>::new(),
+        thresholds: Vec::<Threshold>::new(),
+        trend_store_links: Vec::<TrendStoreLink>::new(),
+        weight: String::from(""),
+    })
+}
+
+pub async fn load_triggers<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+) -> Result<Vec<Trigger>, Error> {
+    let triggers: Vec<Trigger> = Vec::new();
+
+    return Ok(triggers);
 }

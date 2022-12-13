@@ -21,7 +21,7 @@ use super::trend_materialization::{
 use super::trend_store::{
     load_trend_store_from_file, load_trend_stores, AddTrendStore, TrendStore,
 };
-use super::trigger::{load_trigger_from_file, AddTrigger, Trigger};
+use super::trigger::{load_trigger_from_file, AddTrigger, Trigger, load_triggers};
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 
 pub struct MinervaInstance {
@@ -53,7 +53,7 @@ impl MinervaInstance {
 
         let trend_materializations = load_materializations(client).await?;
 
-        let triggers = Vec::new();
+        let triggers = load_triggers(client).await?;
 
         Ok(MinervaInstance {
             instance_root: None,

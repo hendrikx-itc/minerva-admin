@@ -9,7 +9,7 @@ use comfy_table::Table;
 use minerva::change::Change;
 use minerva::error::DatabaseError;
 use minerva::trigger::{
-    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTrigger,
+    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTrigger, VerifyTrigger
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -131,6 +131,29 @@ impl Cmd for TriggerUpdate {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TriggerVerify {
+    #[structopt(help = "trigger name")]
+    name: String,
+}
+
+#[async_trait]
+impl Cmd for TriggerVerify {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let change = VerifyTrigger {
+            trigger_name: self.name.clone(),
+        };
+
+        let message = change.apply(&mut client).await?;
+
+        println!("{message}");
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TriggerOpt {
     #[structopt(about = "list configured triggers")]
     List(TriggerList),
@@ -140,6 +163,8 @@ pub enum TriggerOpt {
     Delete(TriggerDelete),
     #[structopt(about = "update a trigger")]
     Update(TriggerUpdate),
+    #[structopt(about = "run basic verification on a trigger")]
+    Verify(TriggerVerify),
 }
 
 impl TriggerOpt {
@@ -149,6 +174,7 @@ impl TriggerOpt {
             TriggerOpt::Create(create) => create.run().await,
             TriggerOpt::Delete(delete) => delete.run().await,
             TriggerOpt::Update(update) => update.run().await,
+            TriggerOpt::Verify(verify) => verify.run().await,
         }
     }
 }
