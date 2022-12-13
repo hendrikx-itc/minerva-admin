@@ -248,11 +248,16 @@ impl Cmd for TrendStoreList {
         table.set_header(vec!["Id", "Data Source", "Entity Type", "Granularity"]);
 
         for trend_store in trend_stores {
-            table.add_row(vec![trend_store.0.to_string(), trend_store.1, trend_store.2, trend_store.3]);
+            table.add_row(vec![
+                trend_store.0.to_string(),
+                trend_store.1,
+                trend_store.2,
+                trend_store.3,
+            ]);
         }
 
         println!("{table}");
-    
+
         Ok(())
     }
 }

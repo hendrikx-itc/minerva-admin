@@ -1,9 +1,10 @@
-use std::time::Duration;
 use std::fmt;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use chrono::{DateTime, Timelike};
 use postgres_protocol::escape::{escape_identifier, escape_literal};
 use tokio_postgres::{Client, GenericClient, Row};
 
@@ -60,15 +61,13 @@ pub struct Trigger {
 
 impl fmt::Display for Trigger {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Trigger({})",
-            &self.name,
-        )
+        write!(f, "Trigger({})", &self.name,)
     }
 }
 
-pub async fn list_triggers(conn: &mut Client) -> Result<Vec<(String, String, String, String)>, String> {
+pub async fn list_triggers(
+    conn: &mut Client,
+) -> Result<Vec<(String, String, String, String)>, String> {
     let query = concat!(
         "SELECT name, ns::text, granularity::text, default_interval::text, enabled ",
         "FROM trigger.rule ",
@@ -80,10 +79,18 @@ pub async fn list_triggers(conn: &mut Client) -> Result<Vec<(String, String, Str
     let triggers: Result<Vec<(String, String, String, String)>, String> = result
         .into_iter()
         .map(|row: Row| {
-            let name: String = row.try_get(0).map_err(|e| format!("could not retrieve name: {}", e))?;
-            let notification_store: Option<String> = row.try_get(1).map_err(|e| format!("could not retrieve notification store name: {}", e))?;
-            let granularity: Option<String> = row.try_get(2).map_err(|e| format!("could not retrieve granularity: {}", e))?;
-            let default_interval: Option<String> = row.try_get(3).map_err(|e| format!("could not retrieve default interval: {}", e))?;
+            let name: String = row
+                .try_get(0)
+                .map_err(|e| format!("could not retrieve name: {}", e))?;
+            let notification_store: Option<String> = row
+                .try_get(1)
+                .map_err(|e| format!("could not retrieve notification store name: {}", e))?;
+            let granularity: Option<String> = row
+                .try_get(2)
+                .map_err(|e| format!("could not retrieve granularity: {}", e))?;
+            let default_interval: Option<String> = row
+                .try_get(3)
+                .map_err(|e| format!("could not retrieve default interval: {}", e))?;
 
             let trigger_row = (
                 name,
@@ -139,11 +146,17 @@ impl GenericChange for AddTrigger {
     }
 }
 
-async fn create_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn create_type<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let type_name = format!("{}_kpi", &trigger.name);
     let mut cols: Vec<(String, String)> = vec![
         (String::from("entity_id"), String::from("integer")),
-        (String::from("timestamp"), String::from("timestamp with time zone")),
+        (
+            String::from("timestamp"),
+            String::from("timestamp with time zone"),
+        ),
     ];
 
     for data_column in trigger.kpi_data.iter() {
@@ -163,31 +176,31 @@ async fn create_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
     );
 
     client
-        .execute(
-            &query,
-            &[],
-        )
+        .execute(&query, &[])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating KPI type: {}", e)))?;
 
     Ok(format!("Added KPI type for trigger '{}'", &trigger.name))
 }
 
-async fn cleanup_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn cleanup_rule<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = "SELECT trigger.cleanup_rule(rule) FROM trigger.rule WHERE name = $1";
 
     client
-        .execute(
-            query,
-            &[&trigger.name],
-        )
+        .execute(query, &[&trigger.name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error cleaning up rule: {}", e)))?;
 
     Ok(format!("Cleaned up rule for trigger '{}'", &trigger.name))
 }
 
-async fn create_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn create_kpi_function<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let function_name = format!("{}_kpi", &trigger.name);
     let type_name = format!("{}_kpi", &trigger.name);
 
@@ -199,46 +212,38 @@ async fn create_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, 
     );
 
     client
-        .execute(
-            &query,
-            &[],
-        )
+        .execute(&query, &[])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating KPI function: {}", e)))?;
 
-    Ok(format!("Added KPI function for trigger '{}'", &trigger.name))
+    Ok(format!(
+        "Added KPI function for trigger '{}'",
+        &trigger.name
+    ))
 }
 
-async fn drop_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
-    let function_name = format!("{}_kpi", &trigger.name);
-
-    let query = format!(
-        "DROP FUNCTION IF EXISTS trigger_rule.{}(timestamp with time zone);",
-        &escape_identifier(&function_name),
-    );
-
-    client
-        .execute(
-            &query,
-            &[],
-        )
-        .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error dropping KPI function: {}", e)))?;
-
-    Ok(format!("Dropped KPI function for trigger '{}'", &trigger.name))
-}
-
-async fn create_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn create_rule<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = format!(
         "SELECT * FROM trigger.create_rule($1, array[{}]::trigger.threshold_def[])",
-        trigger.thresholds.iter().map(|threshold| { format!("({}, {})", escape_literal(&threshold.name), escape_literal(&threshold.data_type)) }).collect::<Vec<String>>().join(",")
+        trigger
+            .thresholds
+            .iter()
+            .map(|threshold| {
+                format!(
+                    "({}, {})",
+                    escape_literal(&threshold.name),
+                    escape_literal(&threshold.data_type)
+                )
+            })
+            .collect::<Vec<String>>()
+            .join(",")
     );
 
     client
-        .execute(
-            &query,
-            &[&trigger.name,],
-        )
+        .execute(&query, &[&trigger.name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
 
@@ -255,26 +260,29 @@ async fn create_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
     client
         .execute(
             query,
-            &[&humantime::format_duration(trigger.granularity).to_string(), &trigger.name, &trigger.notification_store],
+            &[
+                &humantime::format_duration(trigger.granularity).to_string(),
+                &trigger.name,
+                &trigger.notification_store,
+            ],
         )
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
 
-
     Ok(format!("Added rule for trigger '{}'", &trigger.name))
 }
 
-async fn setup_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn setup_rule<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = format!(
         "SELECT trigger.setup_rule(rule, array[{}]::trigger.threshold_def[]) FROM trigger.rule WHERE name = $1",
         trigger.thresholds.iter().map(|threshold| { format!("({}, {})", escape_literal(&threshold.name), escape_literal(&threshold.data_type)) }).collect::<Vec<String>>().join(",")
     );
 
     client
-        .execute(
-            &query,
-            &[&trigger.name,],
-        )
+        .execute(&query, &[&trigger.name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error setting up rule: {}", e)))?;
 
@@ -291,37 +299,41 @@ async fn setup_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &
     client
         .execute(
             query,
-            &[&humantime::format_duration(trigger.granularity).to_string(), &trigger.name, &trigger.notification_store],
+            &[
+                &humantime::format_duration(trigger.granularity).to_string(),
+                &trigger.name,
+                &trigger.notification_store,
+            ],
         )
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
 
-
     Ok(format!("Added rule for trigger '{}'", &trigger.name))
 }
 
-
-async fn set_weight<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
-    let query = format!(
-        "SELECT trigger.set_weight($1::name, $2::text)",
-    );
+async fn set_weight<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
+    let query = format!("SELECT trigger.set_weight($1::name, $2::text)",);
 
     client
-        .execute(
-            &query,
-            &[&trigger.name, &trigger.weight],
-        )
+        .execute(&query, &[&trigger.name, &trigger.weight])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error setting weight: {}", e)))?;
 
     Ok(format!("Set weight for trigger '{}'", &trigger.name))
 }
 
-async fn set_thresholds<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn set_thresholds<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let function_name = format!("{}_set_thresholds", &trigger.name);
-    let function_args = trigger.thresholds
+    let function_args = trigger
+        .thresholds
         .iter()
-        .map(|threshold| threshold.value.clone() )
+        .map(|threshold| threshold.value.clone())
         .collect::<Vec<String>>()
         .join(",");
 
@@ -332,59 +344,59 @@ async fn set_thresholds<T: GenericClient + Sync + Send>(trigger: &Trigger, clien
     );
 
     client
-        .execute(
-            &query,
-            &[],
-        )
+        .execute(&query, &[])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error setting thresholds: {}", e)))?;
 
     Ok(format!("Set thresholds for trigger '{}'", &trigger.name))
 }
 
-async fn set_condition<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn set_condition<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = "SELECT trigger.set_condition(rule, $1) FROM trigger.rule WHERE name = $2";
 
     client
-        .execute(
-            query,
-            &[&trigger.condition, &trigger.name],
-        )
+        .execute(query, &[&trigger.condition, &trigger.name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error setting condition: {}", e)))?;
 
     Ok(format!("Set condition for trigger '{}'", &trigger.name))
 }
 
-async fn define_notification_message<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn define_notification_message<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = "SELECT trigger.define_notification_message($1, $2)";
 
     client
-        .execute(
-            query,
-            &[&trigger.name, &trigger.notification],
-        )
+        .execute(query, &[&trigger.name, &trigger.notification])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error setting message: {}", e)))?;
 
     Ok(format!("Set message for trigger '{}'", &trigger.name))
 }
 
-async fn define_notification_data<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn define_notification_data<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = "SELECT trigger.define_notification_data($1, $2)";
 
     client
-        .execute(
-            query,
-            &[&trigger.name, &trigger.data],
-        )
+        .execute(query, &[&trigger.name, &trigger.data])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error setting data: {}", e)))?;
 
     Ok(format!("Set data for trigger '{}'", &trigger.name))
 }
 
-async fn drop_notification_data_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn drop_notification_data_function<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let function_name = format!("{}_notification_data", &trigger.name);
 
     let query = format!(
@@ -393,17 +405,20 @@ async fn drop_notification_data_function<T: GenericClient + Sync + Send>(trigger
     );
 
     client
-        .execute(
-            &query,
-            &[],
-        )
+        .execute(&query, &[])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error dropping data function: {}", e)))?;
 
-    Ok(format!("Dropped data function for trigger '{}'", &trigger.name))
+    Ok(format!(
+        "Dropped data function for trigger '{}'",
+        &trigger.name
+    ))
 }
 
-async fn create_mapping_functions<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn create_mapping_functions<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     for mapping_function in trigger.mapping_functions.iter() {
         let query = format!(
             "CREATE FUNCTION trend.{}(timestamp with time zone) RETURNS SETOF timestamp with time zone AS $${}$$ LANGUAGE sql STABLE",
@@ -411,19 +426,21 @@ async fn create_mapping_functions<T: GenericClient + Sync + Send>(trigger: &Trig
             &mapping_function.source,
         );
 
-        client
-            .execute(
-                &query,
-                &[],
-            )
-            .await
-            .map_err(|e| DatabaseError::from_msg(format!("Error creating mapping function: {}", e)))?;
+        client.execute(&query, &[]).await.map_err(|e| {
+            DatabaseError::from_msg(format!("Error creating mapping function: {}", e))
+        })?;
     }
 
-    Ok(format!("Created mapping functions for trigger '{}'", &trigger.name))
+    Ok(format!(
+        "Created mapping functions for trigger '{}'",
+        &trigger.name
+    ))
 }
 
-async fn link_trend_stores<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+async fn link_trend_stores<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     for trend_store_link in trigger.trend_store_links.iter() {
         let mapping_function = format!(
             "trend.{}(timestamp with time zone)",
@@ -438,31 +455,124 @@ async fn link_trend_stores<T: GenericClient + Sync + Send>(trigger: &Trigger, cl
             "FROM trigger.rule, trend_directory.trend_store_part ",
             "WHERE rule.name = $2 AND trend_store_part.name = $3",
         );
-    
+
         client
             .execute(
                 query,
-                &[&mapping_function, &trigger.name, &trend_store_link.part_name],
+                &[
+                    &mapping_function,
+                    &trigger.name,
+                    &trend_store_link.part_name,
+                ],
             )
             .await
             .map_err(|e| DatabaseError::from_msg(format!("Error linking trend store: {}", e)))?;
     }
 
-    Ok(format!("Linked trend stores for trigger '{}'", &trigger.name))
+    Ok(format!(
+        "Linked trend stores for trigger '{}'",
+        &trigger.name
+    ))
 }
 
-async fn unlink_trend_stores<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+/// Truncate a reference timestamp to the nearest timestamp for a specified granularity.
+fn truncate_timestamp_for_granularity<Tz>(
+    granularity: Duration,
+    ref_timestamp: &DateTime<Tz>,
+) -> Result<DateTime<Tz>, Error>
+where
+    Tz: chrono::TimeZone,
+{
+    match granularity.as_secs() {
+        900 => {
+            let date = ref_timestamp.date_naive();
+
+            let gran_minutes: u32 = 15;
+
+            let time = ref_timestamp.time();
+
+            let remainder = time.minute() % gran_minutes;
+
+            let minutes = time.minute() - remainder;
+
+            let timestamp = date
+                .and_hms_opt(ref_timestamp.time().hour(), minutes, 0)
+                .unwrap()
+                .and_local_timezone(ref_timestamp.timezone())
+                .unwrap();
+
+            Ok(timestamp)
+        }
+        3600 => {
+            let date = ref_timestamp.date_naive();
+
+            let timestamp = date
+                .and_hms_opt(ref_timestamp.time().hour(), 0, 0)
+                .unwrap()
+                .and_local_timezone(ref_timestamp.timezone())
+                .unwrap();
+
+            Ok(timestamp)
+        }
+        86400 => {
+            let date = ref_timestamp.date_naive();
+
+            let timestamp = date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(ref_timestamp.timezone())
+                .unwrap();
+
+            Ok(timestamp)
+        }
+        _ => Err(Error::Runtime(RuntimeError::from_msg(
+            format!(
+                "Unsupported granularity: {}",
+                &humantime::format_duration(granularity)
+            )
+            .to_string(),
+        ))),
+    }
+}
+
+async fn run_checks<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
+    let query = format!(
+        "SELECT * FROM trigger_rule.{}($1::timestamptz)",
+        escape_identifier(&trigger.name)
+    );
+
+    let reference_timestamp = chrono::offset::Local::now();
+
+    let check_timestamp = truncate_timestamp_for_granularity(trigger.granularity, &reference_timestamp)?;
+
+    client
+        .execute(&query, &[&check_timestamp])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error running check: {}", e)))?;
+
+    Ok(format!(
+        "Checks run successfully for '{}'; '{}'",
+        &trigger.name, &check_timestamp
+    ))
+}
+async fn unlink_trend_stores<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
     let query = "DELETE FROM trigger.rule_trend_store_link USING trigger.rule WHERE rule_id = rule.id AND rule.name = $1";
 
     client
-        .execute(
-            query,
-            &[&trigger.name],
-        )
+        .execute(query, &[&trigger.name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error unlinking trend stores: {}", e)))?;
 
-    Ok(format!("Unlinked trend stores for trigger '{}'", &trigger.name))
+    Ok(format!(
+        "Unlinked trend stores for trigger '{}'",
+        &trigger.name
+    ))
 }
 
 #[async_trait]
@@ -488,22 +598,24 @@ impl GenericChange for DeleteTrigger {
         let row = client
             .query_one(
                 "SELECT count(*) FROM trigger.rule WHERE name = $1",
-                &[&self.trigger_name]
+                &[&self.trigger_name],
             )
             .await
-            .map_err(|e| DatabaseError::from_msg(format!("Error checking for rule existance: {}", e)))?;
+            .map_err(|e| {
+                DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
+            })?;
 
         let count: i64 = row.get(0);
 
         if count == 0 {
-            return Err(Error::Runtime(RuntimeError::from_msg(format!("No trigger found matching name '{}'", &self.trigger_name))));
+            return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                "No trigger found matching name '{}'",
+                &self.trigger_name
+            ))));
         }
-        
+
         client
-            .execute(
-                "SELECT trigger.delete_rule($1)",
-                &[&self.trigger_name],
-            )
+            .execute("SELECT trigger.delete_rule($1)", &[&self.trigger_name])
             .await
             .map_err(|e| DatabaseError::from_msg(format!("Error deleting rule: {}", e)))?;
 
@@ -556,71 +668,9 @@ pub fn load_trigger_from_file(path: &PathBuf) -> Result<Trigger, Error> {
     }
 }
 
-pub struct UpdateTriggerData {
-    pub trigger: Trigger,
-}
-
-impl fmt::Display for UpdateTriggerData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "UpdateTriggerData({})", &self.trigger)
-    }
-}
-
-#[async_trait]
-impl GenericChange for UpdateTriggerData {
-    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
-        let mut transaction = client.transaction().await?;
-
-        define_notification_data(&self.trigger, &mut transaction).await?;
-
-        transaction.commit().await?;
-
-        Ok(format!("Update data definition of trigger '{}'", &self.trigger.name))
-    }
-}
-
-#[async_trait]
-impl Change for UpdateTriggerData {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
-        self.generic_apply(client).await
-    }
-}
-
-pub struct UpdateTriggerKPIFunction {
-    pub trigger: Trigger,
-}
-
-impl fmt::Display for UpdateTriggerKPIFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "UpdateTriggerKPIFunction({})", &self.trigger)
-    }
-}
-
-#[async_trait]
-impl GenericChange for UpdateTriggerKPIFunction {
-    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
-        let mut transaction = client.transaction().await?;
-
-        // Drop the function first, because in the case of return type changes, a CREATE OR REPLACE would not work.
-        drop_kpi_function(&self.trigger, &mut transaction).await?;
-
-        create_kpi_function(&self.trigger, &mut transaction).await?;
-
-        transaction.commit().await?;
-
-        Ok(format!("Updated KPI function of trigger '{}'", &self.trigger.name))
-    }
-}
-
-#[async_trait]
-impl Change for UpdateTriggerKPIFunction {
-    async fn apply(&self, client: &mut Client) -> ChangeResult {
-        self.generic_apply(client).await
-    }
-}
-
 pub struct UpdateTrigger {
     pub trigger: Trigger,
+    pub verify: bool,
 }
 
 impl fmt::Display for UpdateTrigger {
@@ -663,9 +713,20 @@ impl GenericChange for UpdateTrigger {
 
         link_trend_stores(&self.trigger, &mut transaction).await?;
 
+        let mut check_result: String = "No check has run".to_string();
+
+        if self.verify {
+            check_result = run_checks(&self.trigger, &mut transaction).await?;
+        }
+
         transaction.commit().await?;
 
-        Ok(format!("Updated trigger '{}'", &self.trigger.name))
+        let message = match self.verify {
+            false => format!("Updated trigger '{}'", &self.trigger.name),
+            true => format!("Updated trigger '{}': {}", &self.trigger.name, check_result),
+        };
+
+        Ok(message)
     }
 }
 

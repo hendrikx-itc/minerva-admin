@@ -8,7 +8,7 @@ kpi_function: |-
       SELECT
           t.entity_id,
           t.timestamp,
-          t.power_kwh,
+          t.power_kwh
       FROM trend."hub_node_main_15m" AS t
       WHERE
           t.timestamp = $1

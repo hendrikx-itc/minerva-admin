@@ -35,7 +35,8 @@ impl fmt::Display for AddAttributes {
         write!(
             f,
             "AddAttributes({}, {})",
-            &self.attribute_store, &self.attributes.len()
+            &self.attribute_store,
+            &self.attributes.len()
         )
     }
 }

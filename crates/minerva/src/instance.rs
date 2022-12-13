@@ -21,7 +21,7 @@ use super::trend_materialization::{
 use super::trend_store::{
     load_trend_store_from_file, load_trend_stores, AddTrendStore, TrendStore,
 };
-use super::trigger::{Trigger, AddTrigger, load_trigger_from_file};
+use super::trigger::{load_trigger_from_file, AddTrigger, Trigger};
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 
 pub struct MinervaInstance {
@@ -364,7 +364,6 @@ async fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendSt
     }
 }
 
-
 fn load_triggers_from(minerva_instance_root: &Path) -> impl Iterator<Item = Trigger> {
     let yaml_paths = glob(&format!(
         "{}/trigger/*.yaml",
@@ -391,7 +390,6 @@ fn load_triggers_from(minerva_instance_root: &Path) -> impl Iterator<Item = Trig
             Err(_) => None,
         })
 }
-
 
 fn load_virtual_entities_from(minerva_instance_root: &Path) -> impl Iterator<Item = VirtualEntity> {
     let sql_paths = glob(&format!(
@@ -475,12 +473,11 @@ async fn initialize_trend_materializations(
     }
 }
 
-async fn initialize_triggers(
-    client: &mut Client,
-    triggers: &Vec<Trigger>,
-) {
+async fn initialize_triggers(client: &mut Client, triggers: &Vec<Trigger>) {
     for trigger in triggers {
-        let change = AddTrigger { trigger: trigger.clone() };
+        let change = AddTrigger {
+            trigger: trigger.clone(),
+        };
 
         match change.apply(client).await {
             Ok(message) => println!("{}", message),
