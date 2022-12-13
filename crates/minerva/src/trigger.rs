@@ -439,6 +439,20 @@ impl fmt::Display for DeleteTrigger {
 #[async_trait]
 impl GenericChange for DeleteTrigger {
     async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let row = client
+            .query_one(
+                "SELECT count(*) FROM trigger.rule WHERE name = $1",
+                &[&self.trigger_name]
+            )
+            .await
+            .map_err(|e| DatabaseError::from_msg(format!("Error checking for rule existance: {}", e)))?;
+
+        let count: i64 = row.get(0);
+
+        if count == 0 {
+            return Err(Error::Runtime(RuntimeError::from_msg(format!("No trigger found matching name '{}'", &self.trigger_name))));
+        }
+        
         client
             .execute(
                 "SELECT trigger.delete_rule($1)",
@@ -447,7 +461,7 @@ impl GenericChange for DeleteTrigger {
             .await
             .map_err(|e| DatabaseError::from_msg(format!("Error deleting rule: {}", e)))?;
 
-        Ok(format!("Rmoved trigger '{}'", &self.trigger_name))
+        Ok(format!("Removed trigger '{}'", &self.trigger_name))
     }
 }
 
