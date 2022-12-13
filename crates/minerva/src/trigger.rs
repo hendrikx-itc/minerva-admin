@@ -192,6 +192,20 @@ async fn drop_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &m
     Ok(format!("Dropped KPI type for trigger '{}'", &trigger.name))
 }
 
+async fn cleanup_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+    let query = "SELECT trigger.cleanup_rule(rule) FROM trigger.rule WHERE name = $1";
+
+    client
+        .execute(
+            query,
+            &[&trigger.name],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error cleaning up rule: {}", e)))?;
+
+    Ok(format!("Cleaned up rule for trigger '{}'", &trigger.name))
+}
+
 async fn create_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
     let function_name = format!("{}_kpi", &trigger.name);
     let type_name = format!("{}_kpi", &trigger.name);
@@ -268,6 +282,43 @@ async fn create_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
 
     Ok(format!("Added rule for trigger '{}'", &trigger.name))
 }
+
+async fn setup_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+    let query = format!(
+        "SELECT trigger.setup_rule(rule, array[{}]::trigger.threshold_def[]) FROM trigger.rule WHERE name = $1",
+        trigger.thresholds.iter().map(|threshold| { format!("({}, {})", escape_literal(&threshold.name), escape_literal(&threshold.data_type)) }).collect::<Vec<String>>().join(",")
+    );
+
+    client
+        .execute(
+            &query,
+            &[&trigger.name,],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting up rule: {}", e)))?;
+
+    let query = concat!(
+        "UPDATE trigger.rule ",
+        "SET notification_store_id = notification_store.id, ",
+        "granularity = $1::text::interval ",
+        "FROM notification_directory.notification_store ",
+        "JOIN directory.data_source ",
+        "ON data_source.id = notification_store.data_source_id ",
+        "WHERE rule.name = $2 AND data_source.name = $3",
+    );
+
+    client
+        .execute(
+            query,
+            &[&humantime::format_duration(trigger.granularity).to_string(), &trigger.name, &trigger.notification_store],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
+
+
+    Ok(format!("Added rule for trigger '{}'", &trigger.name))
+}
+
 
 async fn set_weight<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
     let query = format!(
@@ -417,6 +468,20 @@ async fn link_trend_stores<T: GenericClient + Sync + Send>(trigger: &Trigger, cl
     }
 
     Ok(format!("Linked trend stores for trigger '{}'", &trigger.name))
+}
+
+async fn unlink_trend_stores<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+    let query = "DELETE FROM trigger.rule_trend_store_link USING trigger.rule WHERE rule_id = rule.id AND rule.name = $1";
+
+    client
+        .execute(
+            query,
+            &[&trigger.name],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error unlinking trend stores: {}", e)))?;
+
+    Ok(format!("Unlinked trend stores for trigger '{}'", &trigger.name))
 }
 
 #[async_trait]
@@ -589,25 +654,33 @@ impl GenericChange for UpdateTrigger {
         let mut transaction = client.transaction().await?;
 
         // Tear down
-
-        // Drop the KPI function first, because in the case of return type changes, a CREATE OR REPLACE would not work.
-        drop_kpi_function(&self.trigger, &mut transaction).await?;
-
-        // Drop the data function, for the same reason as the KPI function
         drop_notification_data_function(&self.trigger, &mut transaction).await?;
 
-        //drop_with_threshold_fn
+        unlink_trend_stores(&self.trigger, &mut transaction).await?;
 
-        drop_type(&self.trigger, &mut transaction).await?;
-
+        cleanup_rule(&self.trigger, &mut transaction).await?;
 
         // Build up
 
         create_type(&self.trigger, &mut transaction).await?;
 
         create_kpi_function(&self.trigger, &mut transaction).await?;
-        
+
+        setup_rule(&self.trigger, &mut transaction).await?;
+
+        set_weight(&self.trigger, &mut transaction).await?;
+
+        set_thresholds(&self.trigger, &mut transaction).await?;
+
+        set_condition(&self.trigger, &mut transaction).await?;
+
+        define_notification_message(&self.trigger, &mut transaction).await?;
+
         define_notification_data(&self.trigger, &mut transaction).await?;
+
+        create_mapping_functions(&self.trigger, &mut transaction).await?;
+
+        link_trend_stores(&self.trigger, &mut transaction).await?;
 
         transaction.commit().await?;
 
