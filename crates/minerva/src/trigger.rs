@@ -251,7 +251,7 @@ async fn create_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
     let query = concat!(
         "UPDATE trigger.rule ",
         "SET notification_store_id = notification_store.id, ",
-        "granularity = $1 ",
+        "granularity = $1::text::interval ",
         "FROM notification_directory.notification_store ",
         "JOIN directory.data_source ",
         "ON data_source.id = notification_store.data_source_id ",
