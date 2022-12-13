@@ -244,7 +244,8 @@ impl Cmd for TrendStoreList {
         let trend_stores = list_trend_stores(&mut client).await.unwrap();
 
         let mut table = comfy_table::Table::new();
-        table.load_preset(comfy_table::presets::UTF8_HORIZONTAL_ONLY);
+        let style = "     ═╪ ┆          ";
+        table.load_preset(style);
         table.set_header(vec!["Id", "Data Source", "Entity Type", "Granularity"]);
 
         for trend_store in trend_stores {

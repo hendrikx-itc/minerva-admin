@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use structopt::StructOpt;
 
-use comfy_table::presets::UTF8_HORIZONTAL_ONLY;
 use comfy_table::Table;
 
 use minerva::change::Change;
@@ -27,7 +26,8 @@ impl Cmd for TriggerList {
             .map_err(|e| DatabaseError::from_msg(format!("Error listing triggers: {}", e)))?;
 
         let mut table = Table::new();
-        table.load_preset(UTF8_HORIZONTAL_ONLY);
+        let style = "     ═╪ ┆          ";
+        table.load_preset(style);
         table.set_header(vec![
             "Name",
             "Notification Store",
