@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use structopt::StructOpt;
 
+use minerva::error::DatabaseError;
 use minerva::change::Change;
 use minerva::trigger::{
     list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTriggerData,
-    UpdateTriggerKPIFunction,
+    UpdateTriggerKPIFunction, UpdateTrigger,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -19,7 +20,7 @@ impl Cmd for TriggerList {
     async fn run(&self) -> CmdResult {
         let mut client = connect_db().await?;
 
-        let triggers = list_triggers(&mut client).await.unwrap();
+        let triggers = list_triggers(&mut client).await.map_err(|e| DatabaseError::from_msg(format!("Error listing triggers: {}", e)))?;
 
         for trigger in triggers {
             println!("{}", &trigger);
@@ -127,6 +128,31 @@ impl Cmd for TriggerUpdateKPIFunction {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TriggerUpdate {
+    #[structopt(help = "trigger definition file")]
+    definition: PathBuf,
+}
+
+#[async_trait]
+impl Cmd for TriggerUpdate {
+    async fn run(&self) -> CmdResult {
+        let trigger = load_trigger_from_file(&self.definition)?;
+        let trigger_name = trigger.name.clone();
+
+        let mut client = connect_db().await?;
+
+        let change = UpdateTrigger { trigger };
+
+        change.apply(&mut client).await?;
+
+        println!("Updated trigger '{}'", &trigger_name);
+
+        Ok(())
+    }
+}
+
+
+#[derive(Debug, StructOpt)]
 pub enum TriggerOpt {
     #[structopt(about = "list configured triggers")]
     List(TriggerList),
@@ -134,6 +160,8 @@ pub enum TriggerOpt {
     Create(TriggerCreate),
     #[structopt(about = "delete a trigger")]
     Delete(TriggerDelete),
+    #[structopt(about = "update a trigger")]
+    Update(TriggerUpdate),
     #[structopt(about = "update data definition of a trigger")]
     UpdateData(TriggerUpdateData),
     #[structopt(about = "update KPI function of a trigger")]
@@ -146,6 +174,7 @@ impl TriggerOpt {
             TriggerOpt::List(list) => list.run().await,
             TriggerOpt::Create(create) => create.run().await,
             TriggerOpt::Delete(delete) => delete.run().await,
+            TriggerOpt::Update(update) => update.run().await,
             TriggerOpt::UpdateData(update_data) => update_data.run().await,
             TriggerOpt::UpdateKPIFunction(update_kpi_function) => update_kpi_function.run().await,
         }

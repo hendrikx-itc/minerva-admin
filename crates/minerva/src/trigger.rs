@@ -70,27 +70,33 @@ impl fmt::Display for Trigger {
 
 pub async fn list_triggers(conn: &mut Client) -> Result<Vec<String>, String> {
     let query = concat!(
-        "SELECT name, ns::text, granularity, default_interval, enabled ",
+        "SELECT name, ns::text, granularity::text, default_interval::text, enabled ",
         "FROM trigger.rule ",
-        "JOIN notification_directory.notification_store ns ON ns.id = notification_store_id",
+        "LEFT JOIN notification_directory.notification_store ns ON ns.id = notification_store_id",
     );
 
     let result = conn.query(query, &[]).await.unwrap();
 
-    let triggers = result
+    let triggers: Result<Vec<String>, String> = result
         .into_iter()
         .map(|row: Row| {
-            format!(
+            let name: String = row.try_get(0).map_err(|e| format!("could not retrieve name: {}", e))?;
+            let notification_store: Option<String> = row.try_get(1).map_err(|e| format!("could not retrieve notification store name: {}", e))?;
+            let granularity: Option<String> = row.try_get(2).map_err(|e| format!("could not retrieve granularity: {}", e))?;
+            let default_interval: Option<String> = row.try_get(3).map_err(|e| format!("could not retrieve default interval: {}", e))?;
+
+            let text = format!(
                 "{} - {} - {} - {}",
-                row.get::<usize, i32>(0),
-                row.get::<usize, String>(1),
-                row.get::<usize, String>(2),
-                row.get::<usize, String>(3),
-            )
+                &name,
+                &notification_store.unwrap_or("UNDEFINED".into()),
+                &granularity.unwrap_or("UNDEFINED".into()),
+                &default_interval.unwrap_or("UNDEFINED".into()),
+            );
+            Ok(text)
         })
         .collect();
 
-    Ok(triggers)
+    triggers
 }
 
 pub struct AddTrigger {
@@ -168,6 +174,25 @@ async fn create_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
     Ok(format!("Added KPI type for trigger '{}'", &trigger.name))
 }
 
+async fn drop_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+    let type_name = format!("{}_kpi", &trigger.name);
+
+    let query = format!(
+        "DROP TYPE IF EXISTS trigger_rule.{}",
+        escape_identifier(&type_name),
+    );
+
+    client
+        .execute(
+            &query,
+            &[],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error dropping KPI type: {}", e)))?;
+
+    Ok(format!("Dropped KPI type for trigger '{}'", &trigger.name))
+}
+
 async fn create_kpi_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
     let function_name = format!("{}_kpi", &trigger.name);
     let type_name = format!("{}_kpi", &trigger.name);
@@ -222,6 +247,25 @@ async fn create_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
         )
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
+
+    let query = concat!(
+        "UPDATE trigger.rule ",
+        "SET notification_store_id = notification_store.id, ",
+        "granularity = $1 ",
+        "FROM notification_directory.notification_store ",
+        "JOIN directory.data_source ",
+        "ON data_source.id = notification_store.data_source_id ",
+        "WHERE rule.name = $2 AND data_source.name = $3",
+    );
+
+    client
+        .execute(
+            query,
+            &[&humantime::format_duration(trigger.granularity).to_string(), &trigger.name, &trigger.notification_store],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
+
 
     Ok(format!("Added rule for trigger '{}'", &trigger.name))
 }
@@ -307,6 +351,25 @@ async fn define_notification_data<T: GenericClient + Sync + Send>(trigger: &Trig
         .map_err(|e| DatabaseError::from_msg(format!("Error setting data: {}", e)))?;
 
     Ok(format!("Set data for trigger '{}'", &trigger.name))
+}
+
+async fn drop_notification_data_function<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
+    let function_name = format!("{}_notification_data", &trigger.name);
+
+    let query = format!(
+        "DROP FUNCTION IF EXISTS trigger_rule.{}(timestamp with time zone);",
+        &escape_identifier(&function_name),
+    );
+
+    client
+        .execute(
+            &query,
+            &[],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error dropping data function: {}", e)))?;
+
+    Ok(format!("Dropped data function for trigger '{}'", &trigger.name))
 }
 
 async fn create_mapping_functions<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
@@ -492,6 +555,55 @@ impl GenericChange for UpdateTriggerKPIFunction {
 
 #[async_trait]
 impl Change for UpdateTriggerKPIFunction {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub struct UpdateTrigger {
+    pub trigger: Trigger,
+}
+
+impl fmt::Display for UpdateTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "UpdateTrigger({})", &self.trigger)
+    }
+}
+
+#[async_trait]
+impl GenericChange for UpdateTrigger {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        // Tear down
+
+        // Drop the KPI function first, because in the case of return type changes, a CREATE OR REPLACE would not work.
+        drop_kpi_function(&self.trigger, &mut transaction).await?;
+
+        // Drop the data function, for the same reason as the KPI function
+        drop_notification_data_function(&self.trigger, &mut transaction).await?;
+
+        //drop_with_threshold_fn
+
+        drop_type(&self.trigger, &mut transaction).await?;
+
+
+        // Build up
+
+        create_type(&self.trigger, &mut transaction).await?;
+
+        create_kpi_function(&self.trigger, &mut transaction).await?;
+        
+        define_notification_data(&self.trigger, &mut transaction).await?;
+
+        transaction.commit().await?;
+
+        Ok(format!("Updated trigger '{}'", &self.trigger.name))
+    }
+}
+
+#[async_trait]
+impl Change for UpdateTrigger {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.generic_apply(client).await
     }
