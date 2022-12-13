@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use structopt::StructOpt;
 
+use comfy_table::Table;
+use comfy_table::presets::UTF8_HORIZONTAL_ONLY;
+
 use minerva::error::DatabaseError;
 use minerva::change::Change;
 use minerva::trigger::{
@@ -22,9 +25,14 @@ impl Cmd for TriggerList {
 
         let triggers = list_triggers(&mut client).await.map_err(|e| DatabaseError::from_msg(format!("Error listing triggers: {}", e)))?;
 
+        let mut table = Table::new();
+        table.load_preset(UTF8_HORIZONTAL_ONLY);
+        table.set_header(vec!["Name", "Notification Store", "Granularity", "Default Interval"]);
         for trigger in triggers {
-            println!("{}", &trigger);
+            table.add_row(vec![trigger.0, trigger.1, trigger.2, trigger.3]);
         }
+
+        println!("{table}");
 
         Ok(())
     }

@@ -68,7 +68,7 @@ impl fmt::Display for Trigger {
     }
 }
 
-pub async fn list_triggers(conn: &mut Client) -> Result<Vec<String>, String> {
+pub async fn list_triggers(conn: &mut Client) -> Result<Vec<(String, String, String, String)>, String> {
     let query = concat!(
         "SELECT name, ns::text, granularity::text, default_interval::text, enabled ",
         "FROM trigger.rule ",
@@ -77,7 +77,7 @@ pub async fn list_triggers(conn: &mut Client) -> Result<Vec<String>, String> {
 
     let result = conn.query(query, &[]).await.unwrap();
 
-    let triggers: Result<Vec<String>, String> = result
+    let triggers: Result<Vec<(String, String, String, String)>, String> = result
         .into_iter()
         .map(|row: Row| {
             let name: String = row.try_get(0).map_err(|e| format!("could not retrieve name: {}", e))?;
@@ -85,14 +85,13 @@ pub async fn list_triggers(conn: &mut Client) -> Result<Vec<String>, String> {
             let granularity: Option<String> = row.try_get(2).map_err(|e| format!("could not retrieve granularity: {}", e))?;
             let default_interval: Option<String> = row.try_get(3).map_err(|e| format!("could not retrieve default interval: {}", e))?;
 
-            let text = format!(
-                "{} - {} - {} - {}",
-                &name,
-                &notification_store.unwrap_or("UNDEFINED".into()),
-                &granularity.unwrap_or("UNDEFINED".into()),
-                &default_interval.unwrap_or("UNDEFINED".into()),
+            let trigger_row = (
+                name,
+                notification_store.unwrap_or("UNDEFINED".into()),
+                granularity.unwrap_or("UNDEFINED".into()),
+                default_interval.unwrap_or("UNDEFINED".into()),
             );
-            Ok(text)
+            Ok(trigger_row)
         })
         .collect();
 
