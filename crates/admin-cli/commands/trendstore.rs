@@ -7,6 +7,8 @@ use chrono::FixedOffset;
 use async_trait::async_trait;
 use structopt::StructOpt;
 
+use comfy_table;
+
 use term_table::{
     row::Row,
     table_cell::{Alignment, TableCell},
@@ -232,9 +234,33 @@ pub enum TrendStorePartOpt {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TrendStoreList {}
+
+#[async_trait]
+impl Cmd for TrendStoreList {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let trend_stores = list_trend_stores(&mut client).await.unwrap();
+
+        let mut table = comfy_table::Table::new();
+        table.load_preset(comfy_table::presets::UTF8_HORIZONTAL_ONLY);
+        table.set_header(vec!["Name", "Notification Store", "Granularity", "Default Interval"]);
+
+        for trend_store in trend_stores {
+            table.add_row(vec![trend_store.0.to_string(), trend_store.1, trend_store.2, trend_store.3]);
+        }
+
+        println!("{table}");
+    
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TrendStoreOpt {
     #[structopt(about = "list existing trend stores")]
-    List,
+    List(TrendStoreList),
     #[structopt(about = "create a trend store")]
     Create(TrendStoreCreate),
     #[structopt(about = "show differences for a trend store")]
@@ -254,7 +280,7 @@ pub enum TrendStoreOpt {
 impl TrendStoreOpt {
     pub async fn run(&self) -> CmdResult {
         match self {
-            TrendStoreOpt::List => run_trend_store_list_cmd().await,
+            TrendStoreOpt::List(list) => list.run().await,
             TrendStoreOpt::Create(create) => create.run().await,
             TrendStoreOpt::Diff(diff) => diff.run().await,
             TrendStoreOpt::Update(update) => update.run().await,
@@ -303,18 +329,6 @@ async fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) 
     }
 
     println!("Created partitions");
-    Ok(())
-}
-
-async fn run_trend_store_list_cmd() -> CmdResult {
-    let mut client = connect_db().await?;
-
-    let trend_stores = list_trend_stores(&mut client).await.unwrap();
-
-    for trend_store in trend_stores {
-        println!("{}", &trend_store);
-    }
-
     Ok(())
 }
 

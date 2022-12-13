@@ -613,7 +613,7 @@ impl fmt::Display for TrendStore {
     }
 }
 
-pub async fn list_trend_stores(conn: &mut Client) -> Result<Vec<String>, String> {
+pub async fn list_trend_stores(conn: &mut Client) -> Result<Vec<(i32, String, String, String)>, String> {
     let query = concat!(
         "SELECT ts.id, ds.name, et.name, ts.granularity::text ",
         "FROM trend_directory.trend_store ts ",
@@ -626,8 +626,7 @@ pub async fn list_trend_stores(conn: &mut Client) -> Result<Vec<String>, String>
     let trend_stores = result
         .into_iter()
         .map(|row: Row| {
-            format!(
-                "{} - {} - {} - {}",
+            (
                 row.get::<usize, i32>(0),
                 row.get::<usize, String>(1),
                 row.get::<usize, String>(2),
