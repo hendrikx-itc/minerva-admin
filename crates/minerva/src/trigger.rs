@@ -173,25 +173,6 @@ async fn create_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: 
     Ok(format!("Added KPI type for trigger '{}'", &trigger.name))
 }
 
-async fn drop_type<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
-    let type_name = format!("{}_kpi", &trigger.name);
-
-    let query = format!(
-        "DROP TYPE IF EXISTS trigger_rule.{}",
-        escape_identifier(&type_name),
-    );
-
-    client
-        .execute(
-            &query,
-            &[],
-        )
-        .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error dropping KPI type: {}", e)))?;
-
-    Ok(format!("Dropped KPI type for trigger '{}'", &trigger.name))
-}
-
 async fn cleanup_rule<T: GenericClient + Sync + Send>(trigger: &Trigger, client: &mut T) -> ChangeResult {
     let query = "SELECT trigger.cleanup_rule(rule) FROM trigger.rule WHERE name = $1";
 
