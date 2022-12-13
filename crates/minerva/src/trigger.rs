@@ -107,6 +107,7 @@ pub async fn list_triggers(
 
 pub struct AddTrigger {
     pub trigger: Trigger,
+    pub verify: bool,
 }
 
 impl fmt::Display for AddTrigger {
@@ -140,9 +141,21 @@ impl GenericChange for AddTrigger {
 
         link_trend_stores(&self.trigger, &mut transaction).await?;
 
+        let mut check_result: String = "No check has run".to_string();
+
+        if self.verify {
+            check_result = run_checks(&self.trigger, &mut transaction).await?;
+        }
+
         transaction.commit().await?;
 
-        Ok(format!("Created trigger '{}'", &self.trigger.name))
+        let message = match self.verify {
+            false => format!("Created trigger '{}'", &self.trigger.name),
+            true => format!("Created trigger '{}': {}", &self.trigger.name, check_result),
+        };
+
+        Ok(message)
+
     }
 }
 

@@ -46,6 +46,12 @@ impl Cmd for TriggerList {
 
 #[derive(Debug, StructOpt)]
 pub struct TriggerCreate {
+    #[structopt(
+        short = "-v",
+        long = "--verify",
+        help = "run verification commands after update"
+    )]
+    verify: bool,
     #[structopt(help = "trigger definition file")]
     definition: PathBuf,
 }
@@ -54,17 +60,16 @@ pub struct TriggerCreate {
 impl Cmd for TriggerCreate {
     async fn run(&self) -> CmdResult {
         let trigger = load_trigger_from_file(&self.definition)?;
-        let trigger_name = trigger.name.clone();
 
         println!("Loaded definition, creating trigger");
 
         let mut client = connect_db().await?;
 
-        let change = AddTrigger { trigger };
+        let change = AddTrigger { trigger, verify: self.verify };
 
-        change.apply(&mut client).await?;
+        let message = change.apply(&mut client).await?;
 
-        println!("Created trigger '{}'", &trigger_name);
+        println!("{message}");
 
         Ok(())
     }

@@ -477,6 +477,7 @@ async fn initialize_triggers(client: &mut Client, triggers: &Vec<Trigger>) {
     for trigger in triggers {
         let change = AddTrigger {
             trigger: trigger.clone(),
+            verify: false,
         };
 
         match change.apply(client).await {
