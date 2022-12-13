@@ -245,7 +245,7 @@ impl Cmd for TrendStoreList {
 
         let mut table = comfy_table::Table::new();
         table.load_preset(comfy_table::presets::UTF8_HORIZONTAL_ONLY);
-        table.set_header(vec!["Name", "Notification Store", "Granularity", "Default Interval"]);
+        table.set_header(vec!["Id", "Data Source", "Entity Type", "Granularity"]);
 
         for trend_store in trend_stores {
             table.add_row(vec![trend_store.0.to_string(), trend_store.1, trend_store.2, trend_store.3]);
