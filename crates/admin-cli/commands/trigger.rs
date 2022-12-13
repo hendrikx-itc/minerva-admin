@@ -49,7 +49,7 @@ pub struct TriggerCreate {
     #[structopt(
         short = "-v",
         long = "--verify",
-        help = "run verification commands after update"
+        help = "run basic verification commands after update"
     )]
     verify: bool,
     #[structopt(help = "trigger definition file")]
@@ -103,7 +103,7 @@ pub struct TriggerUpdate {
     #[structopt(
         short = "-v",
         long = "--verify",
-        help = "run verification commands after update"
+        help = "run basic verification commands after update"
     )]
     verify: bool,
     #[structopt(help = "trigger definition file")]
