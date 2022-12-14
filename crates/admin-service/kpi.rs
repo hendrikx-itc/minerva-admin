@@ -113,7 +113,7 @@ impl KpiRawData {
         for source_trend in self.source_trends.iter() {
             let query_result = client.query_one(&format!("SELECT tsp.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'", source_trend, DEFAULT_GRANULARITY.to_string(), self.entity_type), &[],).await;
             match query_result {
-                Err(e) => {
+                Err(_) => {
                     result = Err(format!("SELECT tsp.name FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.entity_type et ON ts.entity_type_id = et.id WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'", source_trend, DEFAULT_GRANULARITY.to_string(), self.entity_type));
                     errormet = true
                 }

@@ -11,7 +11,7 @@ use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use minerva::error::{ConfigurationError, Error, RuntimeError};
+use minerva::error::{ConfigurationError, Error};
 
 mod trendmaterialization;
 use trendmaterialization::{

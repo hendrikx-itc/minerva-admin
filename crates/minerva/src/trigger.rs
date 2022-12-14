@@ -2,9 +2,10 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use postgres_types::ToSql;
 use serde::{Deserialize, Serialize};
 
-use chrono::{DateTime, Timelike};
+use chrono::{DateTime, Timelike, TimeZone};
 use postgres_protocol::escape::{escape_identifier, escape_literal};
 use tokio_postgres::{Client, GenericClient, Row};
 
@@ -817,7 +818,94 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
 pub async fn load_triggers<T: GenericClient + Send + Sync>(
     conn: &mut T,
 ) -> Result<Vec<Trigger>, Error> {
-    let triggers: Vec<Trigger> = Vec::new();
+    let mut triggers: Vec<Trigger> = Vec::new();
+
+    let query = "SELECT name FROM trigger.rule";
+
+    let rows = conn.query(query, &[]).await.map_err(|e| {
+        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+    })?;
+
+    for row in rows {
+        let name = row.get(0);
+
+        let trigger = load_trigger(conn, name).await?;
+
+        triggers.push(trigger);
+    }
 
     return Ok(triggers);
+}
+
+pub struct CreateNotifications<Tz: TimeZone> {
+    pub trigger_name: String,
+    pub timestamp: Option<DateTime<Tz>>,
+}
+
+impl<Tz: TimeZone> fmt::Display for CreateNotifications<Tz> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CreateNotifications({})", &self.trigger_name)
+    }
+}
+
+#[async_trait]
+impl<Tz> GenericChange for CreateNotifications<Tz> where Tz: TimeZone, <Tz as TimeZone>::Offset: Sync + Send, DateTime<Tz>: ToSql{
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        let message = create_notifications(&mut transaction, &self.trigger_name, self.timestamp.clone()).await?;
+
+        Ok(message)
+    }
+}
+
+#[async_trait]
+impl<Tz> Change for CreateNotifications<Tz> where Tz: TimeZone + Sync + Send, <Tz as TimeZone>::Offset: Sync + Send, DateTime<Tz>: ToSql {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub async fn create_notifications<T: GenericClient + Send + Sync, Ts: ToSql + Send + Sync>(
+    conn: &mut T,
+    name: &str,
+    timestamp: Option<Ts>,
+) -> Result<String, Error> where Ts: ToSql {
+
+    let name_string = String::from(name);
+
+    let notification_count: i32 = match timestamp {
+        None => {
+            let query = String::from("SELECT trigger.create_notifications($1::name)");
+
+            let row = conn
+                .query_one(
+                    &query,
+                    &[&name_string],
+                )
+                .await
+                .map_err(|e| {
+                    DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
+                })?;
+
+            row.try_get(0)?
+        },
+        Some(t) => {
+            let query = String::from("SELECT trigger.create_notifications($1::name, $2::timestamptz)");
+
+            let row = conn
+                .query_one(
+                    &query,
+                    &[&name_string, &t],
+                )
+                .await
+                .map_err(|e| {
+                    DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
+                })?;
+
+            row.try_get(0)?
+        }
+    };
+
+    Ok(format!("Created {notification_count} notifications for trigger '{name}'"))
 }

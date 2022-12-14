@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Local};
 use structopt::StructOpt;
 
 use comfy_table::Table;
@@ -8,7 +9,7 @@ use comfy_table::Table;
 use minerva::change::Change;
 use minerva::error::DatabaseError;
 use minerva::trigger::{
-    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTrigger, VerifyTrigger
+    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTrigger, VerifyTrigger, CreateNotifications
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -154,6 +155,32 @@ impl Cmd for TriggerVerify {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TriggerCreateNotifications {
+    #[structopt(long="timestamp", help = "timestamp")]
+    timestamp: Option<DateTime<Local>>,
+    #[structopt(help = "trigger name")]
+    name: String,
+}
+
+#[async_trait]
+impl Cmd for TriggerCreateNotifications {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let change = CreateNotifications {
+            trigger_name: self.name.clone(),
+            timestamp: self.timestamp.clone(),
+        };
+
+        let message = change.apply(&mut client).await?;
+
+        println!("{message}");
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TriggerOpt {
     #[structopt(about = "list configured triggers")]
     List(TriggerList),
@@ -165,6 +192,8 @@ pub enum TriggerOpt {
     Update(TriggerUpdate),
     #[structopt(about = "run basic verification on a trigger")]
     Verify(TriggerVerify),
+    #[structopt(about = "create notifications of a trigger")]
+    CreateNotifications(TriggerCreateNotifications),
 }
 
 impl TriggerOpt {
@@ -175,6 +204,7 @@ impl TriggerOpt {
             TriggerOpt::Delete(delete) => delete.run().await,
             TriggerOpt::Update(update) => update.run().await,
             TriggerOpt::Verify(verify) => verify.run().await,
+            TriggerOpt::CreateNotifications(create_notifications) => create_notifications.run().await,
         }
     }
 }
