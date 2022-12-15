@@ -70,7 +70,7 @@ impl fmt::Display for Trigger {
 
 pub async fn list_triggers(
     conn: &mut Client,
-) -> Result<Vec<(String, String, String, String)>, String> {
+) -> Result<Vec<(String, String, String, String, bool)>, String> {
     let query = concat!(
         "SELECT name, ns::text, granularity::text, default_interval::text, enabled ",
         "FROM trigger.rule ",
@@ -79,7 +79,7 @@ pub async fn list_triggers(
 
     let result = conn.query(query, &[]).await.unwrap();
 
-    let triggers: Result<Vec<(String, String, String, String)>, String> = result
+    let triggers: Result<Vec<(String, String, String, String, bool)>, String> = result
         .into_iter()
         .map(|row: Row| {
             let name: String = row
@@ -94,12 +94,16 @@ pub async fn list_triggers(
             let default_interval: Option<String> = row
                 .try_get(3)
                 .map_err(|e| format!("could not retrieve default interval: {}", e))?;
+            let enabled: bool = row
+                .try_get(4)
+                .map_err(|e| format!("could not retrieve enabled: {}", e))?;
 
             let trigger_row = (
                 name,
                 notification_store.unwrap_or("UNDEFINED".into()),
                 granularity.unwrap_or("UNDEFINED".into()),
                 default_interval.unwrap_or("UNDEFINED".into()),
+                enabled,
             );
             Ok(trigger_row)
         })
@@ -111,6 +115,7 @@ pub async fn list_triggers(
 pub struct AddTrigger {
     pub trigger: Trigger,
     pub verify: bool,
+    pub enable: bool,
 }
 
 impl fmt::Display for AddTrigger {
@@ -143,6 +148,8 @@ impl GenericChange for AddTrigger {
         create_mapping_functions(&self.trigger, &mut transaction).await?;
 
         link_trend_stores(&self.trigger, &mut transaction).await?;
+
+        set_enabled(&mut transaction, &self.trigger.name, self.enable).await?;
 
         let mut check_result: String = "No check has run".to_string();
 
@@ -491,6 +498,31 @@ async fn link_trend_stores<T: GenericClient + Sync + Send>(
     ))
 }
 
+async fn set_enabled<T: GenericClient + Sync + Send>(
+    client: &mut T,
+    trigger_name: &str,
+    enabled: bool,
+) -> ChangeResult {
+    let query = "UPDATE trigger.rule SET enabled = $1 WHERE name = $2";
+
+    client
+        .execute(
+            query,
+            &[
+                &enabled,
+                &trigger_name,
+            ],
+        )
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting enabled state of trigger '{}': {}", trigger_name, e)))?;
+
+    Ok(format!(
+        "Set enabled state of trigger '{}' to '{}'",
+        trigger_name,
+        enabled,
+    ))
+}
+
 /// Truncate a reference timestamp to the nearest timestamp for a specified granularity.
 fn truncate_timestamp_for_granularity<Tz>(
     granularity: Duration,
@@ -778,6 +810,66 @@ impl GenericChange for VerifyTrigger {
 
 #[async_trait]
 impl Change for VerifyTrigger {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub struct EnableTrigger {
+    pub trigger_name: String,
+}
+
+impl fmt::Display for EnableTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EnableTrigger({})", &self.trigger_name)
+    }
+}
+
+#[async_trait]
+impl GenericChange for EnableTrigger {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        let message = set_enabled(&mut transaction, &self.trigger_name, true).await?;
+
+        transaction.commit().await?;
+
+        Ok(message)
+    }
+}
+
+#[async_trait]
+impl Change for EnableTrigger {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub struct DisableTrigger {
+    pub trigger_name: String,
+}
+
+impl fmt::Display for DisableTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DisableTrigger({})", &self.trigger_name)
+    }
+}
+
+#[async_trait]
+impl GenericChange for DisableTrigger {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        let message = set_enabled(&mut transaction, &self.trigger_name, false).await?;
+
+        transaction.commit().await?;
+
+        Ok(message)
+    }
+}
+
+#[async_trait]
+impl Change for DisableTrigger {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.generic_apply(client).await
     }
