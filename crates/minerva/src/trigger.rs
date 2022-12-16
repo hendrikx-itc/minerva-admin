@@ -963,41 +963,37 @@ pub async fn create_notifications<T: GenericClient + Send + Sync, Ts: ToSql + Se
     name: &str,
     timestamp: Option<Ts>,
 ) -> Result<String, Error> where Ts: ToSql {
+    let outer_t: Ts;
 
-    let name_string = String::from(name);
-
-    let notification_count: i32 = match timestamp {
+    let (query, query_args) = match timestamp {
         None => {
             let query = String::from("SELECT trigger.create_notifications($1::name)");
 
-            let row = conn
-                .query_one(
-                    &query,
-                    &[&name_string],
-                )
-                .await
-                .map_err(|e| {
-                    DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
-                })?;
+            let query_args = vec![&name as &(dyn ToSql + Sync)];
 
-            row.try_get(0)?
+            (query, query_args)
         },
         Some(t) => {
+            outer_t = t;
             let query = String::from("SELECT trigger.create_notifications($1::name, $2::timestamptz)");
 
-            let row = conn
-                .query_one(
-                    &query,
-                    &[&name_string, &t],
-                )
-                .await
-                .map_err(|e| {
-                    DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
-                })?;
+            let query_args = vec![&name as &(dyn ToSql + Sync), &outer_t as &(dyn ToSql + Sync)];
 
-            row.try_get(0)?
+            (query, query_args)
         }
     };
+
+    let row = conn
+        .query_one(
+            &query,
+            query_args.iter().as_slice(),
+        )
+        .await
+        .map_err(|e| {
+            DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
+        })?;
+
+    let notification_count: i32 = row.try_get(0)?;
 
     Ok(format!("Created {notification_count} notifications for trigger '{name}'"))
 }
