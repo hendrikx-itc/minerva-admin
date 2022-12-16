@@ -3,7 +3,7 @@ use std::env;
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 
-use tokio_postgres::{Config, config::SslMode};
+use tokio_postgres::{config::SslMode, Config};
 
 use bb8;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
@@ -44,7 +44,6 @@ mod error;
 
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
 static ENV_PORT: &str = "SERVICE_PORT";
-
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -148,7 +147,6 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-
 fn get_db_config() -> Result<Config, Error> {
     let config = match env::var(ENV_DB_CONN) {
         Ok(value) => Config::new().options(&value).clone(),
@@ -163,7 +161,11 @@ fn get_db_config() -> Result<Config, Error> {
                 "disable" => SslMode::Disable,
                 "prefer" => SslMode::Prefer,
                 "require" => SslMode::Require,
-                _ => return Err(Error::Configuration(ConfigurationError { msg: format!("Unsupported SSL mode '{}'", &env_sslmode) }))
+                _ => {
+                    return Err(Error::Configuration(ConfigurationError {
+                        msg: format!("Unsupported SSL mode '{}'", &env_sslmode),
+                    }))
+                }
             };
 
             let config = config
@@ -189,11 +191,10 @@ async fn connect_db() -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Err
     connect_to_db(&get_db_config()?).await
 }
 
-async fn connect_to_db(config: &Config) -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
-    let manager = PostgresConnectionManager::new(
-        config.clone(),
-        NoTls,
-    );
+async fn connect_to_db(
+    config: &Config,
+) -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
+    let manager = PostgresConnectionManager::new(config.clone(), NoTls);
     let pool = bb8::Pool::builder().build(manager).await.unwrap();
 
     Ok(pool)

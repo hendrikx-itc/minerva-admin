@@ -4,7 +4,7 @@ use std::time::Duration;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{get, post, delete, put, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

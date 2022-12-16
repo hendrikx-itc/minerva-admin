@@ -8,7 +8,7 @@ use utoipa::ToSchema;
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{get, post, put, delete, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
 
 use serde_json::json;
 use tokio_postgres::GenericClient;
@@ -162,7 +162,7 @@ impl KpiRawData {
                 code: 404,
                 message: e,
             }),
-            Ok(implementedkpi) => implementedkpi.create(client).await
+            Ok(implementedkpi) => implementedkpi.create(client).await,
         }
     }
 }
@@ -284,11 +284,21 @@ impl KpiImplementedData {
                 Ok(_) => {
                     let query_result = kpi.materialization.create(client).await;
                     match query_result {
-                        Err(e) => result = Err(Error{code: e.code, message: e.message}),
+                        Err(e) => {
+                            result = Err(Error {
+                                code: e.code,
+                                message: e.message,
+                            })
+                        }
                         Ok(_) => {}
                     }
                 }
-                Err(e) => result = Err(Error{code: e.code, message: e.message})
+                Err(e) => {
+                    result = Err(Error {
+                        code: e.code,
+                        message: e.message,
+                    })
+                }
             }
         }
         result
@@ -458,7 +468,7 @@ pub(super) async fn post_kpi(
                     code: 500,
                     message: e.to_string(),
                 }),
-		Ok(mut client) => {
+                Ok(mut client) => {
                     let transaction_query = client.transaction().await;
                     match transaction_query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
@@ -469,24 +479,24 @@ pub(super) async fn post_kpi(
                             let mut result = data.create(&mut transaction).await;
                             match result {
                                 Ok(_) => {
-				    let commission = transaction.commit().await;
+                                    let commission = transaction.commit().await;
                                     match commission {
                                         Err(e2) => {
                                             result = Err(Error {
                                                 code: 500,
                                                 message: e2.to_string(),
                                             })
-                                        },
-				    	Ok(_) => {}
-				    }
-				},
-				Err(_) => {}
-			    };
-			    match result {
-				Ok(e) => HttpResponse::Ok().json(Success {
-					code: 200,
-					message: e,
-				}),
+                                        }
+                                        Ok(_) => {}
+                                    }
+                                }
+                                Err(_) => {}
+                            };
+                            match result {
+                                Ok(e) => HttpResponse::Ok().json(Success {
+                                    code: 200,
+                                    message: e,
+                                }),
                                 Err(Error {
                                     code: 409,
                                     message: e,
@@ -506,7 +516,7 @@ pub(super) async fn post_kpi(
                     }
                 }
             }
-	}
+        }
     }
 }
 
@@ -579,7 +589,7 @@ pub(super) async fn update_kpi(
                                                 code: 500,
                                                 message: e.to_string(),
                                             })
-                                        },
+                                        }
                                         Ok(_) => {}
                                     }
                                 }

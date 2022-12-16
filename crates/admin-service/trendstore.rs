@@ -9,7 +9,7 @@ use tokio_postgres::GenericClient;
 use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse, Responder};
 
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 
 use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
@@ -1169,16 +1169,16 @@ pub(super) async fn get_trends_by_entity_type(
                 }),
                 Ok(query_result) => {
                     let mut lastname: String = "".to_string();
-		    let mut skip: bool = false;
+                    let mut skip: bool = false;
                     for row in query_result {
                         let name: String = row.get(0);
                         if name == lastname {
-			    skip = true;
+                            skip = true;
                         } else {
                             if !skip {
                                 m.push(lastname)
                             };
-			    skip = false;
+                            skip = false;
                             lastname = name;
                         }
                     }

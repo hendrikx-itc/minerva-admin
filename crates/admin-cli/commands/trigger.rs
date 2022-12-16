@@ -9,7 +9,9 @@ use comfy_table::Table;
 use minerva::change::Change;
 use minerva::error::DatabaseError;
 use minerva::trigger::{
-    list_triggers, load_trigger_from_file, AddTrigger, DeleteTrigger, UpdateTrigger, VerifyTrigger, CreateNotifications, EnableTrigger, DisableTrigger
+    dump_trigger, list_triggers, load_trigger, load_trigger_from_file, AddTrigger,
+    CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, UpdateTrigger,
+    VerifyTrigger,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -37,7 +39,13 @@ impl Cmd for TriggerList {
             "Enabled",
         ]);
         for trigger in triggers {
-            table.add_row(vec![trigger.0, trigger.1, trigger.2, trigger.3, trigger.4.to_string()]);
+            table.add_row(vec![
+                trigger.0,
+                trigger.1,
+                trigger.2,
+                trigger.3,
+                trigger.4.to_string(),
+            ]);
         }
 
         println!("{table}");
@@ -54,10 +62,7 @@ pub struct TriggerCreate {
         help = "run basic verification commands after creation"
     )]
     verify: bool,
-    #[structopt(
-        long = "--enable",
-        help = "enable the trigger after creation"
-    )]
+    #[structopt(long = "--enable", help = "enable the trigger after creation")]
     enable: bool,
     #[structopt(help = "trigger definition file")]
     definition: PathBuf,
@@ -72,7 +77,11 @@ impl Cmd for TriggerCreate {
 
         let mut client = connect_db().await?;
 
-        let change = AddTrigger { trigger, verify: self.verify, enable: self.enable };
+        let change = AddTrigger {
+            trigger,
+            verify: self.verify,
+            enable: self.enable,
+        };
 
         let message = change.apply(&mut client).await?;
 
@@ -206,10 +215,9 @@ impl Cmd for TriggerDisable {
     }
 }
 
-
 #[derive(Debug, StructOpt)]
 pub struct TriggerCreateNotifications {
-    #[structopt(long="timestamp", help = "timestamp")]
+    #[structopt(long = "timestamp", help = "timestamp")]
     timestamp: Option<DateTime<Local>>,
     #[structopt(help = "trigger name")]
     name: String,
@@ -234,6 +242,27 @@ impl Cmd for TriggerCreateNotifications {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TriggerDump {
+    #[structopt(help = "trigger name")]
+    name: String,
+}
+
+#[async_trait]
+impl Cmd for TriggerDump {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let trigger = load_trigger(&mut client, &self.name).await?;
+
+        let trigger_definition = dump_trigger(&trigger);
+
+        println!("{trigger_definition}");
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TriggerOpt {
     #[structopt(about = "list configured triggers")]
     List(TriggerList),
@@ -247,6 +276,8 @@ pub enum TriggerOpt {
     Disable(TriggerDisable),
     #[structopt(about = "disable a trigger")]
     Update(TriggerUpdate),
+    #[structopt(about = "dump a trigger definition")]
+    Dump(TriggerDump),
     #[structopt(about = "run basic verification on a trigger")]
     Verify(TriggerVerify),
     #[structopt(about = "create notifications of a trigger")]
@@ -262,8 +293,11 @@ impl TriggerOpt {
             TriggerOpt::Enable(enable) => enable.run().await,
             TriggerOpt::Disable(disable) => disable.run().await,
             TriggerOpt::Update(update) => update.run().await,
+            TriggerOpt::Dump(dump) => dump.run().await,
             TriggerOpt::Verify(verify) => verify.run().await,
-            TriggerOpt::CreateNotifications(create_notifications) => create_notifications.run().await,
+            TriggerOpt::CreateNotifications(create_notifications) => {
+                create_notifications.run().await
+            }
         }
     }
 }

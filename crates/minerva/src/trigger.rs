@@ -1,11 +1,12 @@
 use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::Duration;
 
 use postgres_types::ToSql;
 use serde::{Deserialize, Serialize};
 
-use chrono::{DateTime, Timelike, TimeZone};
+use chrono::{DateTime, TimeZone, Timelike};
 use postgres_protocol::escape::{escape_identifier, escape_literal};
 use tokio_postgres::{Client, GenericClient, Row};
 
@@ -165,7 +166,6 @@ impl GenericChange for AddTrigger {
         };
 
         Ok(message)
-
     }
 }
 
@@ -506,20 +506,18 @@ async fn set_enabled<T: GenericClient + Sync + Send>(
     let query = "UPDATE trigger.rule SET enabled = $1 WHERE name = $2";
 
     client
-        .execute(
-            query,
-            &[
-                &enabled,
-                &trigger_name,
-            ],
-        )
+        .execute(query, &[&enabled, &trigger_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting enabled state of trigger '{}': {}", trigger_name, e)))?;
+        .map_err(|e| {
+            DatabaseError::from_msg(format!(
+                "Error setting enabled state of trigger '{}': {}",
+                trigger_name, e
+            ))
+        })?;
 
     Ok(format!(
         "Set enabled state of trigger '{}' to '{}'",
-        trigger_name,
-        enabled,
+        trigger_name, enabled,
     ))
 }
 
@@ -596,7 +594,8 @@ async fn run_checks<T: GenericClient + Sync + Send>(
 
     let reference_timestamp = chrono::offset::Local::now();
 
-    let check_timestamp = truncate_timestamp_for_granularity(trigger.granularity, &reference_timestamp)?;
+    let check_timestamp =
+        truncate_timestamp_for_granularity(trigger.granularity, &reference_timestamp)?;
 
     client
         .execute(&query, &[&check_timestamp])
@@ -879,31 +878,85 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
     conn: &mut T,
     name: &str,
 ) -> Result<Trigger, Error> {
-    let query = "SELECT name, granularity::text FROM trigger.rule WHERE name = $1";
+    let query = concat!(
+        "SELECT name, granularity::text, ns::text ",
+        "FROM trigger.rule ",
+        "LEFT JOIN notification_directory.notification_store ns ON ns.id = notification_store_id ",
+        "WHERE name = $1"
+    );
 
-    let row = conn.query_one(query, &[&String::from(name)]).await.map_err(|e| {
-        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+    let row = conn
+        .query_one(query, &[&String::from(name)])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load trigger: {}", e)))?;
+
+    let granularity_str: String = row.try_get(1)?;
+
+    let granularity = parse_interval(&granularity_str).map_err(|e| {
+        Error::Runtime(RuntimeError::from_msg(format!(
+            "Could not parse granularity '{}': {}",
+            granularity_str, e
+        )))
     })?;
 
-    let granularity_str: String = row.get(1);
+    let notification_store: Option<String> = row.try_get(2)?;
 
-    let granularity = parse_interval(&granularity_str).unwrap();
+    let kpi_data_columns = load_kpi_data_columns(conn, &name).await?;
+
+    let kpi_function_source =
+        load_function_src(conn, "trigger_rule", &format!("{}_kpi", &name)).await?;
+
+    let notification_function_source = load_function_src(
+        conn,
+        "trigger_rule",
+        &format!("{}_notification_message", &name),
+    )
+    .await?;
+
+    let data_function_source = load_function_src(
+        conn,
+        "trigger_rule",
+        &format!("{}_notification_data", &name),
+    )
+    .await?;
+
+    let condition_function_source = load_function_src(conn, "trigger_rule", &name).await?;
+
+    let condition_regex = regex::Regex::from_str(r".*\(\$1\) WHERE (.*);[ ]*$").unwrap();
+
+    let captures = condition_regex
+        .captures(&condition_function_source)
+        .unwrap();
+
+    let condition = captures.get(1).unwrap().as_str();
+
+    let weight_function_source =
+        load_function_src(conn, "trigger_rule", &format!("{}_weight", &name)).await?;
+
+    let thresholds = load_thresholds(conn, &name).await?;
+
+    let tags = load_tags(conn, &name).await?;
+
+    let fingerprint_function_source =
+        load_function_src(conn, "trigger_rule", &format!("{}_fingerprint", &name)).await?;
+
+    let trend_store_links = load_trend_store_links(conn, &name).await?;
 
     Ok(Trigger {
         name: String::from(name),
-        condition: String::from(""),
-        data: String::from(""),
-        fingerprint: String::from(""),
+        condition: condition.into(),
+        data: data_function_source,
+        fingerprint: fingerprint_function_source,
         granularity: granularity,
-        kpi_data: Vec::<KPIDataColumn>::new(),
-        kpi_function: String::from(""),
+        kpi_data: kpi_data_columns,
+        kpi_function: kpi_function_source,
         mapping_functions: Vec::<MappingFunction>::new(),
-        notification: String::from(""),
-        notification_store: String::from(""),
-        tags: Vec::<String>::new(),
-        thresholds: Vec::<Threshold>::new(),
-        trend_store_links: Vec::<TrendStoreLink>::new(),
-        weight: String::from(""),
+        notification: notification_function_source,
+        notification_store: notification_store.unwrap_or("UNDEFINED".into()),
+        tags: tags,
+        thresholds: thresholds,
+        trend_store_links: trend_store_links,
+        weight: weight_function_source,
     })
 }
 
@@ -941,18 +994,30 @@ impl<Tz: TimeZone> fmt::Display for CreateNotifications<Tz> {
 }
 
 #[async_trait]
-impl<Tz> GenericChange for CreateNotifications<Tz> where Tz: TimeZone, <Tz as TimeZone>::Offset: Sync + Send, DateTime<Tz>: ToSql{
+impl<Tz> GenericChange for CreateNotifications<Tz>
+where
+    Tz: TimeZone,
+    <Tz as TimeZone>::Offset: Sync + Send,
+    DateTime<Tz>: ToSql,
+{
     async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
         let mut transaction = client.transaction().await?;
 
-        let message = create_notifications(&mut transaction, &self.trigger_name, self.timestamp.clone()).await?;
+        let message =
+            create_notifications(&mut transaction, &self.trigger_name, self.timestamp.clone())
+                .await?;
 
         Ok(message)
     }
 }
 
 #[async_trait]
-impl<Tz> Change for CreateNotifications<Tz> where Tz: TimeZone + Sync + Send, <Tz as TimeZone>::Offset: Sync + Send, DateTime<Tz>: ToSql {
+impl<Tz> Change for CreateNotifications<Tz>
+where
+    Tz: TimeZone + Sync + Send,
+    <Tz as TimeZone>::Offset: Sync + Send,
+    DateTime<Tz>: ToSql,
+{
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.generic_apply(client).await
     }
@@ -962,7 +1027,10 @@ pub async fn create_notifications<T: GenericClient + Send + Sync, Ts: ToSql + Se
     conn: &mut T,
     name: &str,
     timestamp: Option<Ts>,
-) -> Result<String, Error> where Ts: ToSql {
+) -> Result<String, Error>
+where
+    Ts: ToSql,
+{
     let outer_t: Ts;
 
     let (query, query_args) = match timestamp {
@@ -972,22 +1040,23 @@ pub async fn create_notifications<T: GenericClient + Send + Sync, Ts: ToSql + Se
             let query_args = vec![&name as &(dyn ToSql + Sync)];
 
             (query, query_args)
-        },
+        }
         Some(t) => {
             outer_t = t;
-            let query = String::from("SELECT trigger.create_notifications($1::name, $2::timestamptz)");
+            let query =
+                String::from("SELECT trigger.create_notifications($1::name, $2::timestamptz)");
 
-            let query_args = vec![&name as &(dyn ToSql + Sync), &outer_t as &(dyn ToSql + Sync)];
+            let query_args = vec![
+                &name as &(dyn ToSql + Sync),
+                &outer_t as &(dyn ToSql + Sync),
+            ];
 
             (query, query_args)
         }
     };
 
     let row = conn
-        .query_one(
-            &query,
-            query_args.iter().as_slice(),
-        )
+        .query_one(&query, query_args.iter().as_slice())
         .await
         .map_err(|e| {
             DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
@@ -995,5 +1064,157 @@ pub async fn create_notifications<T: GenericClient + Send + Sync, Ts: ToSql + Se
 
     let notification_count: i32 = row.try_get(0)?;
 
-    Ok(format!("Created {notification_count} notifications for trigger '{name}'"))
+    Ok(format!(
+        "Created {notification_count} notifications for trigger '{name}'"
+    ))
+}
+
+async fn load_kpi_data_columns<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+    trigger_name: &str,
+) -> Result<Vec<KPIDataColumn>, Error> {
+    let type_name = format!("{}_kpi", trigger_name);
+
+    let query = concat!(
+        "select attname, typname ",
+        "from pg_class c join pg_attribute a on attrelid = c.oid ",
+        "join pg_type t on t.oid = atttypid ",
+        "where relname = $1 and attname not in ('timestamp', 'entity_id')"
+    );
+
+    let rows = conn
+        .query(query, &[&type_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {}", e)))?;
+
+    let kpi_data_columns = rows
+        .iter()
+        .map(|row| KPIDataColumn {
+            name: row.get(0),
+            data_type: row.get(1),
+        })
+        .collect();
+
+    Ok(kpi_data_columns)
+}
+
+/// Load the tags linked to a trigger
+async fn load_tags<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+    trigger_name: &str,
+) -> Result<Vec<String>, Error> {
+    let query = concat!(
+        "select tag.name ",
+        "from trigger.rule ",
+        "join trigger.rule_tag_link rtl on rtl.rule_id = rule.id ",
+        "join directory.tag on tag.id = rtl.tag_id ",
+        "where rule.name = $1"
+    );
+
+    let rows = conn
+        .query(query, &[&trigger_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {}", e)))?;
+
+    let tags = rows.iter().map(|row| row.get(0)).collect();
+
+    Ok(tags)
+}
+
+async fn load_trend_store_links<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+    trigger_name: &str,
+) -> Result<Vec<TrendStoreLink>, Error> {
+    let query = concat!(
+        "select tsp.name, timestamp_mapping_func::text ",
+        "from trigger.rule ",
+        "join trigger.rule_trend_store_link rtsl on rtsl.rule_id = rule.id ",
+        "join trend_directory.trend_store_part tsp on tsp.id = rtsl.trend_store_part_id ",
+        "where rule.name = $1"
+    );
+
+    let rows = conn
+        .query(query, &[&trigger_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {}", e)))?;
+
+    let trend_store_links = rows
+        .iter()
+        .map(|row| TrendStoreLink {
+            part_name: row.get(0),
+            mapping_function: row.get(1),
+        })
+        .collect();
+
+    Ok(trend_store_links)
+}
+
+async fn load_function_src<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+    namespace: &str,
+    function_name: &str,
+) -> Result<String, Error> {
+    let query = concat!(
+        "select prosrc from pg_proc ",
+        "join pg_namespace ns on ns.oid = pronamespace ",
+        "where nspname = $1 and proname = $2",
+    );
+
+    let row = conn
+        .query_one(query, &[&namespace, &function_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load function source: {}", e)))?;
+
+    let function_source = row.get(0);
+
+    Ok(function_source)
+}
+
+async fn load_thresholds<T: GenericClient + Send + Sync>(
+    conn: &mut T,
+    trigger_name: &str,
+) -> Result<Vec<Threshold>, Error> {
+    let view_name = format!("{}_threshold", trigger_name);
+
+    let query = concat!(
+        "select attname, typname ",
+        "from pg_class c join pg_attribute a on attrelid = c.oid ",
+        "join pg_type t on t.oid = atttypid ",
+        "where relname = $1"
+    );
+
+    let rows = conn
+        .query(query, &[&view_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {}", e)))?;
+
+    let values_query = format!(
+        "SELECT {} FROM trigger_rule.{}",
+        rows.iter()
+            .map(|row| format!("{}::text", escape_identifier(row.get(0))))
+            .collect::<Vec<String>>()
+            .join(","),
+        escape_identifier(&view_name),
+    );
+
+    let values_row = conn
+        .query_one(&values_query, &[])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {}", e)))?;
+
+    let thresholds = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| Threshold {
+            name: row.get(0),
+            data_type: row.get(1),
+            value: values_row.get(index),
+        })
+        .collect();
+
+    Ok(thresholds)
+}
+
+pub fn dump_trigger(trigger: &Trigger) -> String {
+    serde_json::to_string_pretty(trigger).unwrap()
 }
