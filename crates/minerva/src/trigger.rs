@@ -220,15 +220,15 @@ async fn cleanup_rule<T: GenericClient + Sync + Send>(
     Ok(format!("Cleaned up rule for trigger '{}'", &trigger.name))
 }
 
-async fn rename_trigger<T: GenericClient + Sync + Send>(trigger: &Trigger, new_name: &str, client: &mut T) -> ChangeResult {
+async fn rename_trigger<T: GenericClient + Sync + Send>(trigger: &Trigger, old_name: &str, client: &mut T) -> ChangeResult {
     let query = "UPDATE trigger.rule SET name = $1 WHERE name = $2";
 
     client
-        .execute(query, &[&new_name, &trigger.name])
+        .execute(query, &[&trigger.name, &old_name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error renaming trigger: {}", e)))?;
 
-    Ok(format!("Renamed trigger '{}' to '{}'", &trigger.name, &new_name))
+    Ok(format!("Renamed trigger '{}' to '{}'", &old_name, &trigger.name))
 }
 
 async fn create_kpi_function<T: GenericClient + Sync + Send>(
@@ -592,6 +592,21 @@ where
     }
 }
 
+async fn trigger_exists<T: GenericClient + Sync + Send>(
+    trigger_name: &str,
+    client: &mut T,
+) -> Result<bool, Error> {
+    let query = "SELECT EXISTS (SELECT * FROM trigger.rule WHERE name = $1)";
+    let row = client
+        .query_one(query, &[&trigger_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error running check: {}", e)))?;
+
+    let result: bool = row.get(0);
+
+    Ok(result)
+}
+
 async fn run_checks<T: GenericClient + Sync + Send>(
     trigger_name: &str,
     client: &mut T,
@@ -801,7 +816,7 @@ impl Change for UpdateTrigger {
 pub struct RenameTrigger {
     pub trigger: Trigger,
     pub verify: bool,
-    pub new_name: String,
+    pub old_name: String,
 }
 
 impl fmt::Display for RenameTrigger {
@@ -815,52 +830,56 @@ impl GenericChange for RenameTrigger {
     async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
         let mut transaction = client.transaction().await?;
 
+        if !trigger_exists(&self.old_name, &mut transaction).await? {
+            return Err(Error::Runtime(RuntimeError::from_msg(format!("No trigger with name '{}'", &self.old_name))))
+        }
+
+        let mut old_trigger = self.trigger.clone();
+
+        old_trigger.name = self.old_name.clone();
+
         // Tear down
-        drop_notification_data_function(&self.trigger, &mut transaction).await?;
+        drop_notification_data_function(&old_trigger, &mut transaction).await?;
 
-        unlink_trend_stores(&self.trigger, &mut transaction).await?;
+        unlink_trend_stores(&old_trigger, &mut transaction).await?;
 
-        cleanup_rule(&self.trigger, &mut transaction).await?;
+        cleanup_rule(&old_trigger, &mut transaction).await?;
 
-        rename_trigger(&self.trigger, &self.new_name, &mut transaction).await?;
-
-        let mut renamed_trigger = self.trigger.clone();
-
-        renamed_trigger.name = self.new_name.clone();
+        rename_trigger(&self.trigger, &self.old_name, &mut transaction).await?;
 
         // Build up
 
-        create_type(&renamed_trigger, &mut transaction).await?;
+        create_type(&self.trigger, &mut transaction).await?;
 
-        create_kpi_function(&renamed_trigger, &mut transaction).await?;
+        create_kpi_function(&self.trigger, &mut transaction).await?;
 
-        setup_rule(&renamed_trigger, &mut transaction).await?;
+        setup_rule(&self.trigger, &mut transaction).await?;
 
-        set_weight(&renamed_trigger, &mut transaction).await?;
+        set_weight(&self.trigger, &mut transaction).await?;
 
-        set_thresholds(&renamed_trigger, &mut transaction).await?;
+        set_thresholds(&self.trigger, &mut transaction).await?;
 
-        set_condition(&renamed_trigger, &mut transaction).await?;
+        set_condition(&self.trigger, &mut transaction).await?;
 
-        define_notification_message(&renamed_trigger, &mut transaction).await?;
+        define_notification_message(&self.trigger, &mut transaction).await?;
 
-        define_notification_data(&renamed_trigger, &mut transaction).await?;
+        define_notification_data(&self.trigger, &mut transaction).await?;
 
-        create_mapping_functions(&renamed_trigger, &mut transaction).await?;
+        create_mapping_functions(&self.trigger, &mut transaction).await?;
 
-        link_trend_stores(&renamed_trigger, &mut transaction).await?;
+        link_trend_stores(&self.trigger, &mut transaction).await?;
 
         let mut check_result: String = "No check has run".to_string();
 
         if self.verify {
-            check_result = run_checks(&renamed_trigger.name, &mut transaction).await?;
+            check_result = run_checks(&self.trigger.name, &mut transaction).await?;
         }
 
         transaction.commit().await?;
 
         let message = match self.verify {
-            false => format!("Renamed trigger '{}' to '{}'\n!!! Don't forget to update the definition occordingly !!!", &self.trigger.name, &self.new_name),
-            true => format!("Renamed trigger '{}' to '{}': {}\n!!! Don't forget to update the definition occordingly !!!", &self.trigger.name, &self.new_name, check_result),
+            false => format!("Renamed trigger '{}' to '{}'", &self.old_name, &self.trigger.name),
+            true => format!("Renamed trigger '{}' to '{}': {}", &self.old_name, &self.trigger.name, check_result),
         };
 
         Ok(message)

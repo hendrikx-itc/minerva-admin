@@ -7,7 +7,7 @@ use structopt::StructOpt;
 use comfy_table::Table;
 
 use minerva::change::Change;
-use minerva::error::DatabaseError;
+use minerva::error::{Error, DatabaseError, RuntimeError};
 use minerva::trigger::{
     dump_trigger, list_triggers, load_trigger, load_trigger_from_file, AddTrigger,
     CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, UpdateTrigger, RenameTrigger,
@@ -154,10 +154,10 @@ pub struct TriggerRename {
         help = "run basic verification commands after rename"
     )]
     verify: bool,
-    #[structopt(help = "trigger definition file")]
+    #[structopt(help = "renamed trigger definition file")]
     definition: PathBuf,
-    #[structopt(help = "new trigger name")]
-    new_name: String,
+    #[structopt(help = "old trigger name")]
+    old_name: String,
 }
 
 #[async_trait]
@@ -165,12 +165,16 @@ impl Cmd for TriggerRename {
     async fn run(&self) -> CmdResult {
         let trigger = load_trigger_from_file(&self.definition)?;
 
+        if trigger.name == self.old_name {
+            return Err(Error::Runtime(RuntimeError::from_msg(format!("Old name is the same as new name: '{}' = '{}'", &self.old_name, &trigger.name))))
+        }
+
         let mut client = connect_db().await?;
 
         let change = RenameTrigger {
             trigger,
             verify: self.verify,
-            new_name: self.new_name.clone(),
+            old_name: self.old_name.clone(),
         };
 
         let message = change.apply(&mut client).await?;
