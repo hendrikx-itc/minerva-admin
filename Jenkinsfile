@@ -5,6 +5,13 @@ pipeline {
         }
     }
     stages {
+        stage ('clean') {
+            steps {
+                script {
+                    sh 'rm -rf target/debian'
+                }
+            }
+        }
         stage ('build-minerva-service') {
             agent {
                 dockerfile {
