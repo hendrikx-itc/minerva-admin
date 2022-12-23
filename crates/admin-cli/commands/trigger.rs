@@ -10,7 +10,7 @@ use minerva::change::Change;
 use minerva::error::DatabaseError;
 use minerva::trigger::{
     dump_trigger, list_triggers, load_trigger, load_trigger_from_file, AddTrigger,
-    CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, UpdateTrigger,
+    CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, UpdateTrigger, RenameTrigger,
     VerifyTrigger,
 };
 
@@ -136,6 +136,41 @@ impl Cmd for TriggerUpdate {
         let change = UpdateTrigger {
             trigger,
             verify: self.verify,
+        };
+
+        let message = change.apply(&mut client).await?;
+
+        println!("{message}");
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
+pub struct TriggerRename {
+    #[structopt(
+        short = "-v",
+        long = "--verify",
+        help = "run basic verification commands after rename"
+    )]
+    verify: bool,
+    #[structopt(help = "trigger definition file")]
+    definition: PathBuf,
+    #[structopt(help = "new trigger name")]
+    new_name: String,
+}
+
+#[async_trait]
+impl Cmd for TriggerRename {
+    async fn run(&self) -> CmdResult {
+        let trigger = load_trigger_from_file(&self.definition)?;
+
+        let mut client = connect_db().await?;
+
+        let change = RenameTrigger {
+            trigger,
+            verify: self.verify,
+            new_name: self.new_name.clone(),
         };
 
         let message = change.apply(&mut client).await?;
@@ -276,6 +311,8 @@ pub enum TriggerOpt {
     Disable(TriggerDisable),
     #[structopt(about = "disable a trigger")]
     Update(TriggerUpdate),
+    #[structopt(about = "rename a trigger")]
+    Rename(TriggerRename),
     #[structopt(about = "dump a trigger definition")]
     Dump(TriggerDump),
     #[structopt(about = "run basic verification on a trigger")]
@@ -293,6 +330,7 @@ impl TriggerOpt {
             TriggerOpt::Enable(enable) => enable.run().await,
             TriggerOpt::Disable(disable) => disable.run().await,
             TriggerOpt::Update(update) => update.run().await,
+            TriggerOpt::Rename(rename) => rename.run().await,
             TriggerOpt::Dump(dump) => dump.run().await,
             TriggerOpt::Verify(verify) => verify.run().await,
             TriggerOpt::CreateNotifications(create_notifications) => {

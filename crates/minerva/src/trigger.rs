@@ -220,6 +220,17 @@ async fn cleanup_rule<T: GenericClient + Sync + Send>(
     Ok(format!("Cleaned up rule for trigger '{}'", &trigger.name))
 }
 
+async fn rename_trigger<T: GenericClient + Sync + Send>(trigger: &Trigger, new_name: &str, client: &mut T) -> ChangeResult {
+    let query = "UPDATE trigger.rule SET name = $1 WHERE name = $2";
+
+    client
+        .execute(query, &[&new_name, &trigger.name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error renaming trigger: {}", e)))?;
+
+    Ok(format!("Renamed trigger '{}' to '{}'", &trigger.name, &new_name))
+}
+
 async fn create_kpi_function<T: GenericClient + Sync + Send>(
     trigger: &Trigger,
     client: &mut T,
@@ -785,6 +796,87 @@ impl Change for UpdateTrigger {
         self.generic_apply(client).await
     }
 }
+
+
+pub struct RenameTrigger {
+    pub trigger: Trigger,
+    pub verify: bool,
+    pub new_name: String,
+}
+
+impl fmt::Display for RenameTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "UpdateTrigger({})", &self.trigger)
+    }
+}
+
+#[async_trait]
+impl GenericChange for RenameTrigger {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let mut transaction = client.transaction().await?;
+
+        // Tear down
+        drop_notification_data_function(&self.trigger, &mut transaction).await?;
+
+        unlink_trend_stores(&self.trigger, &mut transaction).await?;
+
+        cleanup_rule(&self.trigger, &mut transaction).await?;
+
+        rename_trigger(&self.trigger, &self.new_name, &mut transaction).await?;
+
+        let mut renamed_trigger = self.trigger.clone();
+
+        renamed_trigger.name = self.new_name.clone();
+
+        // Build up
+
+        create_type(&renamed_trigger, &mut transaction).await?;
+
+        create_kpi_function(&renamed_trigger, &mut transaction).await?;
+
+        setup_rule(&renamed_trigger, &mut transaction).await?;
+
+        set_weight(&renamed_trigger, &mut transaction).await?;
+
+        set_thresholds(&renamed_trigger, &mut transaction).await?;
+
+        set_condition(&renamed_trigger, &mut transaction).await?;
+
+        define_notification_message(&renamed_trigger, &mut transaction).await?;
+
+        define_notification_data(&renamed_trigger, &mut transaction).await?;
+
+        create_mapping_functions(&renamed_trigger, &mut transaction).await?;
+
+        link_trend_stores(&renamed_trigger, &mut transaction).await?;
+
+        let mut check_result: String = "No check has run".to_string();
+
+        if self.verify {
+            check_result = run_checks(&renamed_trigger.name, &mut transaction).await?;
+        }
+
+        transaction.commit().await?;
+
+        let message = match self.verify {
+            false => format!("Renamed trigger '{}' to '{}'\n!!! Don't forget to update the definition occordingly !!!", &self.trigger.name, &self.new_name),
+            true => format!("Renamed trigger '{}' to '{}': {}\n!!! Don't forget to update the definition occordingly !!!", &self.trigger.name, &self.new_name, check_result),
+        };
+
+        Ok(message)
+    }
+}
+
+#[async_trait]
+impl Change for RenameTrigger {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+
+
+
 
 pub struct VerifyTrigger {
     pub trigger_name: String,
