@@ -59,6 +59,7 @@ pub struct Trigger {
     pub data: String,
     pub trend_store_links: Vec<TrendStoreLink>,
     pub mapping_functions: Vec<MappingFunction>,
+    pub description: String,
     #[serde(with = "humantime_serde")]
     pub granularity: Duration,
 }
@@ -71,16 +72,16 @@ impl fmt::Display for Trigger {
 
 pub async fn list_triggers(
     conn: &mut Client,
-) -> Result<Vec<(String, String, String, String, bool)>, String> {
+) -> Result<Vec<(String, String, String, String, String, bool)>, String> {
     let query = concat!(
-        "SELECT name, ns::text, granularity::text, default_interval::text, enabled ",
+        "SELECT name, ns::text, granularity::text, default_interval::text, description, enabled ",
         "FROM trigger.rule ",
         "LEFT JOIN notification_directory.notification_store ns ON ns.id = notification_store_id",
     );
 
     let result = conn.query(query, &[]).await.unwrap();
 
-    let triggers: Result<Vec<(String, String, String, String, bool)>, String> = result
+    let triggers: Result<Vec<(String, String, String, String, String, bool)>, String> = result
         .into_iter()
         .map(|row: Row| {
             let name: String = row
@@ -95,8 +96,11 @@ pub async fn list_triggers(
             let default_interval: Option<String> = row
                 .try_get(3)
                 .map_err(|e| format!("could not retrieve default interval: {}", e))?;
+	    let description: Option<String> = row
+		.try_get(4)
+		.map_err(|e| format!("could not retrieve description: {}", e))?;
             let enabled: bool = row
-                .try_get(4)
+                .try_get(5)
                 .map_err(|e| format!("could not retrieve enabled: {}", e))?;
 
             let trigger_row = (
@@ -104,6 +108,7 @@ pub async fn list_triggers(
                 notification_store.unwrap_or("UNDEFINED".into()),
                 granularity.unwrap_or("UNDEFINED".into()),
                 default_interval.unwrap_or("UNDEFINED".into()),
+		description.unwrap_or("".to_string()),
                 enabled,
             );
             Ok(trigger_row)
@@ -150,6 +155,8 @@ impl GenericChange for AddTrigger {
 
         link_trend_stores(&self.trigger, &mut transaction).await?;
 
+	set_description(&self.trigger, &mut transaction).await?;
+	
         set_enabled(&mut transaction, &self.trigger.name, self.enable).await?;
 
         let mut check_result: String = "No check has run".to_string();
@@ -179,7 +186,7 @@ async fn create_type<T: GenericClient + Sync + Send>(
         (
             String::from("timestamp"),
             String::from("timestamp with time zone"),
-        ),
+        )
     ];
 
     for data_column in trigger.kpi_data.iter() {
@@ -506,6 +513,28 @@ async fn link_trend_stores<T: GenericClient + Sync + Send>(
     Ok(format!(
         "Linked trend stores for trigger '{}'",
         &trigger.name
+    ))
+}
+
+async fn set_description<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    client: &mut T,
+) -> ChangeResult {
+    let query = "UPDATE trigger.rule SET description = $1 WHERE name = $2";
+
+    client
+	.execute(query, &[&trigger.description, &trigger.name])
+	.await
+	.map_err(|e| {
+            DatabaseError::from_msg(format!(
+                "Error setting description of trigger '{}': {}",
+                trigger.name, e
+            ))
+        })?;
+
+    Ok(format!(
+	"Set description of trigger '{}' to '{}'",
+	trigger.name, trigger.description,
     ))
 }
 
@@ -990,7 +1019,7 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
     name: &str,
 ) -> Result<Trigger, Error> {
     let query = concat!(
-        "SELECT name, granularity::text, ns::text ",
+        "SELECT name, granularity::text, ns::text, rule.description ",
         "FROM trigger.rule ",
         "LEFT JOIN notification_directory.notification_store ns ON ns.id = notification_store_id ",
         "WHERE name = $1"
@@ -1011,6 +1040,8 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
     })?;
 
     let notification_store: Option<String> = row.try_get(2)?;
+
+    let description: Option<String> = row.try_get(3)?;
 
     let kpi_data_columns = load_kpi_data_columns(conn, &name).await?;
 
@@ -1068,6 +1099,7 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
         thresholds: thresholds,
         trend_store_links: trend_store_links,
         weight: weight_function_source,
+	description: description.unwrap_or("".to_string()),
     })
 }
 

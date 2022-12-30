@@ -52,3 +52,7 @@ trend_store_links:
     mapping_function: mapping_id
 mapping_functions: []
 granularity: 15m
+description: |-
+  |||
+  | --- | --- |
+  | Description | A sample trigger |
