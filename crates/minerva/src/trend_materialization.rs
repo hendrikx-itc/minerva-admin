@@ -485,7 +485,7 @@ impl TrendFunctionMaterialization {
 		    "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
 		    "SELECT m.id, ",
 		    "stsp.id, ",
-		    "'{}' ",
+		    "'{}(timestamptz)' ",
 		    "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
 		    "ON m.dst_trend_store_part_id = dstp.id, ",
 		    "trend_directory.trend_store_part stsp ",
