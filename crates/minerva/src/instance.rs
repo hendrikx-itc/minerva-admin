@@ -107,7 +107,29 @@ impl MinervaInstance {
 
         initialize_relations(client, &self.relations).await;
 
+        if let Some(instance_root) = &self.instance_root {
+            initialize_custom(
+                client,
+                &format!(
+                    "{}/custom/pre-materialization-init/**/*",
+                    instance_root.to_string_lossy()
+                ),
+            )
+            .await
+        }
+
         initialize_trend_materializations(client, &self.trend_materializations).await;
+
+        if let Some(instance_root) = &self.instance_root {
+            initialize_custom(
+                client,
+                &format!(
+                    "{}/custom/pre-trigger-init/**/*",
+                    instance_root.to_string_lossy()
+                ),
+            )
+            .await
+        }
 
         initialize_triggers(client, &self.triggers).await;
 
@@ -483,7 +505,7 @@ async fn initialize_triggers(client: &mut Client, triggers: &Vec<Trigger>) {
 
         match change.apply(client).await {
             Ok(message) => println!("{}", message),
-            Err(e) => println!("Error creating trigger: {}", e),
+            Err(e) => println!("Error creating trigger '{}': {}", trigger.name, e),
         }
     }
 }

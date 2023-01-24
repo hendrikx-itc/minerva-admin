@@ -284,31 +284,27 @@ impl KpiImplementedData {
                 Ok(_) => {
                     let query_result = kpi.materialization.create(client).await;
                     match query_result {
-                        Err(e) => {
-			    match result {
-				Ok(_) => {
-				    result = Err(Error {
-					code: e.code,
-					message: e.message,
-				    })
-				},
-				Err(_) => {}
-			    }
-                        }
+                        Err(e) => match result {
+                            Ok(_) => {
+                                result = Err(Error {
+                                    code: e.code,
+                                    message: e.message,
+                                })
+                            }
+                            Err(_) => {}
+                        },
                         Ok(_) => {}
                     }
                 }
-                Err(e) => {
-		    match result {
-			Ok(_) => {
-			    result = Err(Error {
-				code: e.code,
-				message: e.message,
-			    })
-			},
-			Err(_) => {}
-		    }
-                }
+                Err(e) => match result {
+                    Ok(_) => {
+                        result = Err(Error {
+                            code: e.code,
+                            message: e.message,
+                        })
+                    }
+                    Err(_) => {}
+                },
             }
         }
         result

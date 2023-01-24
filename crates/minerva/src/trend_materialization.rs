@@ -37,7 +37,7 @@ pub struct TrendViewMaterialization {
     pub sources: Vec<TrendMaterializationSource>,
     pub view: String,
     pub fingerprint_function: String,
-    pub description: Value,
+    pub description: Option<Value>,
 }
 
 impl TrendViewMaterialization {
@@ -52,12 +52,14 @@ impl TrendViewMaterialization {
 		"FROM trend_directory.trend_store_part WHERE name = $6",
         );
 
+        let description_default = serde_json::json!("{}");
+
         let query_args: &[&(dyn ToSql + Sync)] = &[
             &format_duration(self.processing_delay).to_string(),
             &format_duration(self.stability_delay).to_string(),
             &format_duration(self.reprocessing_period).to_string(),
             &format!("trend.{}", escape_identifier(&self.view_name())),
-            &self.description,
+            &self.description.as_ref().unwrap_or(&description_default),
             &self.target_trend_store_part,
         ];
 
@@ -215,7 +217,11 @@ impl TrendViewMaterialization {
                 "description = '{}'::jsonb ",
                 "WHERE materialization::text = $5",
             ),
-            &self.description.to_string()
+            &self
+                .description
+                .as_ref()
+                .unwrap_or(&serde_json::json!("{}"))
+                .to_string()
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -329,7 +335,7 @@ pub struct TrendFunctionMaterialization {
     pub sources: Vec<TrendMaterializationSource>,
     pub function: TrendMaterializationFunction,
     pub fingerprint_function: String,
-    pub description: Value,
+    pub description: Option<Value>,
 }
 
 impl TrendFunctionMaterialization {
@@ -344,6 +350,8 @@ impl TrendFunctionMaterialization {
 		"FROM trend_directory.trend_store_part WHERE name = $6",
         );
 
+        let description_default = serde_json::json!("{}");
+
         let query_args: &[&(dyn ToSql + Sync)] = &[
             &format_duration(self.processing_delay).to_string(),
             &format_duration(self.stability_delay).to_string(),
@@ -352,7 +360,7 @@ impl TrendFunctionMaterialization {
                 "trend.{}(timestamp with time zone)",
                 escape_identifier(&self.target_trend_store_part)
             ),
-            &self.description,
+            &self.description.as_ref().unwrap_or(&description_default),
             &self.target_trend_store_part,
         ];
 
@@ -548,7 +556,11 @@ impl TrendFunctionMaterialization {
                 "description = '{}'::jsonb ",
                 "WHERE materialization::text = $5",
             ),
-            &self.description.to_string()
+            &self
+                .description
+                .as_ref()
+                .unwrap_or(&serde_json::json!("{}"))
+                .to_string()
         );
 
         let query_args: &[&(dyn ToSql + Sync)] = &[
@@ -748,7 +760,7 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
         let stability_delay: String = row.get(2);
         let reprocessing_period: String = row.get(3);
         let enabled: bool = row.get(4);
-        let description: Value = row.get(5);
+        let description: Option<Value> = row.get(5);
         let target_trend_store_part: String = row.get(6);
         let src_view: Option<String> = row.get(7);
         let src_function: Option<String> = row.get(8);

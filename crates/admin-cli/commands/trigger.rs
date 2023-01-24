@@ -7,11 +7,11 @@ use structopt::StructOpt;
 use comfy_table::Table;
 
 use minerva::change::Change;
-use minerva::error::{Error, DatabaseError, RuntimeError};
+use minerva::error::{DatabaseError, Error, RuntimeError};
 use minerva::trigger::{
     dump_trigger, list_triggers, load_trigger, load_trigger_from_file, AddTrigger,
-    CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, UpdateTrigger, RenameTrigger,
-    VerifyTrigger,
+    CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, RenameTrigger,
+    UpdateTrigger, VerifyTrigger,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -166,7 +166,10 @@ impl Cmd for TriggerRename {
         let trigger = load_trigger_from_file(&self.definition)?;
 
         if trigger.name == self.old_name {
-            return Err(Error::Runtime(RuntimeError::from_msg(format!("Old name is the same as new name: '{}' = '{}'", &self.old_name, &trigger.name))))
+            return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                "Old name is the same as new name: '{}' = '{}'",
+                &self.old_name, &trigger.name
+            ))));
         }
 
         let mut client = connect_db().await?;

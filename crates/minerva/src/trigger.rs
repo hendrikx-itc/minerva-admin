@@ -96,9 +96,9 @@ pub async fn list_triggers(
             let default_interval: Option<String> = row
                 .try_get(3)
                 .map_err(|e| format!("could not retrieve default interval: {}", e))?;
-	    let description: Option<String> = row
-		.try_get(4)
-		.map_err(|e| format!("could not retrieve description: {}", e))?;
+            let description: Option<String> = row
+                .try_get(4)
+                .map_err(|e| format!("could not retrieve description: {}", e))?;
             let enabled: bool = row
                 .try_get(5)
                 .map_err(|e| format!("could not retrieve enabled: {}", e))?;
@@ -108,7 +108,7 @@ pub async fn list_triggers(
                 notification_store.unwrap_or("UNDEFINED".into()),
                 granularity.unwrap_or("UNDEFINED".into()),
                 default_interval.unwrap_or("UNDEFINED".into()),
-		description.unwrap_or("".to_string()),
+                description.unwrap_or("".to_string()),
                 enabled,
             );
             Ok(trigger_row)
@@ -130,9 +130,19 @@ impl fmt::Display for AddTrigger {
     }
 }
 
+const MAX_TRIGGER_NAME_LENGTH: usize = 45;
+
 #[async_trait]
 impl GenericChange for AddTrigger {
     async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        if self.trigger.name.len() > MAX_TRIGGER_NAME_LENGTH {
+            return Err(Error::Configuration(ConfigurationError::from_msg(format!(
+                "Trigger name too long ({} > {})",
+                self.trigger.name.len(),
+                MAX_TRIGGER_NAME_LENGTH
+            ))));
+        }
+
         let mut transaction = client.transaction().await?;
 
         create_type(&self.trigger, &mut transaction).await?;
@@ -155,8 +165,8 @@ impl GenericChange for AddTrigger {
 
         link_trend_stores(&self.trigger, &mut transaction).await?;
 
-	set_description(&self.trigger, &mut transaction).await?;
-	
+        set_description(&self.trigger, &mut transaction).await?;
+
         set_enabled(&mut transaction, &self.trigger.name, self.enable).await?;
 
         let mut check_result: String = "No check has run".to_string();
@@ -186,7 +196,7 @@ async fn create_type<T: GenericClient + Sync + Send>(
         (
             String::from("timestamp"),
             String::from("timestamp with time zone"),
-        )
+        ),
     ];
 
     for data_column in trigger.kpi_data.iter() {
@@ -227,7 +237,11 @@ async fn cleanup_rule<T: GenericClient + Sync + Send>(
     Ok(format!("Cleaned up rule for trigger '{}'", &trigger.name))
 }
 
-async fn rename_trigger<T: GenericClient + Sync + Send>(trigger: &Trigger, old_name: &str, client: &mut T) -> ChangeResult {
+async fn rename_trigger<T: GenericClient + Sync + Send>(
+    trigger: &Trigger,
+    old_name: &str,
+    client: &mut T,
+) -> ChangeResult {
     let query = "UPDATE trigger.rule SET name = $1 WHERE name = $2";
 
     client
@@ -235,7 +249,10 @@ async fn rename_trigger<T: GenericClient + Sync + Send>(trigger: &Trigger, old_n
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error renaming trigger: {}", e)))?;
 
-    Ok(format!("Renamed trigger '{}' to '{}'", &old_name, &trigger.name))
+    Ok(format!(
+        "Renamed trigger '{}' to '{}'",
+        &old_name, &trigger.name
+    ))
 }
 
 async fn create_kpi_function<T: GenericClient + Sync + Send>(
@@ -325,7 +342,12 @@ async fn setup_rule<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[&trigger.name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting up rule: {}", e)))?;
+        .map_err(|e| {
+            DatabaseError::from_msg(format!(
+                "Error setting up rule: {}\nStatement: {}",
+                e, query
+            ))
+        })?;
 
     let query = concat!(
         "UPDATE trigger.rule ",
@@ -523,9 +545,9 @@ async fn set_description<T: GenericClient + Sync + Send>(
     let query = "UPDATE trigger.rule SET description = $1 WHERE name = $2";
 
     client
-	.execute(query, &[&trigger.description, &trigger.name])
-	.await
-	.map_err(|e| {
+        .execute(query, &[&trigger.description, &trigger.name])
+        .await
+        .map_err(|e| {
             DatabaseError::from_msg(format!(
                 "Error setting description of trigger '{}': {}",
                 trigger.name, e
@@ -533,8 +555,8 @@ async fn set_description<T: GenericClient + Sync + Send>(
         })?;
 
     Ok(format!(
-	"Set description of trigger '{}' to '{}'",
-	trigger.name, trigger.description,
+        "Set description of trigger '{}' to '{}'",
+        trigger.name, trigger.description,
     ))
 }
 
@@ -841,7 +863,6 @@ impl Change for UpdateTrigger {
     }
 }
 
-
 pub struct RenameTrigger {
     pub trigger: Trigger,
     pub verify: bool,
@@ -857,10 +878,21 @@ impl fmt::Display for RenameTrigger {
 #[async_trait]
 impl GenericChange for RenameTrigger {
     async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        if self.trigger.name.len() > MAX_TRIGGER_NAME_LENGTH {
+            return Err(Error::Configuration(ConfigurationError::from_msg(format!(
+                "Trigger name too long ({} > {})",
+                self.trigger.name.len(),
+                MAX_TRIGGER_NAME_LENGTH
+            ))));
+        }
+
         let mut transaction = client.transaction().await?;
 
         if !trigger_exists(&self.old_name, &mut transaction).await? {
-            return Err(Error::Runtime(RuntimeError::from_msg(format!("No trigger with name '{}'", &self.old_name))))
+            return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                "No trigger with name '{}'",
+                &self.old_name
+            ))));
         }
 
         let mut old_trigger = self.trigger.clone();
@@ -873,6 +905,8 @@ impl GenericChange for RenameTrigger {
         unlink_trend_stores(&old_trigger, &mut transaction).await?;
 
         cleanup_rule(&old_trigger, &mut transaction).await?;
+
+        // The actual rename
 
         rename_trigger(&self.trigger, &self.old_name, &mut transaction).await?;
 
@@ -907,8 +941,14 @@ impl GenericChange for RenameTrigger {
         transaction.commit().await?;
 
         let message = match self.verify {
-            false => format!("Renamed trigger '{}' to '{}'", &self.old_name, &self.trigger.name),
-            true => format!("Renamed trigger '{}' to '{}': {}", &self.old_name, &self.trigger.name, check_result),
+            false => format!(
+                "Renamed trigger '{}' to '{}'",
+                &self.old_name, &self.trigger.name
+            ),
+            true => format!(
+                "Renamed trigger '{}' to '{}': {}",
+                &self.old_name, &self.trigger.name, check_result
+            ),
         };
 
         Ok(message)
@@ -921,10 +961,6 @@ impl Change for RenameTrigger {
         self.generic_apply(client).await
     }
 }
-
-
-
-
 
 pub struct VerifyTrigger {
     pub trigger_name: String,
@@ -1099,7 +1135,7 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
         thresholds: thresholds,
         trend_store_links: trend_store_links,
         weight: weight_function_source,
-	description: description.unwrap_or("".to_string()),
+        description: description.unwrap_or("".to_string()),
     })
 }
 
