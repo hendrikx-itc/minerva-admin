@@ -41,6 +41,7 @@ mod kpi;
 use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedData, KpiRawData};
 
 mod error;
+mod serviceerror;
 
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
 static ENV_PORT: &str = "SERVICE_PORT";

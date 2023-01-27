@@ -1249,6 +1249,7 @@ dependencies = [
  "bb8-postgres",
  "chrono",
  "clap 4.0.26",
+ "derive_more",
  "dialoguer",
  "env_logger",
  "glob",

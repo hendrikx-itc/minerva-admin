@@ -18,7 +18,10 @@ use minerva::trend_store::{
     TrendStore, TrendStorePart,
 };
 
+use crate::error::BadRequest;
+
 use super::error::Error;
+use super::serviceerror::ServiceError;
 
 lazy_static! {
     static ref PARTITION_SIZE: HashMap<Duration, Duration> = HashMap::from([
@@ -194,18 +197,14 @@ impl TrendStorePartData {
 
 impl TrendStorePartFull {
     fn data(&self) -> TrendStorePartData {
-        let mut trends: Vec<TrendData> = vec![];
-        for trend in &self.trends {
-            trends.push(trend.data())
-        }
-        let mut generated_trends: Vec<GeneratedTrendData> = vec![];
-        for generated_trend in &self.generated_trends {
-            generated_trends.push(generated_trend.data())
-        }
+        let trends: Vec<TrendData> = self.trends.iter().map(|trend| trend.data()).collect();
+
+        let generated_trends: Vec<GeneratedTrendData> = self.generated_trends.iter().map(|generated_trend| generated_trend.data()).collect();
+
         TrendStorePartData {
             name: self.name.clone(),
-            trends: trends,
-            generated_trends: generated_trends,
+            trends,
+            generated_trends,
         }
     }
 
@@ -248,6 +247,7 @@ impl TrendStoreBasicData {
             &self.granularity,
         )
         .await;
+
         match result {
             Ok(trendstore) => Ok(trendstore),
             Err(_) => {
@@ -298,18 +298,10 @@ impl TrendStorePartCompleteData {
     }
 
     fn trend_store_part(&self) -> TrendStorePartData {
-        let mut trends: Vec<TrendData> = vec![];
-        for trend in &self.trends {
-            trends.push(trend.clone())
-        }
-        let mut generated_trends: Vec<GeneratedTrendData> = vec![];
-        for generated_trend in &self.generated_trends {
-            generated_trends.push(generated_trend.clone())
-        }
         TrendStorePartData {
             name: self.name.clone(),
-            trends: trends,
-            generated_trends: generated_trends,
+            trends: self.trends.clone(),
+            generated_trends: self.generated_trends.clone(),
         }
     }
 
@@ -317,98 +309,105 @@ impl TrendStorePartCompleteData {
         &self,
         client: &mut T,
     ) -> Result<TrendStorePartFull, Error> {
-        let trendstore_query = self.trend_store().as_minerva(client).await;
-        match trendstore_query {
-            Err(e) => Err(Error {
+        let trendstore = self
+            .trend_store()
+            .as_minerva(client)
+            .await
+            .map_err(|e| Error {
                 code: 409,
-                message: e.to_string(),
-            }),
-            Ok(trendstore) => {
-                let action = AddTrendStorePart {
-                    trend_store: trendstore,
-                    trend_store_part: self.trend_store_part().as_minerva(),
-                };
-                let result = action.generic_apply(client).await;
-                match result {
-                    Err(e) => Err(Error {
-                        code: 409,
-                        message: format!("Creation of trendstorepart failed: {}", e.to_string()),
-                    }),
-                    Ok(_) => {
-                        let action = AddTrends {
-                            trend_store_part: self.trend_store_part().as_minerva(),
-                            trends: self.trend_store_part().as_minerva().trends,
-                        };
-                        let result = action.generic_apply(client).await;
-                        match result {
-			    Err(e) => Err( Error {
-				code: 409,
-				message: format!("Creation of trendstorepart succeeded, but inserting trends failed: {}", e.to_string())
-			    }),
-			    Ok(_) => {
-				let query_result = client.query_one("SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name=$1", &[&self.name],).await;
-				match query_result {
-				    Ok(row) => {
-					let id: i32 = row.get(0);
-					let mut trends: Vec<TrendFull> = vec![];
-					let query = client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await;
-					match query {
-					    Err(e) => Err( Error { code: 500, message: e.to_string() } ),
-					    Ok(result) => {
-						for inner_row in result {
-						    let trend = TrendFull {
-							id: inner_row.get(0),
-							trend_store_part: inner_row.get(1),
-							name: inner_row.get(2),
-							data_type: inner_row.get(3),
-							time_aggregation: inner_row.get(4),
-							entity_aggregation: inner_row.get(5),
-							extra_data: inner_row.get(6),
-							description: inner_row.get(7)
-						    };
-						    trends.push(trend)
-						}
-						let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-						let query = client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&id]).await;
-						match query {
-						    Err(e) => Err( Error { code: 500, message: e.to_string() }),
-						    Ok(query_result) => {
-							for inner_row in query_result {
-							    let trend = GeneratedTrendFull {
-								id: inner_row.get(0),
-								trend_store_part: inner_row.get(1),
-								name: inner_row.get(2),
-								data_type: inner_row.get(3),
-								expression: inner_row.get(4),
-								extra_data: inner_row.get(5),
-								description: inner_row.get(6)
-							    };
-							    generated_trends.push(trend)
-							};
-							let trendstorepart = TrendStorePartFull {
-							    id: id,
-							    name: self.name.to_string(),
-							    trend_store: row.get(1),
-							    trends: trends,
-							    generated_trends: generated_trends,
-							};
-							Ok(trendstorepart)
-						    }
-						}
-					    }
-					}
-				    },
-				    Err(_) => Err( Error {
-					code: 404,
-					message: "Trend store part created, but could not be found after creation".to_string()
-				    })
-				}
-			    }
-			}
-                    }
-                }
-            }
-        }
+                message: e,
+            })?;
+
+        let action = AddTrendStorePart {
+            trend_store: trendstore,
+            trend_store_part: self.trend_store_part().as_minerva(),
+        };
+
+        action.generic_apply(client).await.map_err(|e| Error {
+            code: 409,
+            message: format!("Creation of trendstorepart failed: {}", e.to_string()),
+        })?;
+
+        let action = AddTrends {
+            trend_store_part: self.trend_store_part().as_minerva(),
+            trends: self.trend_store_part().as_minerva().trends,
+        };
+
+        action.generic_apply(client).await.map_err(|e| Error {
+            code: 409,
+            message: format!(
+                "Creation of trendstorepart succeeded, but inserting trends failed: {}",
+                e.to_string()
+            ),
+        })?;
+
+        let row = client
+            .query_one(
+                "SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name = $1",
+                &[&self.name],
+            )
+            .await
+            .map_err(|_| Error {
+                code: 404,
+                message: "Trend store part created, but could not be found after creation"
+                    .to_string(),
+            })?;
+
+        let id: i32 = row.get(0);
+        let rows = client.query(
+            concat!(
+                "SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description ",
+                "FROM trend_directory.table_trend ",
+                "WHERE trend_store_part_id=$1"
+            ),
+            &[&id]
+        ).await.map_err(|e| Error { code: 500, message: e.to_string() })?;
+
+        let trends: Vec<TrendFull> = rows
+            .iter()
+            .map(|row| TrendFull {
+                id: row.get(0),
+                trend_store_part: row.get(1),
+                name: row.get(2),
+                data_type: row.get(3),
+                time_aggregation: row.get(4),
+                entity_aggregation: row.get(5),
+                extra_data: row.get(6),
+                description: row.get(7),
+            })
+            .collect();
+
+        let rows = client.query(
+            concat!(
+                "SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description ",
+                "FROM trend_directory.generated_table_trend ",
+                "WHERE trend_store_part_id=$1",
+            ),
+            &[&id]
+        ).await.map_err(|e| Error { code: 500, message: e.to_string() } )?;
+
+        let generated_trends: Vec<GeneratedTrendFull> = rows
+            .iter()
+            .map(|row| GeneratedTrendFull {
+                id: row.get(0),
+                trend_store_part: row.get(1),
+                name: row.get(2),
+                data_type: row.get(3),
+                expression: row.get(4),
+                extra_data: row.get(5),
+                description: row.get(6),
+            })
+            .collect();
+
+        let trendstorepart = TrendStorePartFull {
+            id,
+            name: self.name.to_string(),
+            trend_store: row.get(1),
+            trends,
+            generated_trends,
+        };
+
+        Ok(trendstorepart)
     }
 }
 
@@ -423,105 +422,100 @@ impl TrendStorePartCompleteData {
 #[get("/trend-store-parts")]
 pub(super) async fn get_trend_store_parts(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-) -> impl Responder {
-    let mut m: Vec<TrendStorePartFull> = vec![];
+) -> Result<HttpResponse, ServiceError> {
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
 
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
+    let rows = client.query(
+        concat!(
+            "SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description ",
+            "FROM trend_directory.table_trend"
+        ),
+        &[]
+    ).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let trends: Vec<TrendFull> = rows
+        .iter()
+        .map(|row| TrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            time_aggregation: row.get(4),
+            entity_aggregation: row.get(5),
+            extra_data: row.get(6),
+            description: row.get(7),
+        })
+        .collect();
+
+    let rows = client
+        .query(
+            concat!(
+            "SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description ",
+            "FROM trend_directory.generated_table_trend"
+        ),
+            &[],
+        )
+        .await
+        .map_err(|e| Error {
             code: 500,
             message: e.to_string(),
-        }),
-        Ok(client) => {
-            let mut trends: Vec<TrendFull> = vec![];
-            let query = client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend", &[]).await;
-            match query {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(query_result) => {
-                    for row in query_result {
-                        let trend = TrendFull {
-                            id: row.get(0),
-                            trend_store_part: row.get(1),
-                            name: row.get(2),
-                            data_type: row.get(3),
-                            time_aggregation: row.get(4),
-                            entity_aggregation: row.get(5),
-                            extra_data: row.get(6),
-                            description: row.get(7),
-                        };
-                        trends.push(trend)
-                    }
+        })?;
 
-                    let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-                    let query = client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend", &[]).await;
-                    match query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(query_result) => {
-                            for row in query_result {
-                                let trend = GeneratedTrendFull {
-                                    id: row.get(0),
-                                    trend_store_part: row.get(1),
-                                    name: row.get(2),
-                                    data_type: row.get(3),
-                                    expression: row.get(4),
-                                    extra_data: row.get(5),
-                                    description: row.get(6),
-                                };
-                                generated_trends.push(trend)
-                            }
+    let generated_trends: Vec<GeneratedTrendFull> = rows
+        .iter()
+        .map(|row| GeneratedTrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            expression: row.get(4),
+            extra_data: row.get(5),
+            description: row.get(6),
+        })
+        .collect();
 
-                            let query = client.query(
-				"SELECT id, name, trend_store_id FROM trend_directory.trend_store_part", &[],
-			    ).await;
-                            match query {
-                                Err(e) => HttpResponse::InternalServerError().json(Error {
-                                    code: 500,
-                                    message: e.to_string(),
-                                }),
-                                Ok(query_result) => {
-                                    for row in query_result {
-                                        let tspid: i32 = row.get(0);
+    let rows = client
+        .query(
+            "SELECT id, name, trend_store_id FROM trend_directory.trend_store_part",
+            &[],
+        )
+        .await
+        .map_err(|e| Error {
+            code: 500,
+            message: e.to_string(),
+        })?;
 
-                                        let mut my_trends: Vec<TrendFull> = vec![];
-                                        for trend in &trends {
-                                            if trend.trend_store_part == tspid {
-                                                my_trends.push(trend.clone())
-                                            }
-                                        }
+    let m: Vec<TrendStorePartFull> = rows
+        .iter()
+        .map(|row| {
+            let tspid: i32 = row.get(0);
 
-                                        let mut my_generated_trends: Vec<GeneratedTrendFull> =
-                                            vec![];
-                                        for generated_trend in &generated_trends {
-                                            if generated_trend.trend_store_part == tspid {
-                                                my_generated_trends.push(generated_trend.clone())
-                                            }
-                                        }
+            let my_trends: Vec<TrendFull> = trends
+                .iter()
+                .filter(|trend| trend.trend_store_part == tspid)
+                .map(|t| t.clone())
+                .collect();
 
-                                        let trendstorepart = TrendStorePartFull {
-                                            id: tspid,
-                                            name: row.get(1),
-                                            trend_store: row.get(2),
-                                            trends: my_trends,
-                                            generated_trends: my_generated_trends,
-                                        };
-                                        m.push(trendstorepart)
-                                    }
+            let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
+                .iter()
+                .filter(|generated_trend| generated_trend.trend_store_part == tspid)
+                .map(|t| t.clone())
+                .collect();
 
-                                    HttpResponse::Ok().json(m)
-                                }
-                            }
-                        }
-                    }
-                }
+            TrendStorePartFull {
+                id: tspid,
+                name: row.get(1),
+                trend_store: row.get(2),
+                trends: my_trends,
+                generated_trends: my_generated_trends,
             }
-        }
-    }
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(m))
 }
 
 #[utoipa::path(
@@ -537,88 +531,85 @@ pub(super) async fn get_trend_store_parts(
 pub(super) async fn get_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     id: Path<i32>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let tsp_id = id.into_inner();
 
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+
+    let row = client
+        .query_one(
+            "SELECT name, trend_store_id FROM trend_directory.trend_store_part WHERE id=$1",
+            &[&tsp_id],
+        )
+        .await
+        .map_err(|_| Error {
+            code: 404,
+            message: format!("Trend store part with id {} not found", &tsp_id),
+        })?;
+
+    let rows = client.query(
+        concat!(
+            "SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description ",
+            "FROM trend_directory.table_trend ",
+            "WHERE trend_store_part_id=$1"
+        ),
+        &[&tsp_id]
+    ).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let trends: Vec<TrendFull> = rows
+        .iter()
+        .map(|row| TrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            time_aggregation: row.get(4),
+            entity_aggregation: row.get(5),
+            extra_data: row.get(6),
+            description: row.get(7),
+        })
+        .collect();
+
+    let rows = client
+        .query(
+            concat!(
+            "SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description ",
+            "FROM trend_directory.generated_table_trend ",
+            "WHERE trend_store_part_id = $1"
+        ),
+            &[&tsp_id],
+        )
+        .await
+        .map_err(|e| Error {
             code: 500,
             message: e.to_string(),
-        }),
-        Ok(client) => {
-            let query_result = client
-                .query_one(
-                    "SELECT name, trend_store_id FROM trend_directory.trend_store_part WHERE id=$1",
-                    &[&tsp_id],
-                )
-                .await;
+        })?;
 
-            match query_result {
-                Ok(row) => {
-                    let mut trends: Vec<TrendFull> = vec![];
-                    let query = client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&tsp_id]).await;
-                    match query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(query_result) => {
-                            for inner_row in query_result {
-                                let trend = TrendFull {
-                                    id: inner_row.get(0),
-                                    trend_store_part: inner_row.get(1),
-                                    name: inner_row.get(2),
-                                    data_type: inner_row.get(3),
-                                    time_aggregation: inner_row.get(4),
-                                    entity_aggregation: inner_row.get(5),
-                                    extra_data: inner_row.get(6),
-                                    description: inner_row.get(7),
-                                };
-                                trends.push(trend)
-                            }
-                            let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-                            let query = client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&tsp_id]).await;
-                            match query {
-                                Err(e) => HttpResponse::InternalServerError().json(Error {
-                                    code: 500,
-                                    message: e.to_string(),
-                                }),
-                                Ok(query_result) => {
-                                    for inner_row in query_result {
-                                        let trend = GeneratedTrendFull {
-                                            id: inner_row.get(0),
-                                            trend_store_part: inner_row.get(1),
-                                            name: inner_row.get(2),
-                                            data_type: inner_row.get(3),
-                                            expression: inner_row.get(4),
-                                            extra_data: inner_row.get(5),
-                                            description: inner_row.get(6),
-                                        };
-                                        generated_trends.push(trend)
-                                    }
+    let generated_trends: Vec<GeneratedTrendFull> = rows
+        .iter()
+        .map(|row| GeneratedTrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            expression: row.get(4),
+            extra_data: row.get(5),
+            description: row.get(6),
+        })
+        .collect();
 
-                                    let trendstorepart = TrendStorePartFull {
-                                        id: tsp_id,
-                                        name: row.get(0),
-                                        trend_store: row.get(1),
-                                        trends: trends,
-                                        generated_trends: generated_trends,
-                                    };
+    let trendstorepart = TrendStorePartFull {
+        id: tsp_id,
+        name: row.get(0),
+        trend_store: row.get(1),
+        trends,
+        generated_trends,
+    };
 
-                                    HttpResponse::Ok().json(trendstorepart)
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_e) => HttpResponse::NotFound().json(Error {
-                    code: 404,
-                    message: format!("Trend store part with id {} not found", &tsp_id),
-                }),
-            }
-        }
-    }
+    Ok(HttpResponse::Ok().json(trendstorepart))
 }
 
 #[utoipa::path(
@@ -634,89 +625,86 @@ pub(super) async fn get_trend_store_part(
 pub(super) async fn find_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     info: Query<QueryData>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let name = &info.name;
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
+
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+
+    let row = client
+        .query_one(
+            "SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name=$1",
+            &[&name],
+        )
+        .await
+        .map_err(|_| Error {
+            code: 404,
+            message: format!("Trend store part with name {} not found", &name),
+        })?;
+
+    let id: i32 = row.get(0);
+    let rows = client.query(
+        concat!(
+            "SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description ",
+            "FROM trend_directory.table_trend ",
+            "WHERE trend_store_part_id=$1"
+        ),
+        &[&id]
+    ).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let trends: Vec<TrendFull> = rows
+        .iter()
+        .map(|row| TrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            time_aggregation: row.get(4),
+            entity_aggregation: row.get(5),
+            extra_data: row.get(6),
+            description: row.get(7),
+        })
+        .collect();
+
+    let rows = client
+        .query(
+            concat!(
+                "SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description ",
+                "FROM trend_directory.generated_table_trend ",
+                "WHERE trend_store_part_id=$1"
+            ),
+            &[&id],
+        )
+        .await
+        .map_err(|e| Error {
             code: 500,
             message: e.to_string(),
-        }),
-        Ok(client) => {
-            let query_result = client
-                .query_one(
-                    "SELECT id, trend_store_id FROM trend_directory.trend_store_part WHERE name=$1",
-                    &[&name],
-                )
-                .await;
+        })?;
 
-            match query_result {
-                Ok(row) => {
-                    let id: i32 = row.get(0);
-                    let mut trends: Vec<TrendFull> = vec![];
-                    let query = client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend WHERE trend_store_part_id=$1", &[&id]).await;
-                    match query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(query_result) => {
-                            for inner_row in query_result {
-                                let trend = TrendFull {
-                                    id: inner_row.get(0),
-                                    trend_store_part: inner_row.get(1),
-                                    name: inner_row.get(2),
-                                    data_type: inner_row.get(3),
-                                    time_aggregation: inner_row.get(4),
-                                    entity_aggregation: inner_row.get(5),
-                                    extra_data: inner_row.get(6),
-                                    description: inner_row.get(7),
-                                };
-                                trends.push(trend)
-                            }
+    let generated_trends: Vec<GeneratedTrendFull> = rows
+        .iter()
+        .map(|row| GeneratedTrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            expression: row.get(4),
+            extra_data: row.get(5),
+            description: row.get(6),
+        })
+        .collect();
 
-                            let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-                            let query = client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend WHERE trend_store_part_id=$1", &[&id]).await;
-                            match query {
-                                Err(e) => HttpResponse::InternalServerError().json(Error {
-                                    code: 500,
-                                    message: e.to_string(),
-                                }),
-                                Ok(query_result) => {
-                                    for inner_row in query_result {
-                                        let trend = GeneratedTrendFull {
-                                            id: inner_row.get(0),
-                                            trend_store_part: inner_row.get(1),
-                                            name: inner_row.get(2),
-                                            data_type: inner_row.get(3),
-                                            expression: inner_row.get(4),
-                                            extra_data: inner_row.get(5),
-                                            description: inner_row.get(6),
-                                        };
-                                        generated_trends.push(trend)
-                                    }
+    let trendstorepart = TrendStorePartFull {
+        id,
+        name: name.to_string(),
+        trend_store: row.get(1),
+        trends,
+        generated_trends,
+    };
 
-                                    let trendstorepart = TrendStorePartFull {
-                                        id: id,
-                                        name: name.to_string(),
-                                        trend_store: row.get(1),
-                                        trends: trends,
-                                        generated_trends: generated_trends,
-                                    };
-
-                                    HttpResponse::Ok().json(trendstorepart)
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_e) => HttpResponse::NotFound().json(Error {
-                    code: 404,
-                    message: format!("Trend store part with name {} not found", &name),
-                }),
-            }
-        }
-    }
+    Ok(HttpResponse::Ok().json(trendstorepart))
 }
 
 #[utoipa::path(
@@ -730,139 +718,134 @@ pub(super) async fn find_trend_store_part(
 #[get("/trend-stores")]
 pub(super) async fn get_trend_stores(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-) -> impl Responder {
-    let mut m: Vec<TrendStoreFull> = vec![];
+) -> Result<HttpResponse, ServiceError> {
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
 
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
+    let rows = client.query(
+        concat!(
+            "SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description ",
+            "FROM trend_directory.table_trend"
+        ),
+        &[]
+    ).await.map_err(|e|Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let trends: Vec<TrendFull> = rows
+        .iter()
+        .map(|row| TrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            time_aggregation: row.get(4),
+            entity_aggregation: row.get(5),
+            extra_data: row.get(6),
+            description: row.get(7),
+        })
+        .collect();
+
+    let rows = client
+        .query(
+            concat!(
+            "SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description ",
+            "FROM trend_directory.generated_table_trend"
+        ),
+            &[],
+        )
+        .await
+        .map_err(|e| Error {
             code: 500,
             message: e.to_string(),
-        }),
-        Ok(client) => {
-            let mut trends: Vec<TrendFull> = vec![];
-            let query = client.query("SELECT id, trend_store_part_id, name, data_type, time_aggregation, entity_aggregation, extra_data, description FROM trend_directory.table_trend", &[]).await;
-            match query {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(query_result) => {
-                    for row in query_result {
-                        let trend = TrendFull {
-                            id: row.get(0),
-                            trend_store_part: row.get(1),
-                            name: row.get(2),
-                            data_type: row.get(3),
-                            time_aggregation: row.get(4),
-                            entity_aggregation: row.get(5),
-                            extra_data: row.get(6),
-                            description: row.get(7),
-                        };
-                        trends.push(trend)
-                    }
+        })?;
 
-                    let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-                    let query = client.query("SELECT id, trend_store_part_id, name, data_type, expression, extra_data, description FROM trend_directory.generated_table_trend", &[]).await;
-                    match query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(query_result) => {
-                            for row in query_result {
-                                let trend = GeneratedTrendFull {
-                                    id: row.get(0),
-                                    trend_store_part: row.get(1),
-                                    name: row.get(2),
-                                    data_type: row.get(3),
-                                    expression: row.get(4),
-                                    extra_data: row.get(5),
-                                    description: row.get(6),
-                                };
-                                generated_trends.push(trend)
-                            }
+    let generated_trends: Vec<GeneratedTrendFull> = rows
+        .iter()
+        .map(|row| GeneratedTrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            expression: row.get(4),
+            extra_data: row.get(5),
+            description: row.get(6),
+        })
+        .collect();
 
-                            let mut parts: Vec<TrendStorePartFull> = vec![];
-                            let query = client.query(
-				    "SELECT id, name, trend_store_id FROM trend_directory.trend_store_part",
-				    &[],
-				).await;
-                            match query {
-                                Err(e) => HttpResponse::InternalServerError().json(Error {
-                                    code: 500,
-                                    message: e.to_string(),
-                                }),
-                                Ok(query_result) => {
-                                    for row in query_result {
-                                        let tspid: i32 = row.get(0);
-                                        let mut my_trends: Vec<TrendFull> = vec![];
-                                        for trend in &trends {
-                                            if trend.trend_store_part == tspid {
-                                                my_trends.push(trend.clone())
-                                            }
-                                        }
+    let rows = client
+        .query(
+            "SELECT id, name, trend_store_id FROM trend_directory.trend_store_part",
+            &[],
+        )
+        .await
+        .map_err(|e| Error {
+            code: 500,
+            message: e.to_string(),
+        })?;
 
-                                        let mut my_generated_trends: Vec<GeneratedTrendFull> =
-                                            vec![];
-                                        for generated_trend in &generated_trends {
-                                            if generated_trend.trend_store_part == tspid {
-                                                my_generated_trends.push(generated_trend.clone())
-                                            }
-                                        }
+    let parts: Vec<TrendStorePartFull> = rows
+        .iter()
+        .map(|row| {
+            let tspid: i32 = row.get(0);
+            let my_trends: Vec<TrendFull> = trends
+                .iter()
+                .filter(|trend| trend.trend_store_part == tspid)
+                .map(|t| t.clone())
+                .collect();
 
-                                        let trendstorepart = TrendStorePartFull {
-                                            id: tspid,
-                                            name: row.get(1),
-                                            trend_store: row.get(2),
-                                            trends: my_trends,
-                                            generated_trends: my_generated_trends,
-                                        };
-                                        parts.push(trendstorepart)
-                                    }
-                                    let query =  client.query("SELECT ts.id, entity_type.name, data_source.name, granularity::text, partition_size::text, retention_period::text FROM trend_directory.trend_store ts JOIN directory.entity_type ON ts.entity_type_id = entity_type.id JOIN directory.data_source ON ts.data_source_id = data_source.id", &[]).await;
-                                    match query {
-                                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                                            code: 500,
-                                            message: e.to_string(),
-                                        }),
-                                        Ok(query_result) => {
-                                            for row in query_result {
-                                                let tsid: i32 = row.get(0);
-                                                let mut my_parts: Vec<TrendStorePartFull> = vec![];
-                                                for part in &parts {
-                                                    if part.trend_store == tsid {
-                                                        my_parts.push(part.clone())
-                                                    }
-                                                }
+            let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
+                .iter()
+                .filter(|generated_trend| generated_trend.trend_store_part == tspid)
+                .map(|t| t.clone())
+                .collect();
 
-                                                let trendstore = TrendStoreFull {
-                                                    id: tsid,
-                                                    entity_type: row.get(1),
-                                                    data_source: row.get(2),
-                                                    granularity: parse_interval(row.get(3))
-                                                        .unwrap(),
-                                                    partition_size: parse_interval(row.get(4))
-                                                        .unwrap(),
-                                                    retention_period: parse_interval(row.get(5))
-                                                        .unwrap(),
-                                                    trend_store_parts: my_parts,
-                                                };
-
-                                                m.push(trendstore)
-                                            }
-
-                                            HttpResponse::Ok().json(m)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            TrendStorePartFull {
+                id: tspid,
+                name: row.get(1),
+                trend_store: row.get(2),
+                trends: my_trends,
+                generated_trends: my_generated_trends,
             }
-        }
-    }
+        })
+        .collect();
+
+    let rows = client.query(
+        concat!(
+            "SELECT ts.id, entity_type.name, data_source.name, granularity::text, partition_size::text, retention_period::text ",
+            "FROM trend_directory.trend_store ts ",
+            "JOIN directory.entity_type ON ts.entity_type_id = entity_type.id ",
+            "JOIN directory.data_source ON ts.data_source_id = data_source.id"
+        ),
+        &[]
+    ).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let m: Vec<TrendStoreFull> = rows
+        .iter()
+        .map(|row| {
+            let tsid: i32 = row.get(0);
+            let my_parts = parts
+                .iter()
+                .filter(|p| p.trend_store == tsid)
+                .map(|p| p.clone())
+                .collect();
+
+            TrendStoreFull {
+                id: tsid,
+                entity_type: row.get(1),
+                data_source: row.get(2),
+                granularity: parse_interval(row.get(3)).unwrap(),
+                partition_size: parse_interval(row.get(4)).unwrap(),
+                retention_period: parse_interval(row.get(5)).unwrap(),
+                trend_store_parts: my_parts,
+            }
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(m))
 }
 
 #[utoipa::path(
@@ -878,135 +861,121 @@ pub(super) async fn get_trend_stores(
 pub(super) async fn get_trend_store(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     id: Path<i32>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let tsid = id.into_inner();
 
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+
+    let row = client.query_one(
+        concat!(
+            "SELECT ts.id, entity_type.name, data_source.name, granularity::text, partition_size::text, retention_period::text ",
+            "FROM trend_directory.trend_store ts ",
+            "JOIN directory.entity_type ON ts.entity_type_id = entity_type.id ",
+            "JOIN directory.data_source ON ts.data_source_id = data_source.id ",
+            "WHERE ts.id = $1",
+        ),
+        &[&tsid],
+    ).await.map_err(|_| Error {
+        code: 404,
+        message: format!("Trend store with id {} not found", &tsid),
+    })?;
+
+    let rows = client.query(
+        concat!(
+            "SELECT t.id, t.trend_store_part_id, t.name, t.data_type, t.time_aggregation, t.entity_aggregation, t.extra_data, t.description ",
+            "FROM trend_directory.table_trend t ",
+            "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
+            "WHERE tsp.trend_store_id = $1"
+        ),
+        &[&tsid]
+    ).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let trends: Vec<TrendFull> = rows.iter().map(|row|
+        TrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            time_aggregation: row.get(4),
+            entity_aggregation: row.get(5),
+            extra_data: row.get(6),
+            description: row.get(7),
+        }
+    ).collect();
+
+    let rows = client.query(
+        concat!(
+            "SELECT t.id, t.trend_store_part_id, t.name, t.data_type, t.expression, t.extra_data, t.description ",
+            "FROM trend_directory.generated_table_trend t ",
+            "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
+            "WHERE tsp.trend_store_id = $1"
+        ),
+        &[&tsid]
+    ).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let generated_trends: Vec<GeneratedTrendFull> = rows
+        .iter()
+        .map(|row| GeneratedTrendFull {
+            id: row.get(0),
+            trend_store_part: row.get(1),
+            name: row.get(2),
+            data_type: row.get(3),
+            expression: row.get(4),
+            extra_data: row.get(5),
+            description: row.get(6),
+        })
+        .collect();
+
+    let rows = client
+        .query(
+            concat!(
+                "SELECT id, name, trend_store_id ",
+                "FROM trend_directory.trend_store_part ",
+                "WHERE trend_store_id = $1"
+            ),
+            &[&tsid],
+        )
+        .await
+        .map_err(|e| Error {
             code: 500,
             message: e.to_string(),
-        }),
-        Ok(client) => {
-            let query_result = client
-		.query_one(
-		    "SELECT ts.id, entity_type.name, data_source.name, granularity::text, partition_size::text, retention_period::text FROM trend_directory.trend_store ts JOIN directory.entity_type ON ts.entity_type_id = entity_type.id JOIN directory.data_source ON ts.data_source_id = data_source.id WHERE ts.id = $1",
-		    &[&tsid],
-		)
-		.await;
+        })?;
 
-            match query_result {
-                Ok(row) => {
-                    let mut trends: Vec<TrendFull> = vec![];
-                    let query = client.query("SELECT t.id, t.trend_store_part_id, t.name, t.data_type, t.time_aggregation, t.entity_aggregation, t.extra_data, t.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id WHERE tsp.trend_store_id = $1", &[&tsid]).await;
-                    match query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(query_result) => {
-                            for inner_row in query_result {
-                                let trend = TrendFull {
-                                    id: inner_row.get(0),
-                                    trend_store_part: inner_row.get(1),
-                                    name: inner_row.get(2),
-                                    data_type: inner_row.get(3),
-                                    time_aggregation: inner_row.get(4),
-                                    entity_aggregation: inner_row.get(5),
-                                    extra_data: inner_row.get(6),
-                                    description: inner_row.get(7),
-                                };
-                                trends.push(trend)
-                            }
+    let parts: Vec<TrendStorePartFull> = rows
+        .iter()
+        .map(|row| {
+            let tspid: i32 = row.get(0);
+            let my_trends: Vec<TrendFull> = trends.iter().filter(|t| t.trend_store_part == tspid).map(|t| t.clone()).collect();
 
-                            let mut generated_trends: Vec<GeneratedTrendFull> = vec![];
-                            let query = client.query("SELECT t.id, t.trend_store_part_id, t.name, t.data_type, t.expression, t.extra_data, t.description FROM trend_directory.generated_table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id WHERE tsp.trend_store_id = $1", &[&tsid]).await;
-                            match query {
-                                Err(e) => HttpResponse::InternalServerError().json(Error {
-                                    code: 500,
-                                    message: e.to_string(),
-                                }),
-                                Ok(query_result) => {
-                                    for inner_row in query_result {
-                                        let trend = GeneratedTrendFull {
-                                            id: inner_row.get(0),
-                                            trend_store_part: inner_row.get(1),
-                                            name: inner_row.get(2),
-                                            data_type: inner_row.get(3),
-                                            expression: inner_row.get(4),
-                                            extra_data: inner_row.get(5),
-                                            description: inner_row.get(6),
-                                        };
-                                        generated_trends.push(trend)
-                                    }
+            let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends.iter().filter(|t| t.trend_store_part == tspid).map(|t| t.clone()).collect();
 
-                                    let mut parts: Vec<TrendStorePartFull> = vec![];
-
-                                    let query = client.query(
-					"SELECT id, name, trend_store_id FROM trend_directory.trend_store_part WHERE trend_store_id = $1",
-					&[&tsid],
-				    ).await;
-                                    match query {
-                                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                                            code: 500,
-                                            message: e.to_string(),
-                                        }),
-                                        Ok(query_result) => {
-                                            for inner_row in query_result {
-                                                let tspid: i32 = inner_row.get(0);
-                                                let mut my_trends: Vec<TrendFull> = vec![];
-                                                for trend in &trends {
-                                                    if trend.trend_store_part == tspid {
-                                                        my_trends.push(trend.clone())
-                                                    }
-                                                }
-
-                                                let mut my_generated_trends: Vec<
-                                                    GeneratedTrendFull,
-                                                > = vec![];
-                                                for generated_trend in &generated_trends {
-                                                    if generated_trend.trend_store_part == tspid {
-                                                        my_generated_trends
-                                                            .push(generated_trend.clone())
-                                                    }
-                                                }
-
-                                                let trendstorepart = TrendStorePartFull {
-                                                    id: tspid,
-                                                    name: inner_row.get(1),
-                                                    trend_store: inner_row.get(2),
-                                                    trends: my_trends,
-                                                    generated_trends: my_generated_trends,
-                                                };
-                                                parts.push(trendstorepart)
-                                            }
-
-                                            let trendstore = TrendStoreFull {
-                                                id: tsid,
-                                                entity_type: row.get(1),
-                                                data_source: row.get(2),
-                                                granularity: parse_interval(row.get(3)).unwrap(),
-                                                partition_size: parse_interval(row.get(4)).unwrap(),
-                                                retention_period: parse_interval(row.get(5))
-                                                    .unwrap(),
-                                                trend_store_parts: parts,
-                                            };
-
-                                            HttpResponse::Ok().json(trendstore)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_e) => HttpResponse::NotFound().json(Error {
-                    code: 404,
-                    message: format!("Trend store with id {} not found", &tsid),
-                }),
+            TrendStorePartFull {
+                id: tspid,
+                name: row.get(1),
+                trend_store: row.get(2),
+                trends: my_trends,
+                generated_trends: my_generated_trends,
             }
-        }
-    }
+        })
+        .collect();
+
+    let trendstore = TrendStoreFull {
+        id: tsid,
+        entity_type: row.get(1),
+        data_source: row.get(2),
+        granularity: parse_interval(row.get(3)).unwrap(),
+        partition_size: parse_interval(row.get(4)).unwrap(),
+        retention_period: parse_interval(row.get(5)).unwrap(),
+        trend_store_parts: parts,
+    };
+
+    Ok(HttpResponse::Ok().json(trendstore))
 }
 
 // curl -H "Content-Type: application/json" -X POST -d '{"name":"kpi-test_One_15m","entity_type":"test","data_source":"kpi","granularity":"15m","partition_size":"1d","trends":[{"name":"downtime","data_type":"numeric","time_aggregation":"SUM","entity_aggregation":"SUM","extra_data":{},"description":""}],"generated_trends":[]}' localhost:8000/trend-store-parts/new
@@ -1027,49 +996,20 @@ pub(super) async fn get_trend_store(
 pub(super) async fn post_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
-) -> impl Responder {
-    let input: Result<TrendStorePartCompleteData, serde_json::Error> = serde_json::from_str(&post);
-    match input {
-        Err(e) => HttpResponse::BadRequest().json(Error {
-            code: 400,
-            message: e.to_string(),
-        }),
-        Ok(data) => {
-            let result = pool.get().await;
-            match result {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(mut client) => {
-                    let transaction_query = client.transaction().await;
-                    match transaction_query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(mut transaction) => match data.create(&mut transaction).await {
-                            Ok(tsp) => {
-                                let commission = transaction.commit().await;
-                                match commission {
-                                    Err(e) => HttpResponse::InternalServerError().json(Error {
-                                        code: 500,
-                                        message: e.to_string(),
-                                    }),
-                                    Ok(_) => HttpResponse::Ok().json(tsp),
-                                }
-                            }
-                            Err(e) => match e.code {
-                                404 => HttpResponse::NotFound().json(e),
-                                409 => HttpResponse::Conflict().json(e),
-                                _ => HttpResponse::InternalServerError().json(e),
-                            },
-                        },
-                    }
-                }
-            }
-        }
-    }
+) -> Result<HttpResponse, ServiceError> {
+    let data: TrendStorePartCompleteData = serde_json::from_str(&post).map_err(|e| BadRequest {
+        message: format!("{}", e),
+    })?;
+
+    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+
+    let mut transaction = client.transaction().await?;
+
+    let tsp = data.create(&mut transaction).await?;
+
+    transaction.commit().await?;
+
+    Ok(HttpResponse::Ok().json(tsp))
 }
 
 #[utoipa::path(
@@ -1083,37 +1023,25 @@ pub(super) async fn post_trend_store_part(
 #[get("/trends")]
 pub(super) async fn get_trends(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let mut m: Vec<TrendDataWithTrendStorePart> = vec![];
 
-    let client = match pool.get().await {
-        Err(e) => return HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(c) => c
-    };
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
 
-    let query_result = client.query(
-        concat!(
-            "SELECT t.id, t.name, tsp.name, et.name, ds.name, ts.granularity::text, t.data_type ",
-            "FROM trend_directory.table_trend t ",
-            "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
-            "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
-            "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
-            "JOIN directory.data_source ds ON ts.data_source_id = ds.id"
-        ),
-        &[]
-    ).await;
+    let rows = client
+        .query(
+            concat!(
+                "SELECT t.id, t.name, tsp.name, et.name, ds.name, ts.granularity::text, t.data_type ",
+                "FROM trend_directory.table_trend t ",
+                "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
+                "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
+                "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
+                "JOIN directory.data_source ds ON ts.data_source_id = ds.id"
+            ),
+            &[],
+        )
+        .await?;
 
-    let rows = match query_result {
-        Err(e) => return HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(r) => r
-    };
-    
     for row in rows {
         m.push(TrendDataWithTrendStorePart {
             id: row.get(0),
@@ -1127,26 +1055,20 @@ pub(super) async fn get_trends(
         })
     }
 
-    let query_result = client.query(
-        concat!(
-            "SELECT t.id, t.name, tsp.name, et.name, ds.name, ts.granularity::text, t.data_type ",
-            "FROM trend_directory.generated_table_trend t ",
-            "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
-            "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
-            "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
-            "JOIN directory.data_source ds ON ts.data_source_id = ds.id"
-        ),
-        &[]
-    ).await;
+    let rows = client
+        .query(
+            concat!(
+                "SELECT t.id, t.name, tsp.name, et.name, ds.name, ts.granularity::text, t.data_type ",
+                "FROM trend_directory.generated_table_trend t ",
+                "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
+                "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
+                "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
+                "JOIN directory.data_source ds ON ts.data_source_id = ds.id"
+            ),
+            &[],
+        )
+        .await?;
 
-    let rows = match query_result {
-        Err(e) => return HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(r) => r
-    };
-    
     for row in rows {
         m.push(TrendDataWithTrendStorePart {
             id: row.get(0),
@@ -1160,7 +1082,7 @@ pub(super) async fn get_trends(
         })
     }
 
-    HttpResponse::Ok().json(m)
+    Ok(HttpResponse::Ok().json(m))
 }
 
 #[utoipa::path(
@@ -1175,40 +1097,28 @@ pub(super) async fn get_trends(
 pub(super) async fn get_trends_by_entity_type(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     et: Path<String>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let entity_type = et.into_inner();
 
-    let client = match pool.get().await {
-        Err(e) => return HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(c) => c
-    };
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
 
-    let query_result = client.query(
-        concat!(
-            "SELECT t.name ",
-            "FROM trend_directory.table_trend t ",
-            "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
-            "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
-            "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
-            "WHERE et.name = $1 AND ts.granularity::text = $2 ",
-            "GROUP BY t.name ",
-            "ORDER BY t.name",
-        ),
-        &[&entity_type, &DEFAULT_GRANULARITY.to_string()]
-    ).await;
-
-    let rows = match query_result {
-        Err(e) => return HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(r) => r
-    };
+    let rows = client
+        .query(
+            concat!(
+                "SELECT t.name ",
+                "FROM trend_directory.table_trend t ",
+                "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
+                "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
+                "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
+                "WHERE et.name = $1 AND ts.granularity::text = $2 ",
+                "GROUP BY t.name ",
+                "ORDER BY t.name",
+            ),
+            &[&entity_type, &DEFAULT_GRANULARITY.to_string()],
+        )
+        .await?;
 
     let names: Vec<String> = rows.iter().map(|row| row.get(0)).collect();
 
-    HttpResponse::Ok().json(names)
+    Ok(HttpResponse::Ok().json(names))
 }

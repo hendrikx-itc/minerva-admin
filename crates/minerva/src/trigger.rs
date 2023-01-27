@@ -1053,15 +1053,14 @@ impl Change for DisableTrigger {
 fn extract_rule_from_src(src: &str) -> Result<String, Error> {
     let condition_regex = regex::Regex::from_str(r".*\(\$1\) WHERE ((?s).*);[ ]*$").unwrap();
 
-    let captures = condition_regex
-        .captures(src);
+    let captures = condition_regex.captures(src);
 
     let condition = match captures {
-        Some(c) => {
-            c.get(1).unwrap().as_str()
-        },
+        Some(c) => c.get(1).unwrap().as_str(),
         None => {
-            return Err(Error::Runtime(RuntimeError { msg: format!("Could not extract condition from SQL: '{}'", src) }))
+            return Err(Error::Runtime(RuntimeError {
+                msg: format!("Could not extract condition from SQL: '{}'", src),
+            }))
         }
     };
 
@@ -1088,8 +1087,11 @@ mod tests {
 
         let rule = extract_rule_from_src(&condition_function_source).unwrap();
 
-        assert_eq!(rule, r#""packet_drop_rate" > "packet_drop_rate_max" AND
-        "packet_drop_amount" > "packet_drop_amount_min""#);
+        assert_eq!(
+            rule,
+            r#""packet_drop_rate" > "packet_drop_rate_max" AND
+        "packet_drop_amount" > "packet_drop_amount_min""#
+        );
     }
 }
 
