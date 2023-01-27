@@ -1050,6 +1050,49 @@ impl Change for DisableTrigger {
     }
 }
 
+fn extract_rule_from_src(src: &str) -> Result<String, Error> {
+    let condition_regex = regex::Regex::from_str(r".*\(\$1\) WHERE ((?s).*);[ ]*$").unwrap();
+
+    let captures = condition_regex
+        .captures(src);
+
+    let condition = match captures {
+        Some(c) => {
+            c.get(1).unwrap().as_str()
+        },
+        None => {
+            return Err(Error::Runtime(RuntimeError { msg: format!("Could not extract condition from SQL: '{}'", src) }))
+        }
+    };
+
+    Ok(condition.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_rule_from_src;
+
+    #[test]
+    fn test_rule_extraction_single_line() {
+        let condition_function_source = r#" SELECT * FROM trigger_rule."4G/hourly/PacketDropRate_with_threshold"($1) WHERE "packet_drop_rate" > "packet_drop_rate_max"; "#;
+
+        let rule = extract_rule_from_src(&condition_function_source).unwrap();
+
+        assert_eq!(rule, r#""packet_drop_rate" > "packet_drop_rate_max""#);
+    }
+
+    #[test]
+    fn test_rule_extraction_multi_line() {
+        let condition_function_source = r#" SELECT * FROM trigger_rule."4G/hourly/PacketDropRate_with_threshold"($1) WHERE "packet_drop_rate" > "packet_drop_rate_max" AND
+        "packet_drop_amount" > "packet_drop_amount_min"; "#;
+
+        let rule = extract_rule_from_src(&condition_function_source).unwrap();
+
+        assert_eq!(rule, r#""packet_drop_rate" > "packet_drop_rate_max" AND
+        "packet_drop_amount" > "packet_drop_amount_min""#);
+    }
+}
+
 pub async fn load_trigger<T: GenericClient + Send + Sync>(
     conn: &mut T,
     name: &str,
@@ -1100,13 +1143,7 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
 
     let condition_function_source = load_function_src(conn, "trigger_rule", &name).await?;
 
-    let condition_regex = regex::Regex::from_str(r".*\(\$1\) WHERE (.*);[ ]*$").unwrap();
-
-    let captures = condition_regex
-        .captures(&condition_function_source)
-        .unwrap();
-
-    let condition = captures.get(1).unwrap().as_str();
+    let condition = extract_rule_from_src(&condition_function_source)?;
 
     let weight_function_source =
         load_function_src(conn, "trigger_rule", &format!("{}_weight", &name)).await?;
