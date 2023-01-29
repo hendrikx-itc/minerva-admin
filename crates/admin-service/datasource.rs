@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::error::Error;
+use super::serviceerror::ServiceError;
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct DataSource {
@@ -26,40 +27,30 @@ pub struct DataSource {
 #[get("/data-sources")]
 pub(super) async fn get_data_sources(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-) -> impl Responder {
-    let mut m: Vec<DataSource> = vec![];
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(client) => {
-            let query = client
-                .query(
-                    "SELECT id, name, description FROM directory.data_source",
-                    &[],
-                )
-                .await;
-            match query {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(query_result) => {
-                    for row in query_result {
-                        let datasource = DataSource {
-                            id: row.get(0),
-                            name: row.get(1),
-                            description: row.get(2),
-                        };
-                        m.push(datasource)
-                    }
-                    HttpResponse::Ok().json(m)
-                }
-            }
-        }
-    }
+) -> Result<HttpResponse, ServiceError> {
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+
+    let data_sources: Vec<DataSource> = client
+        .query(
+            "SELECT id, name, description FROM directory.data_source",
+            &[],
+        )
+        .await
+        .map_err(|e| Error {
+                code: 500,
+                message: e.to_string(),
+        })
+        .map(|rows| rows
+            .iter()
+            .map(|row| DataSource {
+                id: row.get(0),
+                name: row.get(1),
+                description: row.get(2),
+            })
+            .collect()
+        )?;
+
+    Ok(HttpResponse::Ok().json(data_sources))
 }
 
 #[utoipa::path(
@@ -75,38 +66,26 @@ pub(super) async fn get_data_sources(
 pub(super) async fn get_data_source(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     id: Path<i32>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let ds_id = id.into_inner();
 
-    let result = pool.get().await;
-    match result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
-            code: 500,
-            message: e.to_string(),
-        }),
-        Ok(client) => {
-            let query_result = client
-                .query_one(
-                    "SELECT id, name, description FROM directory.data_source WHERE id=$1",
-                    &[&ds_id],
-                )
-                .await;
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
 
-            match query_result {
-                Ok(row) => {
-                    let datasource = DataSource {
-                        id: row.get(0),
-                        name: row.get(1),
-                        description: row.get(2),
-                    };
+    let data_source = client
+        .query_one(
+            "SELECT id, name, description FROM directory.data_source WHERE id=$1",
+            &[&ds_id],
+        )
+        .await
+        .map_err(|_| Error {
+            code: 404,
+            message: format!("Data source with id {} not found", &ds_id),
+        })
+        .map(|row| DataSource {
+            id: row.get(0),
+            name: row.get(1),
+            description: row.get(2),
+        })?;
 
-                    HttpResponse::Ok().json(datasource)
-                }
-                Err(_e) => HttpResponse::NotFound().json(Error {
-                    code: 404,
-                    message: format!("Data source with id {} not found", &ds_id),
-                }),
-            }
-        }
-    }
+    Ok(HttpResponse::Ok().json(data_source))
 }
