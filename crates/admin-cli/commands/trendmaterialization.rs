@@ -40,7 +40,7 @@ impl Cmd for TrendMaterializationCreate {
                 Ok(())
             }
             Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error creating trend materialization: {}", e),
+                msg: format!("Error creating trend materialization: {e}"),
             })),
         }
     }
@@ -73,7 +73,7 @@ impl Cmd for TrendMaterializationUpdate {
                 Ok(())
             }
             Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error updating trend materialization: {}", e),
+                msg: format!("Error updating trend materialization: {e}"),
             })),
         }
     }

@@ -1,7 +1,6 @@
 use actix_web::error::ResponseError;
 use actix_web::HttpResponse;
 use derive_more::{Display, From};
-use tokio_postgres;
 
 use super::error::{BadRequest, Error};
 
@@ -34,12 +33,12 @@ impl ResponseError for ServiceError {
 
 impl From<tokio_postgres::error::Error> for ServiceError {
     fn from(value: tokio_postgres::error::Error) -> ServiceError {
-        ServiceError::DbError(format!("{:?}", value))
+        ServiceError::DbError(format!("{value:?}"))
     }
 }
 
 impl From<Error> for ServiceError {
     fn from(value: Error) -> ServiceError {
-        ServiceError::DbError(format!("{:?}", value))
+        ServiceError::DbError(format!("{value:?}"))
     }
 }

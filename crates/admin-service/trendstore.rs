@@ -6,7 +6,7 @@ use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use tokio_postgres::GenericClient;
 
-use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse, Responder};
+use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse};
 
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -260,7 +260,7 @@ impl TrendStoreBasicData {
                 let new_trend_store = TrendStore {
                     data_source: self.data_source.clone(),
                     entity_type: self.entity_type.clone(),
-                    granularity: self.granularity.clone(),
+                    granularity: self.granularity,
                     partition_size: *PARTITION_SIZE.get(&self.granularity.clone()).unwrap(),
                     parts: vec![],
                 };
@@ -272,8 +272,7 @@ impl TrendStoreBasicData {
                 match result {
                     Ok(_) => Ok(new_trend_store),
                     Err(e) => Err(format!(
-                        "Unable to find or create trend store: {}",
-                        e.to_string()
+                        "Unable to find or create trend store: {e}"
                     )),
                 }
             }
@@ -299,7 +298,7 @@ impl TrendStorePartCompleteData {
         TrendStoreBasicData {
             entity_type: self.entity_type.clone(),
             data_source: self.data_source.clone(),
-            granularity: self.granularity.clone(),
+            granularity: self.granularity,
         }
     }
 
@@ -331,7 +330,7 @@ impl TrendStorePartCompleteData {
 
         action.generic_apply(client).await.map_err(|e| Error {
             code: 409,
-            message: format!("Creation of trendstorepart failed: {}", e.to_string()),
+            message: format!("Creation of trendstorepart failed: {e}"),
         })?;
 
         let action = AddTrends {
@@ -342,8 +341,7 @@ impl TrendStorePartCompleteData {
         action.generic_apply(client).await.map_err(|e| Error {
             code: 409,
             message: format!(
-                "Creation of trendstorepart succeeded, but inserting trends failed: {}",
-                e.to_string()
+                "Creation of trendstorepart succeeded, but inserting trends failed: {e}"
             ),
         })?;
 
@@ -507,13 +505,13 @@ pub(super) async fn get_trend_store_parts(
                 let my_trends: Vec<TrendFull> = trends
                     .iter()
                     .filter(|trend| trend.trend_store_part == tspid)
-                    .map(|t| t.clone())
+                    .cloned()
                     .collect();
 
                 let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
                     .iter()
                     .filter(|generated_trend| generated_trend.trend_store_part == tspid)
-                    .map(|t| t.clone())
+                    .cloned()
                     .collect();
 
                 TrendStorePartFull {
@@ -805,13 +803,13 @@ pub(super) async fn get_trend_stores(
                 let my_trends: Vec<TrendFull> = trends
                     .iter()
                     .filter(|trend| trend.trend_store_part == tspid)
-                    .map(|t| t.clone())
+                    .cloned()
                     .collect();
     
                 let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
                     .iter()
                     .filter(|generated_trend| generated_trend.trend_store_part == tspid)
-                    .map(|t| t.clone())
+                    .cloned()
                     .collect();
     
                 TrendStorePartFull {
@@ -846,7 +844,7 @@ pub(super) async fn get_trend_stores(
                 let my_parts = parts
                     .iter()
                     .filter(|p| p.trend_store == tsid)
-                    .map(|p| p.clone())
+                    .cloned()
                     .collect();
     
                 TrendStoreFull {
@@ -961,13 +959,13 @@ pub(super) async fn get_trend_store(
                 let my_trends: Vec<TrendFull> = trends
                     .iter()
                     .filter(|t| t.trend_store_part == tspid)
-                    .map(|t| t.clone())
+                    .cloned()
                     .collect();
 
                 let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
                     .iter()
                     .filter(|t| t.trend_store_part == tspid)
-                    .map(|t| t.clone())
+                    .cloned()
                     .collect();
 
                 TrendStorePartFull {
@@ -1027,7 +1025,7 @@ pub(super) async fn post_trend_store_part(
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
     let data: TrendStorePartCompleteData = serde_json::from_str(&post).map_err(|e| BadRequest {
-        message: format!("{}", e),
+        message: format!("{e}"),
     })?;
 
     let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;

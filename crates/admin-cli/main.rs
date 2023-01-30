@@ -1,7 +1,5 @@
 use structopt::StructOpt;
 
-use tokio;
-
 pub mod commands;
 
 use crate::commands::attributestore::AttributeStoreOpt;
@@ -50,6 +48,6 @@ async fn main() {
     };
 
     if let Err(e) = result {
-        println!("{}", e);
+        println!("{e}");
     }
 }

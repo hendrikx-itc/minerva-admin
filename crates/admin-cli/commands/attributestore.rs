@@ -33,8 +33,8 @@ pub enum AttributeStoreOpt {
 impl AttributeStoreOpt {
     pub async fn run(&self) -> CmdResult {
         match self {
-            AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(&args).await,
-            AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(&args).await,
+            AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(args).await,
+            AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(args).await,
         }
     }
 }
@@ -57,7 +57,7 @@ async fn run_attribute_store_create_cmd(args: &AttributeStoreCreate) -> CmdResul
             Ok(())
         }
         Err(e) => Err(Error::Runtime(RuntimeError {
-            msg: format!("Error creating attribute store: {}", e),
+            msg: format!("Error creating attribute store: {e}"),
         })),
     }
 }
@@ -89,7 +89,7 @@ async fn run_attribute_store_update_cmd(args: &AttributeStoreUpdate) -> CmdResul
                     println!("{}", &change);
                 }
                 Err(e) => {
-                    println!("Error applying update: {}", e);
+                    println!("Error applying update: {e}");
                 }
             }
         }

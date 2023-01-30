@@ -175,9 +175,9 @@ impl TrendViewMaterializationData {
             processing_delay: self.processing_delay,
             stability_delay: self.stability_delay,
             reprocessing_period: self.reprocessing_period,
-            sources: sources,
+            sources,
             view: self.view.to_string(),
-            description: self.description.clone(),
+            description: Some(self.description.clone()),
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }
@@ -279,7 +279,7 @@ impl TrendViewMaterializationData {
                 message: format!(
                     "No view materialization targetting {} found: {}",
                     self.target_trend_store_part,
-                    e.to_string()
+                    e
                 ),
             })?;
 
@@ -292,7 +292,7 @@ impl TrendViewMaterializationData {
             .await
             .map_err(|e| Error {
                 code: 500,
-                message: "Update of materialization failed: ".to_owned() + &e.to_string(),
+                message: format!("Update of materialization failed: {e}"),
             })
             .map(|_| Ok(Success {
                 code: 200,
@@ -330,9 +330,9 @@ impl TrendFunctionMaterializationData {
             processing_delay: self.processing_delay,
             stability_delay: self.stability_delay,
             reprocessing_period: self.reprocessing_period,
-            sources: sources,
+            sources,
             function: self.function.as_minerva(),
-            description: self.description.clone(),
+            description: Some(self.description.clone()),
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }
@@ -396,19 +396,19 @@ impl TrendFunctionMaterializationData {
             )?;
 
         let materialization = TrendFunctionMaterializationFull {
-            id: id,
+            id,
             materialization_id: row.get(1),
             target_trend_store_part: row.get(3),
             enabled: row.get(7),
             processing_delay: parse_interval(row.get(4)).unwrap(),
             stability_delay: parse_interval(row.get(5)).unwrap(),
             reprocessing_period: parse_interval(row.get(6)).unwrap(),
-            sources: sources,
+            sources,
             function: TrendMaterializationFunctionFull {
-            name: row.get(2),
-            return_type: row.get(9),
-            src: row.get(10),
-            language: row.get(11),
+                name: row.get(2),
+                return_type: row.get(9),
+                src: row.get(10),
+                language: row.get(11),
             },
             description: row.get(12),
             fingerprint_function: row.get(8),
@@ -438,7 +438,7 @@ impl TrendFunctionMaterializationData {
                 message: format!(
                     "No function materialization targetting '{}' found: {}",
                     self.target_trend_store_part,
-                    e.to_string()
+                    e
                 ),
             })?;
 
@@ -451,7 +451,7 @@ impl TrendFunctionMaterializationData {
             .await
             .map_err(|e| Error {
                 code: 500,
-                message: "Update of materialization failed: ".to_owned() + &e.to_string(),
+                message: format!("Update of materialization failed: {e}"),
             })
             .map(|_| Ok(Success {
                 code: 200,
@@ -530,7 +530,7 @@ pub(super) async fn get_trend_view_materializations(
         .await
         .map_err(|e| Error {
             code: 500,
-            message: format!("Unable to list sources: {}", e.to_string()),
+            message: format!("Unable to list sources: {e}"),
         })
         .map(|rows| rows
             .iter()
@@ -559,7 +559,7 @@ pub(super) async fn get_trend_view_materializations(
         .await
         .map_err(|e| Error {
             code: 500,
-            message: format!("Unable to list materializations: {}", e.to_string()),
+            message: format!("Unable to list materializations: {e}"),
         })
         .map(|rows| rows
             .iter()
@@ -604,59 +604,69 @@ pub(super) async fn get_trend_view_materializations(
 pub(super) async fn get_trend_view_materialization(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     id: Path<i32>,
-) -> impl Responder {
+) -> Result<HttpResponse, ServiceError> {
     let vm_id = id.into_inner();
 
-    let query_result = pool.get().await;
-    match query_result {
-        Err(e) => HttpResponse::InternalServerError().json(Error {
+    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+
+    let sources: Vec<TrendMaterializationSourceData> = client
+        .query(
+            concat!(
+                "SELECT tsp.name, timestamp_mapping_func::text ",
+                "FROM trend_directory.materialization_trend_store_link tsl ",
+                "JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id ",
+                "JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id ",
+                "WHERE vm.id = $1"
+            ),
+            &[&vm_id],
+        )
+        .await
+        .map_err(|e| Error {
             code: 500,
             message: e.to_string(),
-        }),
-        Ok(client) => {
-            let query_result = client.query_one("SELECT vm.id, m.id, pg_views.definition, tsp.id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, m.description FROM trend_directory.view_materialization vm JOIN trend_directory.materialization m ON vm.materialization_id = m.id JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') WHERE vm.id = $1", &[&vm_id],).await;
+        })
+        .map(|rows| rows
+            .iter()
+            .map(|row| TrendMaterializationSourceData {
+                trend_store_part: row.get(0),
+                mapping_function: row.get(1),
+            })
+            .collect()
+        )?;
 
-            match query_result {
-                Ok(row) => {
-                    let mut sources: Vec<TrendMaterializationSourceData> = vec![];
-                    let query = client.query("SELECT tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link tsl JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id JOIN trend_directory.view_materialization vm ON tsl.materialization_id = vm.materialization_id WHERE vm.id = $1", &[&vm_id],).await;
-                    match query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(query_result) => {
-                            for inner_row in query_result {
-                                let source = TrendMaterializationSourceData {
-                                    trend_store_part: inner_row.get(0),
-                                    mapping_function: inner_row.get(1),
-                                };
-                                sources.push(source)
-                            }
-                            let materialization = TrendViewMaterializationFull {
-                                id: row.get(0),
-                                materialization_id: row.get(1),
-                                target_trend_store_part: row.get(3),
-                                enabled: row.get(7),
-                                processing_delay: parse_interval(row.get(4)).unwrap(),
-                                stability_delay: parse_interval(row.get(5)).unwrap(),
-                                reprocessing_period: parse_interval(row.get(6)).unwrap(),
-                                sources: sources,
-                                view: row.get(2),
-                                description: row.get(9),
-                                fingerprint_function: row.get(8),
-                            };
-                            HttpResponse::Ok().json(materialization)
-                        }
-                    }
-                }
-                Err(_e) => HttpResponse::NotFound().json(Error {
-                    code: 404,
-                    message: format!("Trend view materialization with id {} not found", &vm_id),
-                }),
-            }
-        }
-    }
+    let materialization = client
+        .query_one(
+            concat!(
+                "SELECT vm.id, m.id, pg_views.definition, tsp.id, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, m.description ",
+                "FROM trend_directory.view_materialization vm ",
+                "JOIN trend_directory.materialization m ON vm.materialization_id = m.id ",
+                "JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id ",
+                "JOIN pg_proc ON trend_directory.fingerprint_function_name(m) = proname ",
+                "JOIN pg_views ON schemaname = substring(src_view, '(.*?)\\.') AND viewname = substring(src_view, '\"(.*)\"') ",
+                "WHERE vm.id = $1"
+            ),
+            &[&vm_id],
+        )
+        .await
+        .map_err(|_| Error {
+            code: 404,
+            message: format!("Trend view materialization with id {} not found", &vm_id),
+        })
+        .map(|row| TrendViewMaterializationFull {
+            id: row.get(0),
+            materialization_id: row.get(1),
+            target_trend_store_part: row.get(3),
+            enabled: row.get(7),
+            processing_delay: parse_interval(row.get(4)).unwrap(),
+            stability_delay: parse_interval(row.get(5)).unwrap(),
+            reprocessing_period: parse_interval(row.get(6)).unwrap(),
+            sources,
+            view: row.get(2),
+            description: row.get(9),
+            fingerprint_function: row.get(8),
+        })?;
+        
+    Ok(HttpResponse::Ok().json(materialization))
 }
 
 #[utoipa::path(
@@ -799,7 +809,7 @@ pub(super) async fn get_trend_function_materialization(
                                 processing_delay: parse_interval(row.get(4)).unwrap(),
                                 stability_delay: parse_interval(row.get(5)).unwrap(),
                                 reprocessing_period: parse_interval(row.get(6)).unwrap(),
-                                sources: sources,
+                                sources,
                                 function: TrendMaterializationFunctionFull {
                                     name: row.get(2),
                                     return_type: row.get(9),

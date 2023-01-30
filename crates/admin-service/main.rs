@@ -5,7 +5,6 @@ use actix_web::{middleware::Logger, web, App, HttpServer};
 
 use tokio_postgres::{config::SslMode, Config};
 
-use bb8;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
 use utoipa::OpenApi;

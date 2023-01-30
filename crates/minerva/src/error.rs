@@ -16,7 +16,7 @@ impl DatabaseError {
 impl From<tokio_postgres::Error> for DatabaseError {
     fn from(err: tokio_postgres::Error) -> DatabaseError {
         DatabaseError {
-            msg: format!("{}", err),
+            msg: format!("{err}"),
         }
     }
 }
@@ -81,7 +81,7 @@ impl From<RuntimeError> for Error {
 impl From<tokio_postgres::Error> for Error {
     fn from(err: tokio_postgres::Error) -> Error {
         Error::Database(DatabaseError {
-            msg: format!("{}", err),
+            msg: format!("{err}"),
         })
     }
 }

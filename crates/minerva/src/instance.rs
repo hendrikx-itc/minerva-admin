@@ -142,7 +142,7 @@ impl MinervaInstance {
         }
     }
 
-    pub fn diff<'a>(&self, other: &MinervaInstance) -> Vec<Box<dyn Change + Send>> {
+    pub fn diff(&self, other: &MinervaInstance) -> Vec<Box<dyn Change + Send>> {
         let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
         // Check for changes in trend stores
@@ -222,7 +222,7 @@ impl MinervaInstance {
         println!("Applying changes:");
 
         for change in changes {
-            println!("* {}", change);
+            println!("* {change}");
 
             match change.apply(client).await {
                 Ok(message) => println!("> {}", &message),
@@ -235,7 +235,7 @@ impl MinervaInstance {
             let result = materialization.update(client).await;
 
             if let Err(e) = result {
-                println!("Erro updating trend materialization: {}", e);
+                println!("Erro updating trend materialization: {e}");
             }
         }
 
@@ -247,7 +247,7 @@ pub async fn dump(client: &mut Client) {
     let minerva_instance: MinervaInstance = match MinervaInstance::load_from_db(client).await {
         Ok(i) => i,
         Err(e) => {
-            println!("Error loading instance from database: {}", e);
+            println!("Error loading instance from database: {e}");
             return;
         }
     };
@@ -273,7 +273,7 @@ fn load_attribute_stores_from(
         .expect("Failed to read glob pattern")
         .filter_map(|entry| match entry {
             Ok(path) => {
-                let f = std::fs::File::open(&path).unwrap();
+                let f = std::fs::File::open(path).unwrap();
                 let attribute_store: AttributeStore = serde_yaml::from_reader(f).unwrap();
 
                 Some(attribute_store)
@@ -292,10 +292,10 @@ async fn initialize_attribute_stores(client: &mut Client, attribute_stores: &Vec
 
         match result {
             Ok(message) => {
-                println!("{}", message);
+                println!("{message}");
             }
             Err(e) => {
-                println!("Error creating attribute store: {}", e);
+                println!("Error creating attribute store: {e}");
             }
         }
     }
@@ -313,7 +313,7 @@ fn load_notification_stores_from(
         .expect("Failed to read glob pattern")
         .filter_map(|entry| match entry {
             Ok(path) => {
-                let f = std::fs::File::open(&path).unwrap();
+                let f = std::fs::File::open(path).unwrap();
                 let notification_store: NotificationStore = serde_yaml::from_reader(f).unwrap();
 
                 Some(notification_store)
@@ -333,10 +333,10 @@ async fn initialize_notification_stores(
 
         match change.apply(client).await {
             Ok(message) => {
-                println!("{}", message);
+                println!("{message}");
             }
             Err(e) => {
-                println!("Error creating notification store: {}", e);
+                println!("Error creating notification store: {e}");
             }
         }
     }
@@ -361,7 +361,7 @@ fn load_trend_stores_from(minerva_instance_root: &Path) -> impl Iterator<Item = 
             Ok(path) => match load_trend_store_from_file(&path) {
                 Ok(trend_store) => Some(trend_store),
                 Err(e) => {
-                    println!("Error loading trend store definition: {}", e);
+                    println!("Error loading trend store definition: {e}");
                     None
                 }
             },
@@ -377,10 +377,10 @@ async fn initialize_trend_stores(client: &mut Client, trend_stores: &Vec<TrendSt
 
         match change.apply(client).await {
             Ok(message) => {
-                println!("{}", message);
+                println!("{change}: {message}");
             }
             Err(e) => {
-                println!("Error creating trend store: {}", e);
+                println!("Error creating trend store: {e}");
             }
         }
     }
@@ -405,7 +405,7 @@ fn load_triggers_from(minerva_instance_root: &Path) -> impl Iterator<Item = Trig
             Ok(path) => match load_trigger_from_file(&path) {
                 Ok(trend_store) => Some(trend_store),
                 Err(e) => {
-                    println!("Error loading trend store definition: {}", e);
+                    println!("Error loading trend store definition: {e}");
                     None
                 }
             },
@@ -424,7 +424,7 @@ fn load_virtual_entities_from(minerva_instance_root: &Path) -> impl Iterator<Ite
         Ok(path) => match load_virtual_entity_from_file(&path) {
             Ok(virtual_entity) => Some(virtual_entity),
             Err(e) => {
-                println!("Error loading virtual entity definition: {}", e);
+                println!("Error loading virtual entity definition: {e}");
                 None
             }
         },
@@ -451,7 +451,7 @@ fn load_relations_from(minerva_instance_root: &Path) -> impl Iterator<Item = Rel
             Ok(path) => match load_relation_from_file(&path) {
                 Ok(trend_store) => Some(trend_store),
                 Err(e) => {
-                    println!("Error loading relation definition: {}", e);
+                    println!("Error loading relation definition: {e}");
                     None
                 }
             },
@@ -464,8 +464,8 @@ async fn initialize_virtual_entities(client: &mut Client, virtual_entities: &Vec
         let change: AddVirtualEntity = AddVirtualEntity::from(virtual_entity.clone());
 
         match change.apply(client).await {
-            Ok(message) => println!("{}", message),
-            Err(e) => print!("Error creating virtual entity: {}", e),
+            Ok(message) => println!("{message}"),
+            Err(e) => print!("Error creating virtual entity: {e}"),
         }
     }
 }
@@ -475,8 +475,8 @@ async fn initialize_relations(client: &mut Client, relations: &Vec<Relation>) {
         let change: AddRelation = AddRelation::from(relation.clone());
 
         match change.apply(client).await {
-            Ok(message) => println!("{}", message),
-            Err(e) => print!("Error creating relation: {}", e),
+            Ok(message) => println!("{message}"),
+            Err(e) => print!("Error creating relation: {e}"),
         }
     }
 }
@@ -489,8 +489,8 @@ async fn initialize_trend_materializations(
         let change = AddTrendMaterialization::from(materialization.clone());
 
         match change.apply(client).await {
-            Ok(message) => println!("{}", message),
-            Err(e) => println!("Error creating trend materialization: {}", e),
+            Ok(message) => println!("{message}"),
+            Err(e) => println!("Error creating trend materialization: {e}"),
         }
     }
 }
@@ -504,14 +504,14 @@ async fn initialize_triggers(client: &mut Client, triggers: &Vec<Trigger>) {
         };
 
         match change.apply(client).await {
-            Ok(message) => println!("{}", message),
+            Ok(message) => println!("{message}"),
             Err(e) => println!("Error creating trigger '{}': {}", trigger.name, e),
         }
     }
 }
 
 async fn load_sql<'a>(client: &'a mut Client, path: &PathBuf) -> Result<(), String> {
-    let mut f = match std::fs::File::open(&path) {
+    let mut f = match std::fs::File::open(path) {
         Ok(file) => file,
         Err(e) => {
             return Err(format!(
@@ -525,20 +525,17 @@ async fn load_sql<'a>(client: &'a mut Client, path: &PathBuf) -> Result<(), Stri
     let mut sql = String::new();
 
     if let Err(e) = f.read_to_string(&mut sql) {
-        return Err(format!(
-            "Could not read virtual entity definition file: {}",
-            e
-        ));
+        return Err(format!("Could not read virtual entity definition file: {e}"));
     }
 
     if let Err(e) = client.batch_execute(&sql).await {
-        return Err(format!("Error creating relation materialized view: {}", e));
+        return Err(format!("Error creating relation materialized view: {e}"));
     }
 
     Ok(())
 }
 
-fn load_psql<'a>(path: &PathBuf) -> Result<String, String> {
+fn load_psql(path: &PathBuf) -> Result<String, String> {
     let cmd = Command::new("psql").arg("-f").arg(path).output();
 
     match cmd {
@@ -546,19 +543,19 @@ fn load_psql<'a>(path: &PathBuf) -> Result<String, String> {
             true => {
                 let stdout = std::str::from_utf8(&output.stderr).unwrap();
 
-                return Ok(stdout.into());
+                Ok(stdout.into())
             }
             false => {
                 let stderr = std::str::from_utf8(&output.stderr).unwrap();
 
-                return Err(stderr.into());
+                Err(stderr.into())
             }
         },
-        Err(e) => return Err(format!("Could not run psql command: {}", e)),
+        Err(e) => Err(format!("Could not run psql command: {e}")),
     }
 }
 
-fn execute_custom<'a>(path: &PathBuf) -> Result<String, String> {
+fn execute_custom(path: &PathBuf) -> Result<String, String> {
     let cmd = Command::new(path).output();
 
     match cmd {
@@ -566,15 +563,15 @@ fn execute_custom<'a>(path: &PathBuf) -> Result<String, String> {
             true => {
                 let stdout = std::str::from_utf8(&output.stderr).unwrap();
 
-                return Ok(stdout.into());
+                Ok(stdout.into())
             }
             false => {
                 let stderr = std::str::from_utf8(&output.stderr).unwrap();
 
-                return Err(stderr.into());
+                Err(stderr.into())
             }
         },
-        Err(e) => return Err(format!("Could not run command: {}", e)),
+        Err(e) => Err(format!("Could not run command: {e}")),
     }
 }
 

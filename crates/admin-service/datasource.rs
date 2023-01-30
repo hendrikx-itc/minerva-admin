@@ -1,7 +1,7 @@
 use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 
-use actix_web::{get, web::Data, web::Path, HttpResponse, Responder};
+use actix_web::{get, web::Data, web::Path, HttpResponse};
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

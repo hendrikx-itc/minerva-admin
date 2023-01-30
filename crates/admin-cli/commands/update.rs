@@ -28,7 +28,7 @@ impl Cmd for UpdateOpt {
         print!("Reading Minerva instance from database... ");
         io::stdout().flush().unwrap();
         let instance_db = MinervaInstance::load_from_db(&mut client).await?;
-        print!("Ok\n");
+        println!("Ok");
 
         let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
             Ok(v) => PathBuf::from(v),
@@ -48,7 +48,7 @@ impl Cmd for UpdateOpt {
         );
         io::stdout().flush().unwrap();
         let instance_def = MinervaInstance::load_from(&minerva_instance_root);
-        print!("Ok\n");
+        println!("Ok");
 
         update(
             &mut client,
@@ -71,7 +71,7 @@ async fn update(
     println!("Applying changes:");
 
     for change in changes {
-        println!("* {}", change);
+        println!("* {change}");
 
         if (!interactive)
             || Confirm::new()
@@ -79,7 +79,7 @@ async fn update(
                 .interact()
                 .map_err(|e| {
                     Error::Runtime(RuntimeError {
-                        msg: format!("Could not process input: {}", e),
+                        msg: format!("Could not process input: {e}"),
                     })
                 })?
         {
