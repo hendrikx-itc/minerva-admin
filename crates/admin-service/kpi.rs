@@ -708,7 +708,7 @@ pub(super) async fn delete_kpi(
                 "SELECT materialization_id, tsp.name, timestamp_mapping_func::text ",
                 "FROM trend_directory.materialization_trend_store_link ",
                 "JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id ",
-                "WHERE materialization_id=$1"
+                "WHERE materialization_id = $1"
             ),
             &[&materialization_id]
         )

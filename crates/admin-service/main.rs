@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, process::exit};
 
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
@@ -96,7 +96,13 @@ async fn main() -> std::io::Result<()> {
     )]
     struct ApiDoc;
 
-    let service_port: u16 = env::var(ENV_PORT).unwrap().parse().unwrap();
+    let service_port: u16 = match env::var(ENV_PORT).unwrap_or("8000".to_string()).parse() {
+        Err(e) => {
+            println!("Could not parse service port value '{ENV_PORT}': {e}");
+            exit(-1);
+        },
+        Ok(value) => value
+    };
 
     let pool = connect_db().await.unwrap();
 
