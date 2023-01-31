@@ -82,7 +82,8 @@ pub struct TrendInfo {
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct KpiRawData {
-    pub name: String,
+    pub tsp_name: String,
+    pub kpi_name: String,
     pub entity_type: String,
     pub data_type: String,
     pub enabled: bool,
@@ -93,7 +94,8 @@ pub struct KpiRawData {
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct KpiImplementedData {
-    pub name: String,
+    pub tsp_name: String,
+    pub kpi_name: String,
     pub entity_type: String,
     pub data_type: String,
     pub enabled: bool,
@@ -129,7 +131,8 @@ impl KpiRawData {
             result
         } else {
             Ok(KpiImplementedData {
-                name: self.name.clone(),
+                tsp_name: self.tsp_name.clone(),
+                kpi_name: self.kpi_name.clone(),
                 entity_type: self.entity_type.clone(),
                 data_type: self.data_type.clone(),
                 enabled: self.enabled.clone(),
@@ -172,7 +175,7 @@ impl KpiImplementedData {
         format!(
             "{}-{}_{}_{}",
             DATASOURCE.to_string(),
-            &self.name,
+            &self.tsp_name,
             &self.entity_type,
             granularity
         )
@@ -223,7 +226,7 @@ impl KpiImplementedData {
         }
         let srcdef = format!(
 	    "SELECT t1.entity_id, $1 as timestamp, {} as \"{}\"\n FROM {}\nWHERE t1.timestamp = $1\nGROUP BY t1.entity_id",
-	    self.definition, self.name, sourcestrings.join("\nJOIN ")
+	    self.definition, self.kpi_name, sourcestrings.join("\nJOIN ")
 	);
         Kpi {
             trend_store_part: TrendStorePartCompleteData {
@@ -233,7 +236,7 @@ impl KpiImplementedData {
                 granularity: parse_interval(&granularity).unwrap(),
                 partition_size: *PARTITION_SIZE.get(granularity.as_str()).unwrap(),
                 trends: vec![TrendData {
-                    name: self.name.clone(),
+                    name: self.kpi_name.clone(),
                     data_type: self.data_type.clone(),
                     time_aggregation: TIME_AGGREGATION.clone(),
                     entity_aggregation: ENTITY_AGGREGATION.clone(),
@@ -261,7 +264,7 @@ impl KpiImplementedData {
                 function: TrendMaterializationFunctionData {
                     return_type: format!(
                         "TABLE (entity_id integer, \"timestamp\" timestamptz, \"{}\" {})",
-                        self.name, self.data_type
+                        self.kpi_name, self.data_type
                     ),
                     src: srcdef.clone(),
                     language: LANGUAGE.clone(),
@@ -349,7 +352,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                         sources.push(source)
                     }
 
-                    let query = client.query(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' ORDER BY t.name", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[]).await;
+                    let query = client.query(&format!("SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' ORDER BY t.name", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[]).await;
                     match query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
                             code: 500,
@@ -357,7 +360,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                         }),
                         Ok(query_result) => {
                             for row in query_result {
-                                let mat_id: i32 = row.get(4);
+                                let mat_id: i32 = row.get(5);
                                 let mut this_sources: Vec<String> = vec![];
                                 for source in &sources {
                                     if source.materialization == mat_id {
@@ -366,13 +369,14 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                                 }
 
                                 let kpi = KpiImplementedData {
-                                    name: row.get(0),
-                                    entity_type: row.get(1),
-                                    data_type: row.get(2),
-                                    enabled: row.get(3),
+                                    kpi_name: row.get(0),
+                                    tsp_name: row.get(1),
+                                    entity_type: row.get(2),
+                                    data_type: row.get(3),
+                                    enabled: row.get(4),
                                     source_trendstore_parts: this_sources,
-                                    definition: row.get(5),
-                                    description: row.get(6),
+                                    definition: row.get(6),
+                                    description: row.get(7),
                                 };
                                 result.push(kpi)
                             }
@@ -407,14 +411,14 @@ pub(super) async fn get_kpi(
             message: e.to_string(),
         }),
         Ok(client) => {
-            let query = client.query_one(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' AND t.name = $1", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[&kpiname]).await;
+            let query = client.query_one(&format!("SELECT t.name, ts.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' AND ts.name = $1", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[&kpiname]).await;
             match query {
                 Err(_e) => HttpResponse::NotFound().json(Error {
                     code: 404,
                     message: format!("KPI {} not found", &kpiname),
                 }),
                 Ok(kpi) => {
-                    let materialization_id: i32 = kpi.get(4);
+                    let materialization_id: i32 = kpi.get(5);
                     let query = client.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id WHERE materialization_id=$1", &[&materialization_id],).await;
                     match query {
                         Err(e) => HttpResponse::InternalServerError().json(Error {
@@ -424,16 +428,17 @@ pub(super) async fn get_kpi(
                         Ok(query_result) => {
                             let mut sources: Vec<String> = vec![];
                             for row in query_result {
-                                sources.push(row.get(1))
+                                sources.push(row.get(2))
                             }
                             let result = KpiImplementedData {
-                                name: kpi.get(0),
-                                entity_type: kpi.get(1),
-                                data_type: kpi.get(2),
-                                enabled: kpi.get(3),
+                                kpi_name: kpi.get(0),
+                                tsp_name: kpi.get(1),
+                                entity_type: kpi.get(2),
+                                data_type: kpi.get(3),
+                                enabled: kpi.get(4),
                                 source_trendstore_parts: sources,
-                                definition: kpi.get(5),
-                                description: kpi.get(6),
+                                definition: kpi.get(6),
+                                description: kpi.get(7),
                             };
                             HttpResponse::Ok().json(result)
                         }
@@ -465,7 +470,7 @@ pub(super) async fn post_kpi(
     match input {
         Err(e) => HttpResponse::BadRequest().json(Error {
             code: 400,
-            message: e.to_string(),
+            message: post.to_string(),
         }),
         Ok(data) => {
             let client_query = pool.get().await;
@@ -667,14 +672,14 @@ pub(super) async fn delete_kpi(
                     message: e.to_string(),
                 }),
                 Ok(mut transaction) => {
-                    let query = transaction.query_one(&format!("SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' AND t.name = $1", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[&kpiname]).await;
+                    let query = transaction.query_one(&format!("SELECT t.name, ts.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description FROM trend_directory.table_trend t JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id JOIN directory.data_source ds ON ts.data_source_id = ds.id JOIN directory.entity_type et ON ts.entity_type_id = et.id JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function WHERE ds.name = '{}' AND ts.granularity = '{}' AND ts.name = $1", DATASOURCE.to_string(), DEFAULT_GRANULARITY.to_string()), &[&kpiname]).await;
                     match query {
                         Err(_e) => HttpResponse::NotFound().json(Error {
                             code: 404,
                             message: format!("KPI {} not found", &kpiname),
                         }),
                         Ok(kpi) => {
-                            let materialization_id: i32 = kpi.get(4);
+                            let materialization_id: i32 = kpi.get(5);
                             let query = transaction.query("SELECT materialization_id, tsp.name, timestamp_mapping_func::text FROM trend_directory.materialization_trend_store_link JOIN trend_directory.trend_store_part tsp ON trend_store_part_id = tsp.id WHERE materialization_id=$1", &[&materialization_id],).await;
                             match query {
                                 Err(e) => HttpResponse::InternalServerError().json(Error {
@@ -687,13 +692,14 @@ pub(super) async fn delete_kpi(
                                         sources.push(row.get(1))
                                     }
                                     let kpidata = KpiImplementedData {
-                                        name: kpi.get(0),
-                                        entity_type: kpi.get(1),
-                                        data_type: kpi.get(2),
-                                        enabled: kpi.get(3),
+                                        kpi_name: kpi.get(0),
+                                        tsp_name: kpi.get(1),
+                                        entity_type: kpi.get(2),
+                                        data_type: kpi.get(3),
+                                        enabled: kpi.get(4),
                                         source_trendstore_parts: sources,
-                                        definition: kpi.get(5),
-                                        description: kpi.get(6),
+                                        definition: kpi.get(6),
+                                        description: kpi.get(7),
                                     };
                                     let mut result: Result<String, Error> =
                                         Ok("KPI deleted".to_string());

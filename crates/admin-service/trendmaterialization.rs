@@ -176,7 +176,7 @@ impl TrendViewMaterializationData {
             reprocessing_period: self.reprocessing_period,
             sources: sources,
             view: self.view.to_string(),
-            description: self.description.clone(),
+            description: Some(self.description.clone()),
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }
@@ -299,7 +299,7 @@ impl TrendFunctionMaterializationData {
             reprocessing_period: self.reprocessing_period,
             sources: sources,
             function: self.function.as_minerva(),
-            description: self.description.clone(),
+            description: Some(self.description.clone()),
             fingerprint_function: self.fingerprint_function.to_string(),
         })
     }

@@ -6,7 +6,7 @@ use bb8::Pool;
 use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use tokio_postgres::GenericClient;
 
-use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse, Responder};
+use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse};
 
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -199,7 +199,11 @@ impl TrendStorePartFull {
     fn data(&self) -> TrendStorePartData {
         let trends: Vec<TrendData> = self.trends.iter().map(|trend| trend.data()).collect();
 
-        let generated_trends: Vec<GeneratedTrendData> = self.generated_trends.iter().map(|generated_trend| generated_trend.data()).collect();
+        let generated_trends: Vec<GeneratedTrendData> = self
+            .generated_trends
+            .iter()
+            .map(|generated_trend| generated_trend.data())
+            .collect();
 
         TrendStorePartData {
             name: self.name.clone(),
@@ -893,8 +897,9 @@ pub(super) async fn get_trend_store(
         message: e.to_string(),
     })?;
 
-    let trends: Vec<TrendFull> = rows.iter().map(|row|
-        TrendFull {
+    let trends: Vec<TrendFull> = rows
+        .iter()
+        .map(|row| TrendFull {
             id: row.get(0),
             trend_store_part: row.get(1),
             name: row.get(2),
@@ -903,8 +908,8 @@ pub(super) async fn get_trend_store(
             entity_aggregation: row.get(5),
             extra_data: row.get(6),
             description: row.get(7),
-        }
-    ).collect();
+        })
+        .collect();
 
     let rows = client.query(
         concat!(
@@ -951,9 +956,17 @@ pub(super) async fn get_trend_store(
         .iter()
         .map(|row| {
             let tspid: i32 = row.get(0);
-            let my_trends: Vec<TrendFull> = trends.iter().filter(|t| t.trend_store_part == tspid).map(|t| t.clone()).collect();
+            let my_trends: Vec<TrendFull> = trends
+                .iter()
+                .filter(|t| t.trend_store_part == tspid)
+                .map(|t| t.clone())
+                .collect();
 
-            let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends.iter().filter(|t| t.trend_store_part == tspid).map(|t| t.clone()).collect();
+            let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
+                .iter()
+                .filter(|t| t.trend_store_part == tspid)
+                .map(|t| t.clone())
+                .collect();
 
             TrendStorePartFull {
                 id: tspid,
