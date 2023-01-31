@@ -11,7 +11,7 @@ use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
 use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse};
 
 use serde_json::json;
-use tokio_postgres::GenericClient;
+use tokio_postgres::{GenericClient, types::Type};
 
 use minerva::interval::parse_interval;
 
@@ -38,7 +38,7 @@ lazy_static! {
     static ref LANGUAGE: String = "SQL".to_string();
     static ref TIME_AGGREGATION: String = "SUM".to_string();
     static ref ENTITY_AGGREGATION: String = "SUM".to_string();
-    static ref MAPPING_FUNCTION: String = "trend.mapping_id(timestamptz)".to_string();
+    static ref MAPPING_FUNCTION: String = "trend.mapping_id".to_string();
     static ref DEFAULT_GRANULARITY: String = "1w".to_string();
     static ref PROCESSING_DELAY: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("10m").unwrap()),
@@ -112,17 +112,25 @@ impl KpiRawData {
         let mut sources: Vec<String> = vec![];
         let mut result: Result<KpiImplementedData, String> = Err("Unexpected error".to_string());
         let mut errormet = false;
+
+        let query = concat!(
+            "SELECT tsp.name ",
+            "FROM trend_directory.table_trend t ",
+            "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
+            "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
+            "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
+            "WHERE t.name = $1 AND ts.granularity = $2::interval AND et.name = $3"
+        );
+
         for source_trend in self.source_trends.iter() {
+            let statement = client
+                .prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT])
+                .await
+                .map_err(|e| format!("Could not prepare statement: {e}"))?;
+
             let query_result = client
                 .query_one(
-                    concat!(
-                        "SELECT tsp.name ",
-                        "FROM trend_directory.table_trend t ",
-                        "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
-                        "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
-                        "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
-                        "WHERE t.name = $1 AND ts.granularity = $2 AND et.name = $3"
-                    ),
+                    &statement,
                     &[source_trend, &*DEFAULT_GRANULARITY, &self.entity_type]
                 )
                 .await;
@@ -130,13 +138,14 @@ impl KpiRawData {
             match query_result {
                 Err(_) => {
                     result = Err(format!(concat!(
+                        "Could not find source trend store part for trend '{}': ",
                         "SELECT tsp.name ",
                         "FROM trend_directory.table_trend t ",
                         "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
                         "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
                         "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
                         "WHERE t.name = '{}' AND ts.granularity = '{}' AND et.name = '{}'"
-                    ), source_trend, *DEFAULT_GRANULARITY, self.entity_type));
+                    ), source_trend, source_trend, *DEFAULT_GRANULARITY, self.entity_type));
                     errormet = true
                 }
                 Ok(row) => {
@@ -377,7 +386,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                 "JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id ",
                 "JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id ",
                 "JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function ",
-                "WHERE ds.name = $1 AND ts.granularity = $2 ",
+                "WHERE ds.name = $1 AND ts.granularity = $2::text::interval ",
                 "ORDER BY t.name"
             ),
             &[&*DATASOURCE, &*DEFAULT_GRANULARITY]
@@ -520,39 +529,19 @@ pub(super) async fn post_kpi(
             message: e.to_string(),
         })?;
 
-    let mut result = data.create(&mut transaction).await;
+    let result = data.create(&mut transaction).await;
 
     if result.is_ok() {
-        let commission = transaction.commit().await;
-
-        if let Err(e) = commission {
-            result = Err(Error {
+        transaction
+            .commit()
+            .await
+            .map_err(|e| Error {
                 code: 500,
                 message: e.to_string(),
-            });
-        }
+            })?;
     };
 
-    match result {
-        Ok(e) => Ok(HttpResponse::Ok().json(Success {
-            code: 200,
-            message: e,
-        })),
-        Err(Error {
-            code: 409,
-            message: e,
-        }) => Err(Error {
-            code: 409,
-            message: e,
-        }.into()),
-        Err(Error {
-            code: c,
-            message: e,
-        }) => Err(Error {
-            code: c,
-            message: e,
-        }.into()),
-    }
+    Ok(HttpResponse::Ok().json(Success {code: 200, message: "Successfully created KPI".to_string()}))
 }
 
 // curl -H "Content-Type: application/json" -X PUT -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),1000::numeric)","description":{"type": "ratio", "numerator": [{"type": "trend", "value": "L.Thrp.bits.UL.NsaDC"}], "denominator": [{"type": "constant", "value": "1000"}]}}' localhost:8000/kpis

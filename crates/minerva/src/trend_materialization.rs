@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use postgres_protocol::escape::escape_identifier;
-use tokio_postgres::{types::ToSql, Client, GenericClient};
+use tokio_postgres::{types::ToSql, Client, GenericClient, types::Type};
 
 use humantime::format_duration;
 
@@ -474,31 +474,31 @@ impl TrendFunctionMaterialization {
         &self,
         client: &mut T,
     ) -> Result<(), Error> {
-        let mut result: Result<(), Error> = Ok(());
+        let query = concat!(
+            "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
+            "SELECT m.id, ",
+            "stsp.id, ",
+            "$1::regprocedure ",
+            "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id, ",
+            "trend_directory.trend_store_part stsp ",
+            "WHERE dstp.name = $2 AND stsp.name = $3"
+        );
+
+        let statement = client.prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT]).await?;
+
         for source in &self.sources {
-            let query = format!(
-                concat!(
-		    "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
-		    "SELECT m.id, ",
-		    "stsp.id, ",
-		    "'{}(timestamptz)' ",
-		    "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
-		    "ON m.dst_trend_store_part_id = dstp.id, ",
-		    "trend_directory.trend_store_part stsp ",
-		    "WHERE dstp.name = '{}' AND stsp.name = '{}'"
-		),
-                &source.mapping_function, &self.target_trend_store_part, &source.trend_store_part
-            );
-            match client.query(&query, &[]).await {
-                Ok(_) => {}
-                Err(e) => {
-                    result = Err(Error::Database(DatabaseError::from_msg(format!(
-                        "Error connecting sources: {e}"
-                    ))))
-                }
-            }
+            let mapping_function = format!("{}(timestamptz)", &source.mapping_function);
+
+            client
+                .query(&statement, &[&mapping_function,&self.target_trend_store_part, &source.trend_store_part])
+                .await
+                .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                    "Error connecting sources: {e}"
+                ))))?;
         }
-        result
+
+        Ok(())
     }
 
     async fn drop_sources<T: GenericClient + Send + Sync>(
