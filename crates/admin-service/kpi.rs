@@ -606,52 +606,31 @@ pub(super) async fn update_kpi(
             message: e.to_string(),
         })?;
 
-    let mut result: Result<String, Error> = Ok("KPI changed".to_string());
-
     for granularity in GRANULARITIES.iter() {
-        let kpiquery = data
+        let kpi = data
             .get_kpi(granularity.to_string(), &mut transaction)
-            .await;
-        match kpiquery {
-            Err(e) => {
-                result = Err(Error {
-                    code: 404,
-                    message: e,
-                })
-            }
-            Ok(kpi) => {
-                let updatequery = kpi.materialization.update(&mut transaction);
+            .await
+            .map_err(|e| Error {
+                code: 404,
+                message: e,
+            })?;
 
-                if let Err(e) = updatequery.await {
-                    result = Err(e);
-                }
-            }
-        }
+        kpi.materialization
+            .update(&mut transaction)
+            .await?;
     }
 
-    if result.is_ok() {
-        let commission = transaction.commit().await;
-        if let Err(e) = commission {
-            result = Err(Error {
-                code: 500,
-                message: e.to_string(),
-            });
-        }
-    };
+    transaction.commit()
+        .await
+        .map_err(|e| Error {
+            code: 500,
+            message: e.to_string(),
+        })?;
 
-    match result {
-        Ok(m) => Ok(HttpResponse::Ok().json(Success {
-            code: 200,
-            message: m,
-        })),
-        Err(Error {
-            code: c,
-            message: e,
-        }) => Err(Error {
-            code: c,
-            message: e,
-        }.into()),
-    }
+    Ok(HttpResponse::Ok().json(Success {
+        code: 200,
+        message: "KPI changed".to_string(),
+    }))
 }
 
 #[utoipa::path(
@@ -738,46 +717,29 @@ pub(super) async fn delete_kpi(
         description: kpi.get(7),
     };
 
-    let mut result: Result<String, Error> = Ok("KPI deleted".to_string());
-
     for granularity in GRANULARITIES.iter() {
         let kpi = kpidata.get_kpi(granularity.to_string());
-        let deletionquery = kpi
+
+        kpi
             .materialization
             .as_minerva()
             .delete(&mut transaction)
-            .await;
-
-        if let Err(error) = deletionquery {
-            result = Err(Error {
+            .await
+            .map_err(|e| Error {
                 code: 409,
-                message: error.to_string(),
-            });
-        }
-    }
-
-    if result.is_ok() {
-        let commission = transaction.commit().await;
-
-        if let Err(e) = commission {
-            result = Err(Error {
-                code: 500,
                 message: e.to_string(),
-            });
-        }
+            })?;
     }
 
-    match result {
-        Ok(m) => Ok(HttpResponse::Ok().json(Success {
-            code: 200,
-            message: m,
-        })),
-        Err(Error {
-            code: c,
-            message: e,
-        }) => Err(Error {
-            code: c,
-            message: e,
-        }.into()),
-    }
+    transaction.commit()
+        .await
+        .map_err(|e| Error {
+            code: 500,
+            message: e.to_string(),
+        })?;
+
+    Ok(HttpResponse::Ok().json(Success {
+        code: 200,
+        message: "KPI deleted".to_string(),
+    }))
 }
