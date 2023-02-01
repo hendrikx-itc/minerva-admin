@@ -84,7 +84,8 @@ pub struct TrendInfo {
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct KpiRawData {
-    pub name: String,
+    pub tsp_name: String,
+    pub kpi_name: String,
     pub entity_type: String,
     pub data_type: String,
     pub enabled: bool,
@@ -95,7 +96,8 @@ pub struct KpiRawData {
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct KpiImplementedData {
-    pub name: String,
+    pub tsp_name: String,
+    pub kpi_name: String,
     pub entity_type: String,
     pub data_type: String,
     pub enabled: bool,
@@ -150,8 +152,8 @@ async fn get_source<T: GenericClient + Send + Sync>(
     let query = concat!(
         "SELECT tvp.name ",
         "FROM trend_directory.view_trend t ",
-        "JOIN trend_directory.trend_view_part tvp ON t.trend_view_part_id = tsvp.id ",
-        "JOIN trend_directory.trend_view tv ON tsp.trend_view_id = tv.id ",
+        "JOIN trend_directory.trend_view_part tvp ON t.trend_view_part_id = tvp.id ",
+        "JOIN trend_directory.trend_view tv ON tvp.trend_view_id = tv.id ",
         "JOIN directory.entity_type et ON tv.entity_type_id = et.id ",
         "WHERE t.name = $1 AND tv.granularity = $2::interval AND et.name = $3"
     );
@@ -193,7 +195,8 @@ impl KpiRawData {
         sources.dedup();
 
         Ok(KpiImplementedData {
-            name: self.name.clone(),
+            tsp_name: self.tsp_name.clone(),
+            kpi_name: self.kpi_name.clone(),
             entity_type: self.entity_type.clone(),
             data_type: self.data_type.clone(),
             enabled: self.enabled,
@@ -233,7 +236,7 @@ impl KpiImplementedData {
         format!(
             "{}-{}_{}_{}",
             *DATASOURCE,
-            &self.name,
+            &self.tsp_name,
             &self.entity_type,
             granularity
         )
@@ -285,7 +288,7 @@ impl KpiImplementedData {
         }
         let srcdef = format!(
             "SELECT t1.entity_id, $1 as timestamp, {} as \"{}\"\n FROM {}\nWHERE t1.timestamp = $1\nGROUP BY t1.entity_id",
-            self.definition, self.name, sourcestrings.join("\nJOIN ")
+            self.definition, self.kpi_name, sourcestrings.join("\nJOIN ")
         );
         Kpi {
             trend_store_part: TrendStorePartCompleteData {
@@ -295,7 +298,7 @@ impl KpiImplementedData {
                 granularity: parse_interval(&granularity).unwrap(),
                 partition_size: *PARTITION_SIZE.get(granularity.as_str()).unwrap(),
                 trends: vec![TrendData {
-                    name: self.name.clone(),
+                    name: self.kpi_name.clone(),
                     data_type: self.data_type.clone(),
                     time_aggregation: TIME_AGGREGATION.clone(),
                     entity_aggregation: ENTITY_AGGREGATION.clone(),
@@ -323,7 +326,7 @@ impl KpiImplementedData {
                 function: TrendMaterializationFunctionData {
                     return_type: format!(
                         "TABLE (entity_id integer, \"timestamp\" timestamptz, \"{}\" {})",
-                        self.name, self.data_type
+                        self.kpi_name, self.data_type
                     ),
                     src: srcdef,
                     language: LANGUAGE.clone(),
@@ -403,7 +406,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
     let result: Vec<KpiImplementedData> = client
         .query(
             concat!(
-                "SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
+                "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
                 "FROM trend_directory.table_trend t ",
                 "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
                 "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
@@ -425,7 +428,7 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
         .map(|rows| rows
             .iter()
             .map(|row| {
-                let mat_id: i32 = row.get(4);
+                let mat_id: i32 = row.get(5);
                 let this_sources: Vec<String> = sources
                     .iter()
                     .filter(|source| source.materialization == mat_id)
@@ -433,13 +436,14 @@ pub(super) async fn get_kpis(pool: Data<Pool<PostgresConnectionManager<NoTls>>>)
                     .collect();
              
                 KpiImplementedData {
-                    name: row.get(0),
-                    entity_type: row.get(1),
-                    data_type: row.get(2),
-                    enabled: row.get(3),
+                    kpi_name: row.get(0),
+                    tsp_name: row.get(1),
+                    entity_type: row.get(2),
+                    data_type: row.get(3),
+                    enabled: row.get(4),
                     source_trendstore_parts: this_sources,
-                    definition: row.get(5),
-                    description: row.get(6),
+                    definition: row.get(6),
+                    description: row.get(7),
                 }
             })
             .collect()
@@ -468,7 +472,7 @@ pub(super) async fn get_kpi(
     let kpi = client
         .query_one(
             concat!(
-                "SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
+                "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
                 "FROM trend_directory.table_trend t ",
                 "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
                 "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
@@ -487,7 +491,7 @@ pub(super) async fn get_kpi(
             message: format!("KPI {} not found", &kpiname),
         })?;
 
-    let materialization_id: i32 = kpi.get(4);
+    let materialization_id: i32 = kpi.get(5);
     let sources: Vec<String> = client
         .query(
             concat!(
@@ -510,13 +514,14 @@ pub(super) async fn get_kpi(
         )?;
 
     let result = KpiImplementedData {
-        name: kpi.get(0),
-        entity_type: kpi.get(1),
-        data_type: kpi.get(2),
-        enabled: kpi.get(3),
+        kpi_name: kpi.get(0),
+        tsp_name: kpi.get(1),
+        entity_type: kpi.get(2),
+        data_type: kpi.get(3),
+        enabled: kpi.get(4),
         source_trendstore_parts: sources,
-        definition: kpi.get(5),
-        description: kpi.get(6),
+        definition: kpi.get(6),
+        description: kpi.get(7),
     };
 
     Ok(HttpResponse::Ok().json(result))
@@ -542,7 +547,7 @@ pub(super) async fn post_kpi(
     let data: KpiRawData = serde_json::from_str(&post)
         .map_err(|e| Error {
             code: 400,
-            message: e.to_string(),
+            message: format!("Unable to parse input JSON data: {e}"),
         })?;
 
     let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
@@ -680,7 +685,7 @@ pub(super) async fn delete_kpi(
     let kpi = transaction
         .query_one(
             concat!(
-                "SELECT t.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
+                "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
                 "FROM trend_directory.table_trend t ",
                 "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
                 "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
@@ -699,7 +704,7 @@ pub(super) async fn delete_kpi(
             message: format!("KPI {} not found", &kpiname),
         })?;
 
-    let materialization_id: i32 = kpi.get(4);
+    let materialization_id: i32 = kpi.get(5);
 
     let sources: Vec<String> = transaction
         .query(
@@ -723,13 +728,14 @@ pub(super) async fn delete_kpi(
         )?;
 
     let kpidata = KpiImplementedData {
-        name: kpi.get(0),
-        entity_type: kpi.get(1),
-        data_type: kpi.get(2),
-        enabled: kpi.get(3),
+        kpi_name: kpi.get(0),
+        tsp_name: kpi.get(1),
+        entity_type: kpi.get(2),
+        data_type: kpi.get(3),
+        enabled: kpi.get(4),
         source_trendstore_parts: sources,
-        definition: kpi.get(5),
-        description: kpi.get(6),
+        definition: kpi.get(6),
+        description: kpi.get(7),
     };
 
     let mut result: Result<String, Error> = Ok("KPI deleted".to_string());
