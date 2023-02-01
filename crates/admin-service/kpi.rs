@@ -115,6 +115,7 @@ async fn get_source<T: GenericClient + Send + Sync>(
     trend_name: &str,
     entity_type: &str,
 ) -> Result<Source, String> {
+    // First go look for a regular table trend
     let query = concat!(
         "SELECT tsp.name ",
         "FROM trend_directory.table_trend t ",
@@ -129,17 +130,50 @@ async fn get_source<T: GenericClient + Send + Sync>(
         .await
         .map_err(|e| format!("Could not prepare statement: {e}"))?;
 
-    let row = client
-        .query_one(
+    let rows = client
+        .query(
             &statement,
             &[&trend_name, &*DEFAULT_GRANULARITY, &entity_type]
         )
         .await
         .map_err(|_| format!("Could not find source trend store part for trend '{}'", &trend_name))?;
 
+    if rows.len() == 1 {
+        let row = rows.iter().next().unwrap();
+
+        let tsp: String = row.get(0);
+
+        return Ok(Source { name: tsp, relation: None });
+    }
+
+    // Otherwise go look for a view based trend
+    let query = concat!(
+        "SELECT tvp.name ",
+        "FROM trend_directory.view_trend t ",
+        "JOIN trend_directory.trend_view_part tvp ON t.trend_view_part_id = tsvp.id ",
+        "JOIN trend_directory.trend_view tv ON tsp.trend_view_id = tv.id ",
+        "JOIN directory.entity_type et ON tv.entity_type_id = et.id ",
+        "WHERE t.name = $1 AND tv.granularity = $2::interval AND et.name = $3"
+    );
+
+    let statement = client
+        .prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT])
+        .await
+        .map_err(|e| format!("Could not prepare statement: {e}"))?;
+
+    let rows = client
+        .query(
+            &statement,
+            &[&trend_name, &*DEFAULT_GRANULARITY, &entity_type]
+        )
+        .await
+        .map_err(|_| format!("Could not find source trend store part for trend '{}'", &trend_name))?;
+
+    let row = rows.iter().next().unwrap();
+
     let tsp: String = row.get(0);
 
-    Ok(Source { name: tsp, relation: None })
+    return Ok(Source { name: tsp, relation: None });
 }
 
 impl KpiRawData {
@@ -147,12 +181,12 @@ impl KpiRawData {
         &self,
         client: &mut T,
     ) -> Result<KpiImplementedData, String> {
-        let mut sources: Vec<Source> = vec![];
+        let mut sources: Vec<String> = vec![];
 
         for source_trend in self.source_trends.iter() {
             let source = get_source(client, source_trend, &self.entity_type).await?;
 
-            sources.push(source);
+            sources.push(source.name);
         }
 
         sources.sort();
