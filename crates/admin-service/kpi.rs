@@ -85,8 +85,6 @@ pub struct TrendInfo {
 pub struct KpiRawData {
     pub tsp_name: String,
     pub kpi_name: String,
-    pub tsp_name: String,
-    pub kpi_name: String,
     pub entity_type: String,
     pub data_type: String,
     pub enabled: bool,
