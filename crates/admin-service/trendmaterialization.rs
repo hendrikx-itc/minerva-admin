@@ -37,10 +37,11 @@ impl TrendMaterializationSourceData {
 }
 
 fn as_minerva(sources: &Vec<TrendMaterializationSourceData>) -> Vec<TrendMaterializationSource> {
-    let mut result: Vec<TrendMaterializationSource> = vec![];
-    for source in sources {
-        result.push(source.as_minerva())
-    }
+    let result: Vec<TrendMaterializationSource> = sources
+        .iter()
+        .map(|source| source.as_minerva())
+        .collect();
+
     result
 }
 

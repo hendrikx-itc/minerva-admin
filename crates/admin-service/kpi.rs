@@ -241,7 +241,7 @@ impl KpiImplementedData {
             granularity
         )
     }
-
+    
     fn get_kpi(&self, granularity: String) -> Kpi {
         let mut sources: Vec<TrendMaterializationSourceData> = vec![];
         let mut modifieds: Vec<String> = vec![];
