@@ -525,7 +525,9 @@ async fn load_sql<'a>(client: &'a mut Client, path: &PathBuf) -> Result<(), Stri
     let mut sql = String::new();
 
     if let Err(e) = f.read_to_string(&mut sql) {
-        return Err(format!("Could not read virtual entity definition file: {e}"));
+        return Err(format!(
+            "Could not read virtual entity definition file: {e}"
+        ));
     }
 
     if let Err(e) = client.batch_execute(&sql).await {

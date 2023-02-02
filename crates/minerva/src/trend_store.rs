@@ -264,11 +264,8 @@ impl fmt::Display for ModifyTrendDataTypes {
 
 impl fmt::Debug for ModifyTrendDataTypes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let modifications: Vec<String> = self
-            .modifications
-            .iter()
-            .map(|m| format!("{m}"))
-            .collect();
+        let modifications: Vec<String> =
+            self.modifications.iter().map(|m| format!("{m}")).collect();
 
         write!(
             f,
@@ -302,9 +299,7 @@ impl GenericChange for ModifyTrendDataTypes {
         let result = transaction.execute(timeout_query, &[]).await;
 
         if let Err(e) = result {
-            return Err(
-                DatabaseError::from_msg(format!("Error setting lock timeout: {e}")).into(),
-            );
+            return Err(DatabaseError::from_msg(format!("Error setting lock timeout: {e}")).into());
         }
 
         let query = concat!(
@@ -1075,9 +1070,7 @@ pub async fn analyze_trend_store_part(
     );
 
     let row = client.query_one(&query, &[]).await.map_err(|e| {
-        DatabaseError::from_msg(format!(
-            "Could not analyze trend store part '{name}': {e}"
-        ))
+        DatabaseError::from_msg(format!("Could not analyze trend store part '{name}': {e}"))
     })?;
 
     let trend_stats = trend_names
@@ -1090,9 +1083,7 @@ pub async fn analyze_trend_store_part(
         })
         .collect();
 
-    let result = AnalyzeResult {
-        trend_stats
-    };
+    let result = AnalyzeResult { trend_stats };
 
     Ok(result)
 }

@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use postgres_protocol::escape::escape_identifier;
-use tokio_postgres::{types::ToSql, Client, GenericClient, types::Type};
+use tokio_postgres::{types::ToSql, types::Type, Client, GenericClient};
 
 use humantime::format_duration;
 
@@ -485,17 +485,28 @@ impl TrendFunctionMaterialization {
             "WHERE dstp.name = $2 AND stsp.name = $3"
         );
 
-        let statement = client.prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT]).await?;
+        let statement = client
+            .prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT])
+            .await?;
 
         for source in &self.sources {
             let mapping_function = format!("{}(timestamptz)", &source.mapping_function);
 
             client
-                .query(&statement, &[&mapping_function,&self.target_trend_store_part, &source.trend_store_part])
+                .query(
+                    &statement,
+                    &[
+                        &mapping_function,
+                        &self.target_trend_store_part,
+                        &source.trend_store_part,
+                    ],
+                )
                 .await
-                .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
-                    "Error connecting sources: {e}"
-                ))))?;
+                .map_err(|e| {
+                    Error::Database(DatabaseError::from_msg(format!(
+                        "Error connecting sources: {e}"
+                    )))
+                })?;
         }
 
         Ok(())

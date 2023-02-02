@@ -100,8 +100,8 @@ async fn main() -> std::io::Result<()> {
         Err(e) => {
             println!("Could not parse service port value '{ENV_PORT}': {e}");
             exit(-1);
-        },
-        Ok(value) => value
+        }
+        Ok(value) => value,
     };
 
     let pool = connect_db().await.unwrap();

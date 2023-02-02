@@ -162,9 +162,10 @@ pub async fn load_notification_stores(conn: &mut Client) -> Result<Vec<Notificat
         "JOIN directory.data_source ON data_source.id = notification_store.data_source_id ",
     );
 
-    let result = conn.query(query, &[]).await.map_err(|e| {
-        DatabaseError::from_msg(format!("Error loading notification stores: {e}"))
-    })?;
+    let result = conn
+        .query(query, &[])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error loading notification stores: {e}")))?;
 
     for row in result {
         let attribute_store_id: i32 = row.get(0);

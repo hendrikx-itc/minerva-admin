@@ -343,9 +343,7 @@ async fn setup_rule<T: GenericClient + Sync + Send>(
         .execute(&query, &[&trigger.name])
         .await
         .map_err(|e| {
-            DatabaseError::from_msg(format!(
-                "Error setting up rule: {e}\nStatement: {query}"
-            ))
+            DatabaseError::from_msg(format!("Error setting up rule: {e}\nStatement: {query}"))
         })?;
 
     let query = concat!(
@@ -630,12 +628,10 @@ where
 
             Ok(timestamp)
         }
-        _ => Err(Error::Runtime(RuntimeError::from_msg(
-            format!(
-                "Unsupported granularity: {}",
-                &humantime::format_duration(granularity)
-            ),
-        ))),
+        _ => Err(Error::Runtime(RuntimeError::from_msg(format!(
+            "Unsupported granularity: {}",
+            &humantime::format_duration(granularity)
+        )))),
     }
 }
 
@@ -1180,12 +1176,9 @@ pub async fn load_triggers<T: GenericClient + Send + Sync>(
 
     let query = "SELECT name FROM trigger.rule";
 
-    let rows = conn
-        .query(query, &[])
-        .await
-        .map_err(|e| {
-            DatabaseError::from_msg(format!("Error loading trend materializations: {e}"))
-        })?;
+    let rows = conn.query(query, &[]).await.map_err(|e| {
+        DatabaseError::from_msg(format!("Error loading trend materializations: {e}"))
+    })?;
 
     for row in rows {
         let name = row.get(0);
@@ -1274,9 +1267,7 @@ where
     let row = conn
         .query_one(&query, query_args.iter().as_slice())
         .await
-        .map_err(|e| {
-            DatabaseError::from_msg(format!("Error checking for rule existance: {e}"))
-        })?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error checking for rule existance: {e}")))?;
 
     let notification_count: i32 = row.try_get(0)?;
 

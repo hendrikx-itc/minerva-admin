@@ -18,8 +18,8 @@ use minerva::trend_materialization::{
 };
 use tokio_postgres::{Client, GenericClient};
 
-use crate::error::{Error, Success};
 use super::serviceerror::ServiceError;
+use crate::error::{Error, Success};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationSourceData {
@@ -37,10 +37,8 @@ impl TrendMaterializationSourceData {
 }
 
 fn as_minerva(sources: &Vec<TrendMaterializationSourceData>) -> Vec<TrendMaterializationSource> {
-    let result: Vec<TrendMaterializationSource> = sources
-        .iter()
-        .map(|source| source.as_minerva())
-        .collect();
+    let result: Vec<TrendMaterializationSource> =
+        sources.iter().map(|source| source.as_minerva()).collect();
 
     result
 }
@@ -190,12 +188,10 @@ impl TrendViewMaterializationData {
         let action = AddTrendMaterialization {
             trend_materialization: self.as_minerva(),
         };
-        action.generic_apply(client)
-            .await
-            .map_err(|e| Error {
-                code: 409,
-                message: e.to_string(),
-            })?;
+        action.generic_apply(client).await.map_err(|e| Error {
+            code: 409,
+            message: e.to_string(),
+        })?;
 
         let row = client
             .query_one(
@@ -295,10 +291,12 @@ impl TrendViewMaterializationData {
                 code: 500,
                 message: format!("Update of materialization failed: {e}"),
             })
-            .map(|_| Ok(Success {
-                code: 200,
-                message: "Update of materialization succeeded.".to_string(),
-            }))?
+            .map(|_| {
+                Ok(Success {
+                    code: 200,
+                    message: "Update of materialization succeeded.".to_string(),
+                })
+            })?
     }
 }
 
@@ -346,13 +344,10 @@ impl TrendFunctionMaterializationData {
             trend_materialization: self.as_minerva(),
         };
 
-        action
-            .generic_apply(client)
-            .await
-            .map_err(|e|Error {
-                code: 409,
-                message: e.to_string(),
-            })?;
+        action.generic_apply(client).await.map_err(|e| Error {
+            code: 409,
+            message: e.to_string(),
+        })?;
 
         let row = client
             .query_one(
@@ -415,7 +410,7 @@ impl TrendFunctionMaterializationData {
             fingerprint_function: row.get(8),
         };
 
-        Ok( materialization )
+        Ok(materialization)
     }
 
     pub async fn update<T: GenericClient + Send + Sync>(
@@ -454,10 +449,12 @@ impl TrendFunctionMaterializationData {
                 code: 500,
                 message: format!("Update of materialization failed: {e}"),
             })
-            .map(|_| Ok(Success {
-                code: 200,
-                message: "Update of materialization succeeded.".to_string(),
-            }))?
+            .map(|_| {
+                Ok(Success {
+                    code: 200,
+                    message: "Update of materialization succeeded.".to_string(),
+                })
+            })?
     }
 
     pub async fn client_update<T: GenericClient + Send + Sync>(
@@ -533,17 +530,17 @@ pub(super) async fn get_trend_view_materializations(
             code: 500,
             message: format!("Unable to list sources: {e}"),
         })
-        .map(|rows| rows
-            .iter()
-            .map(|row| TrendMaterializationSourceIdentifier {
-                materialization: row.get(0),
-                source: TrendMaterializationSourceData {
-                    trend_store_part: row.get(1),
-                    mapping_function: row.get(2),
-                },
-            })
-            .collect()
-        )?;
+        .map(|rows| {
+            rows.iter()
+                .map(|row| TrendMaterializationSourceIdentifier {
+                    materialization: row.get(0),
+                    source: TrendMaterializationSourceData {
+                        trend_store_part: row.get(1),
+                        mapping_function: row.get(2),
+                    },
+                })
+                .collect()
+        })?;
 
     let materializations: Vec<TrendViewMaterializationFull> = client
         .query(
@@ -666,7 +663,7 @@ pub(super) async fn get_trend_view_materialization(
             description: row.get(9),
             fingerprint_function: row.get(8),
         })?;
-        
+
     Ok(HttpResponse::Ok().json(materialization))
 }
 
@@ -1001,24 +998,19 @@ pub(super) async fn post_trend_view_materialization(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
-    let data: TrendViewMaterializationData = serde_json::from_str(&post)
-        .map_err(|e|Error {
-            code: 400,
-            message: e.to_string(),
-        })?;
+    let data: TrendViewMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
+        code: 400,
+        message: e.to_string(),
+    })?;
 
     let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
 
-    let mut transaction = client
-        .transaction()
-        .await
-        .map_err(|e| Error {
-            code: 500,
-            message: e.to_string(),
-        })?;
+    let mut transaction = client.transaction().await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
 
-    data
-        .create(&mut transaction)
+    data.create(&mut transaction)
         .await
         .map(|materialization| Ok(HttpResponse::Ok().json(materialization)))?
 }

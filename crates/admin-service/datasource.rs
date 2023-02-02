@@ -37,18 +37,18 @@ pub(super) async fn get_data_sources(
         )
         .await
         .map_err(|e| Error {
-                code: 500,
-                message: e.to_string(),
+            code: 500,
+            message: e.to_string(),
         })
-        .map(|rows| rows
-            .iter()
-            .map(|row| DataSource {
-                id: row.get(0),
-                name: row.get(1),
-                description: row.get(2),
-            })
-            .collect()
-        )?;
+        .map(|rows| {
+            rows.iter()
+                .map(|row| DataSource {
+                    id: row.get(0),
+                    name: row.get(1),
+                    description: row.get(2),
+                })
+                .collect()
+        })?;
 
     Ok(HttpResponse::Ok().json(data_sources))
 }

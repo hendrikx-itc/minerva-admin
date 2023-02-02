@@ -163,9 +163,7 @@ impl Change for AddAttributeStore {
                 ],
             )
             .await
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error creating attribute store: {e}"))
-            })?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error creating attribute store: {e}")))?;
 
         Ok(format!(
             "Created attribute store '{}'",

@@ -179,14 +179,12 @@ pub struct TrendStorePartData {
 
 impl TrendStorePartData {
     fn as_minerva(&self) -> TrendStorePart {
-        let trends: Vec<Trend> = self.trends
-            .iter()
-            .map(|trend| trend.as_minerva())
-            .collect();
+        let trends: Vec<Trend> = self.trends.iter().map(|trend| trend.as_minerva()).collect();
 
-        let generated_trends: Vec<GeneratedTrend> = self.generated_trends
+        let generated_trends: Vec<GeneratedTrend> = self
+            .generated_trends
             .iter()
-            .map(|generated_trend|generated_trend.as_minerva())
+            .map(|generated_trend| generated_trend.as_minerva())
             .collect();
 
         TrendStorePart {
@@ -271,9 +269,7 @@ impl TrendStoreBasicData {
                 .await;
                 match result {
                     Ok(_) => Ok(new_trend_store),
-                    Err(e) => Err(format!(
-                        "Unable to find or create trend store: {e}"
-                    )),
+                    Err(e) => Err(format!("Unable to find or create trend store: {e}")),
                 }
             }
         }
@@ -353,7 +349,8 @@ impl TrendStorePartCompleteData {
             .await
             .map_err(|_| Error {
                 code: 404,
-                message: "Trend store part created, but could not be found after creation".to_string(),
+                message: "Trend store part created, but could not be found after creation"
+                    .to_string(),
             })
             .map(|row| (row.get(0), row.get(1)))?;
 
@@ -497,33 +494,33 @@ pub(super) async fn get_trend_store_parts(
             code: 500,
             message: e.to_string(),
         })
-        .map(|rows| rows
-            .iter()
-            .map(|row| {
-                let tspid: i32 = row.get(0);
+        .map(|rows| {
+            rows.iter()
+                .map(|row| {
+                    let tspid: i32 = row.get(0);
 
-                let my_trends: Vec<TrendFull> = trends
-                    .iter()
-                    .filter(|trend| trend.trend_store_part == tspid)
-                    .cloned()
-                    .collect();
+                    let my_trends: Vec<TrendFull> = trends
+                        .iter()
+                        .filter(|trend| trend.trend_store_part == tspid)
+                        .cloned()
+                        .collect();
 
-                let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
-                    .iter()
-                    .filter(|generated_trend| generated_trend.trend_store_part == tspid)
-                    .cloned()
-                    .collect();
+                    let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
+                        .iter()
+                        .filter(|generated_trend| generated_trend.trend_store_part == tspid)
+                        .cloned()
+                        .collect();
 
-                TrendStorePartFull {
-                    id: tspid,
-                    name: row.get(1),
-                    trend_store: row.get(2),
-                    trends: my_trends,
-                    generated_trends: my_generated_trends,
-                }
-            })
-            .collect()
-        )?;
+                    TrendStorePartFull {
+                        id: tspid,
+                        name: row.get(1),
+                        trend_store: row.get(2),
+                        trends: my_trends,
+                        generated_trends: my_generated_trends,
+                    }
+                })
+                .collect()
+        })?;
 
     Ok(HttpResponse::Ok().json(trend_store_parts))
 }
@@ -588,19 +585,19 @@ pub(super) async fn get_trend_store_part(
             code: 500,
             message: e.to_string(),
         })
-        .map(|rows| rows
-            .iter()
-            .map(|row| GeneratedTrendFull {
-                id: row.get(0),
-                trend_store_part: row.get(1),
-                name: row.get(2),
-                data_type: row.get(3),
-                expression: row.get(4),
-                extra_data: row.get(5),
-                description: row.get(6),
-            })
-            .collect()
-        )?;
+        .map(|rows| {
+            rows.iter()
+                .map(|row| GeneratedTrendFull {
+                    id: row.get(0),
+                    trend_store_part: row.get(1),
+                    name: row.get(2),
+                    data_type: row.get(3),
+                    expression: row.get(4),
+                    extra_data: row.get(5),
+                    description: row.get(6),
+                })
+                .collect()
+        })?;
 
     let trendstorepart = client
         .query_one(
@@ -796,32 +793,32 @@ pub(super) async fn get_trend_stores(
             code: 500,
             message: e.to_string(),
         })
-        .map(|rows| rows
-            .iter()
-            .map(|row| {
-                let tspid: i32 = row.get(0);
-                let my_trends: Vec<TrendFull> = trends
-                    .iter()
-                    .filter(|trend| trend.trend_store_part == tspid)
-                    .cloned()
-                    .collect();
-    
-                let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
-                    .iter()
-                    .filter(|generated_trend| generated_trend.trend_store_part == tspid)
-                    .cloned()
-                    .collect();
-    
-                TrendStorePartFull {
-                    id: tspid,
-                    name: row.get(1),
-                    trend_store: row.get(2),
-                    trends: my_trends,
-                    generated_trends: my_generated_trends,
-                }
-            })
-            .collect()
-        )?;
+        .map(|rows| {
+            rows.iter()
+                .map(|row| {
+                    let tspid: i32 = row.get(0);
+                    let my_trends: Vec<TrendFull> = trends
+                        .iter()
+                        .filter(|trend| trend.trend_store_part == tspid)
+                        .cloned()
+                        .collect();
+
+                    let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
+                        .iter()
+                        .filter(|generated_trend| generated_trend.trend_store_part == tspid)
+                        .cloned()
+                        .collect();
+
+                    TrendStorePartFull {
+                        id: tspid,
+                        name: row.get(1),
+                        trend_store: row.get(2),
+                        trends: my_trends,
+                        generated_trends: my_generated_trends,
+                    }
+                })
+                .collect()
+        })?;
 
     let trend_stores: Vec<TrendStoreFull> = client
         .query(
@@ -846,7 +843,7 @@ pub(super) async fn get_trend_stores(
                     .filter(|p| p.trend_store == tsid)
                     .cloned()
                     .collect();
-    
+
                 TrendStoreFull {
                     id: tsid,
                     entity_type: row.get(1),
@@ -952,32 +949,32 @@ pub(super) async fn get_trend_store(
             code: 500,
             message: e.to_string(),
         })
-        .map(|rows| rows
-            .iter()
-            .map(|row| {
-                let tspid: i32 = row.get(0);
-                let my_trends: Vec<TrendFull> = trends
-                    .iter()
-                    .filter(|t| t.trend_store_part == tspid)
-                    .cloned()
-                    .collect();
+        .map(|rows| {
+            rows.iter()
+                .map(|row| {
+                    let tspid: i32 = row.get(0);
+                    let my_trends: Vec<TrendFull> = trends
+                        .iter()
+                        .filter(|t| t.trend_store_part == tspid)
+                        .cloned()
+                        .collect();
 
-                let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
-                    .iter()
-                    .filter(|t| t.trend_store_part == tspid)
-                    .cloned()
-                    .collect();
+                    let my_generated_trends: Vec<GeneratedTrendFull> = generated_trends
+                        .iter()
+                        .filter(|t| t.trend_store_part == tspid)
+                        .cloned()
+                        .collect();
 
-                TrendStorePartFull {
-                    id: tspid,
-                    name: row.get(1),
-                    trend_store: row.get(2),
-                    trends: my_trends,
-                    generated_trends: my_generated_trends,
-                }
-            })
-            .collect()
-        )?;
+                    TrendStorePartFull {
+                        id: tspid,
+                        name: row.get(1),
+                        trend_store: row.get(2),
+                        trends: my_trends,
+                        generated_trends: my_generated_trends,
+                    }
+                })
+                .collect()
+        })?;
 
     let trendstore = client
         .query_one(
