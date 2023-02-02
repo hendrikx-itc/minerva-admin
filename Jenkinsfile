@@ -24,14 +24,6 @@ pipeline {
                 stash name: 'deb', includes: 'target/debian/*.deb'
             }
         }
-        stage('publish-minerva-service') {
-            steps {
-                unstash name: 'deb'
-                script {
-                    publishPackages 'target/debian', 'kpn/focal/stable', 'focal'
-                }
-            }
-        }
         stage ('build-minerva-admin') {
             agent {
                 dockerfile {
@@ -44,11 +36,11 @@ pipeline {
                 stash name: 'deb', includes: 'target/debian/*.deb'
             }
         }
-        stage('publish-minerva-admin') {
+        stage('publish-packages') {
             steps {
                 unstash name: 'deb'
                 script {
-                    publishPackages 'target/debian', 'kpn/focal/stable', 'focal'
+                    publishPackages 'target/debian', 'common/focal/stable', 'focal'
                 }
             }
         }
