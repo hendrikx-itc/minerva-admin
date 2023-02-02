@@ -80,7 +80,7 @@ impl Change for AddRelation {
         );
 
         client.query(&query, &[]).await.map_err(|e| {
-            DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
+            DatabaseError::from_msg(format!("Error creating relation materialized view: {e}"))
         })?;
 
         let query = "SELECT relation_directory.register_type($1)";
@@ -88,7 +88,7 @@ impl Change for AddRelation {
         client
             .query_one(query, &[&self.relation.name])
             .await
-            .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {}", e)))?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error registering relation: {e}")))?;
 
         Ok(format!("Added relation {}", &self.relation))
     }

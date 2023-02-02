@@ -73,7 +73,7 @@ impl Change for AddAttributes {
             )
             .await
             .map_err(|e| {
-                DatabaseError::from_msg(format!("Error adding trends to trend store part: {}", e))
+                DatabaseError::from_msg(format!("Error adding trends to trend store part: {e}"))
             })?;
 
         Ok(format!(
@@ -91,7 +91,7 @@ pub struct AttributeStore {
 }
 
 impl AttributeStore {
-    pub fn diff<'a>(&self, other: &AttributeStore) -> Vec<Box<dyn Change + Send>> {
+    pub fn diff(&self, other: &AttributeStore) -> Vec<Box<dyn Change + Send>> {
         let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
         let mut new_attributes: Vec<Attribute> = Vec::new();
@@ -163,9 +163,7 @@ impl Change for AddAttributeStore {
                 ],
             )
             .await
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error creating attribute store: {}", e))
-            })?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error creating attribute store: {e}")))?;
 
         Ok(format!(
             "Created attribute store '{}'",
@@ -187,7 +185,7 @@ pub async fn load_attribute_stores(conn: &mut Client) -> Result<Vec<AttributeSto
     let result = conn
         .query(query, &[])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error loading attribute stores: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error loading attribute stores: {e}")))?;
 
     for row in result {
         let attribute_store_id: i32 = row.get(0);
@@ -222,7 +220,7 @@ pub async fn load_attribute_store(
     let result = conn
         .query_one(query, &[&data_source, &entity_type])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load attribute stores: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load attribute stores: {e}")))?;
 
     let attributes = load_attributes(conn, result.get::<usize, i32>(0)).await;
 

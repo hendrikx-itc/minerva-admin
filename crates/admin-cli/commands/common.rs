@@ -86,7 +86,7 @@ pub async fn connect_to_db(config: &Config) -> Result<Client, Error> {
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
+                eprintln!("connection error: {e}");
             }
         });
 
@@ -96,7 +96,7 @@ pub async fn connect_to_db(config: &Config) -> Result<Client, Error> {
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
+                eprintln!("connection error: {e}");
             }
         });
 

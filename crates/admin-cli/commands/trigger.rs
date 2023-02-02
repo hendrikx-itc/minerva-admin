@@ -26,7 +26,7 @@ impl Cmd for TriggerList {
 
         let triggers = list_triggers(&mut client)
             .await
-            .map_err(|e| DatabaseError::from_msg(format!("Error listing triggers: {}", e)))?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error listing triggers: {e}")))?;
 
         let mut table = Table::new();
         let style = "     ═╪ ┆          ";
@@ -272,7 +272,7 @@ impl Cmd for TriggerCreateNotifications {
 
         let change = CreateNotifications {
             trigger_name: self.name.clone(),
-            timestamp: self.timestamp.clone(),
+            timestamp: self.timestamp,
         };
 
         let message = change.apply(&mut client).await?;

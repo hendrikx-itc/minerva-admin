@@ -41,12 +41,12 @@ impl Cmd for DiffOpt {
         let other_instance = match &self.with_dir {
             Some(with_dir) => {
                 to_instance_descr = format!("dir('{}')", with_dir.to_string_lossy());
-                MinervaInstance::load_from(&with_dir)
+                MinervaInstance::load_from(with_dir)
             }
             None => {
                 let db_config = get_db_config()?;
 
-                to_instance_descr = format!("database('{:?}')", db_config);
+                to_instance_descr = format!("database('{db_config:?}')");
 
                 let mut client = connect_to_db(&db_config).await?;
 
@@ -57,10 +57,7 @@ impl Cmd for DiffOpt {
         let changes = other_instance.diff(&instance_def);
 
         if !changes.is_empty() {
-            println!(
-                "Differences {} -> {}",
-                from_instance_descr, to_instance_descr
-            );
+            println!("Differences {from_instance_descr} -> {to_instance_descr}");
 
             for change in changes {
                 println!("* {}", &change);

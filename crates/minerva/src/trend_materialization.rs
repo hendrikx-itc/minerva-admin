@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use postgres_protocol::escape::escape_identifier;
-use tokio_postgres::{types::ToSql, Client, GenericClient};
+use tokio_postgres::{types::ToSql, types::Type, Client, GenericClient};
 
 use humantime::format_duration;
 
@@ -66,8 +66,7 @@ impl TrendViewMaterialization {
         match client.query(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error defining view materialization: {}",
-                e
+                "Error defining view materialization: {e}"
             )))),
         }
     }
@@ -88,8 +87,7 @@ impl TrendViewMaterialization {
         match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error dropping view: {}",
-                e
+                "Error dropping view: {e}"
             )))),
         }
     }
@@ -107,8 +105,7 @@ impl TrendViewMaterialization {
         match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error creating view: {}",
-                e
+                "Error creating view: {e}"
             )))),
         }
     }
@@ -138,8 +135,7 @@ impl TrendViewMaterialization {
         match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error creating fingerprint function: {}",
-                e
+                "Error creating fingerprint function: {e}"
             )))),
         }
     }
@@ -156,13 +152,12 @@ impl TrendViewMaterialization {
         match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error dropping fingerprint function: {}",
-                e
+                "Error dropping fingerprint function: {e}"
             )))),
         }
     }
 
-    pub fn diff<'a>(&self, other: &TrendViewMaterialization) -> Vec<Box<dyn Change + Send>> {
+    pub fn diff(&self, other: &TrendViewMaterialization) -> Vec<Box<dyn Change + Send>> {
         let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
         // Comparing a view from the database with a view definition is not
@@ -235,8 +230,7 @@ impl TrendViewMaterialization {
         match client.execute(&query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error updating view materialization attributes: {}",
-                e
+                "Error updating view materialization attributes: {e}"
             )))),
         }
     }
@@ -367,8 +361,7 @@ impl TrendFunctionMaterialization {
         match client.query(query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error defining function materialization: {}",
-                e
+                "Error defining function materialization: {e}"
             )))),
         }
     }
@@ -385,8 +378,7 @@ impl TrendFunctionMaterialization {
         match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error dropping function: {}",
-                e
+                "Error dropping function: {e}"
             )))),
         }
     }
@@ -406,8 +398,7 @@ impl TrendFunctionMaterialization {
         match client.execute(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error creating function: {}",
-                e
+                "Error creating function: {e}"
             )))),
         }
     }
@@ -441,8 +432,7 @@ impl TrendFunctionMaterialization {
         match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error creating fingerprint function: {}",
-                e
+                "Error creating fingerprint function: {e}"
             )))),
         }
     }
@@ -459,8 +449,7 @@ impl TrendFunctionMaterialization {
         match client.query(query.as_str(), &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error dropping fingerprint function: {}",
-                e
+                "Error dropping fingerprint function: {e}"
             )))),
         }
     }
@@ -476,8 +465,7 @@ impl TrendFunctionMaterialization {
         match client.query(query, &[&self.target_trend_store_part]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Unable to enable materialization: {}",
-                e
+                "Unable to enable materialization: {e}"
             )))),
         }
     }
@@ -486,32 +474,42 @@ impl TrendFunctionMaterialization {
         &self,
         client: &mut T,
     ) -> Result<(), Error> {
-        let mut result: Result<(), Error> = Ok(());
+        let query = concat!(
+            "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
+            "SELECT m.id, ",
+            "stsp.id, ",
+            "$1::regprocedure ",
+            "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id, ",
+            "trend_directory.trend_store_part stsp ",
+            "WHERE dstp.name = $2 AND stsp.name = $3"
+        );
+
+        let statement = client
+            .prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT])
+            .await?;
+
         for source in &self.sources {
-            let query = format!(
-                concat!(
-		    "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
-		    "SELECT m.id, ",
-		    "stsp.id, ",
-		    "'{}(timestamptz)' ",
-		    "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
-		    "ON m.dst_trend_store_part_id = dstp.id, ",
-		    "trend_directory.trend_store_part stsp ",
-		    "WHERE dstp.name = '{}' AND stsp.name = '{}'"
-		),
-                &source.mapping_function, &self.target_trend_store_part, &source.trend_store_part
-            );
-            match client.query(&query, &[]).await {
-                Ok(_) => {}
-                Err(e) => {
-                    result = Err(Error::Database(DatabaseError::from_msg(format!(
-                        "Error connecting sources: {}",
-                        e
-                    ))))
-                }
-            }
+            let mapping_function = format!("{}(timestamptz)", &source.mapping_function);
+
+            client
+                .query(
+                    &statement,
+                    &[
+                        &mapping_function,
+                        &self.target_trend_store_part,
+                        &source.trend_store_part,
+                    ],
+                )
+                .await
+                .map_err(|e| {
+                    Error::Database(DatabaseError::from_msg(format!(
+                        "Error connecting sources: {e}"
+                    )))
+                })?;
         }
-        result
+
+        Ok(())
     }
 
     async fn drop_sources<T: GenericClient + Send + Sync>(
@@ -530,16 +528,13 @@ impl TrendFunctionMaterialization {
         match client.query(&query, &[]).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error removing old sources: {}",
-                e
+                "Error removing old sources: {e}"
             )))),
         }
     }
 
-    pub fn diff<'a>(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change + Send>> {
-        let changes = Vec::new();
-
-        changes
+    pub fn diff(&self, _other: &TrendFunctionMaterialization) -> Vec<Box<dyn Change + Send>> {
+        Vec::new()
     }
 
     async fn update_attributes<T: GenericClient + Send + Sync>(
@@ -574,8 +569,7 @@ impl TrendFunctionMaterialization {
         match client.execute(&query, query_args).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error updating view materialization attributes: {}",
-                e
+                "Error updating view materialization attributes: {e}"
             )))),
         }
     }
@@ -591,8 +585,7 @@ impl TrendFunctionMaterialization {
         {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error deleting view materialization: {}",
-                e
+                "Error deleting view materialization: {e}"
             )))),
         }
     }
@@ -680,7 +673,7 @@ impl TrendMaterialization {
         }
     }
 
-    pub fn diff<'a>(&self, other: &TrendMaterialization) -> Vec<Box<dyn Change + Send>> {
+    pub fn diff(&self, other: &TrendMaterialization) -> Vec<Box<dyn Change + Send>> {
         match self {
             TrendMaterialization::View(m) => match other {
                 TrendMaterialization::View(other_m) => m.diff(other_m),
@@ -697,10 +690,9 @@ impl TrendMaterialization {
 pub fn trend_materialization_from_config(
     path: &std::path::PathBuf,
 ) -> Result<TrendMaterialization, Error> {
-    let f = std::fs::File::open(&path).map_err(|e| {
+    let f = std::fs::File::open(path).map_err(|e| {
         Error::Runtime(RuntimeError::from_msg(format!(
-            "could not open definition file: {}",
-            e
+            "could not open definition file: {e}"
         )))
     })?;
     let deserialize_result: Result<TrendMaterialization, serde_yaml::Error> =
@@ -709,8 +701,7 @@ pub fn trend_materialization_from_config(
     match deserialize_result {
         Ok(materialization) => Ok(materialization),
         Err(e) => Err(Error::Runtime(RuntimeError::from_msg(format!(
-            "could not deserialize materialization: {}",
-            e
+            "could not deserialize materialization: {e}"
         )))),
     }
 }
@@ -751,7 +742,7 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
     );
 
     let result = conn.query(query, &[]).await.map_err(|e| {
-        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+        DatabaseError::from_msg(format!("Error loading trend materializations: {e}"))
     })?;
 
     for row in result {
@@ -834,7 +825,7 @@ async fn load_sources<T: GenericClient + Send + Sync>(
         .query(query, &[&materialization_id])
         .await
         .map_err(|e| {
-            DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+            DatabaseError::from_msg(format!("Error loading trend materializations: {e}"))
         })?;
 
     for row in result {
@@ -867,9 +858,9 @@ pub async fn get_function_def<T: GenericClient + Send + Sync>(
     client: &mut T,
     function: &str,
 ) -> Option<String> {
-    let query = format!("SELECT prosrc FROM pg_proc WHERE proname = $1");
+    let query = "SELECT prosrc FROM pg_proc WHERE proname = $1";
 
-    match client.query_one(query.as_str(), &[&function]).await {
+    match client.query_one(query, &[&function]).await {
         Ok(row) => row.get(0),
         Err(_) => None,
     }

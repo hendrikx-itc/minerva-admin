@@ -33,8 +33,7 @@ pub fn load_virtual_entity_from_file(path: &PathBuf) -> Result<VirtualEntity, Er
 
     f.read_to_string(&mut sql).map_err(|e| {
         ConfigurationError::from_msg(format!(
-            "Could not read virtual entity definition file: {}",
-            e
+            "Could not read virtual entity definition file: {e}"
         ))
     })?;
 
@@ -62,7 +61,7 @@ impl Change for AddVirtualEntity {
             .batch_execute(&self.virtual_entity.sql)
             .await
             .map_err(|e| {
-                DatabaseError::from_msg(format!("Error creating relation materialized view: {}", e))
+                DatabaseError::from_msg(format!("Error creating relation materialized view: {e}"))
             })?;
 
         Ok(format!("Added virtual entity {}", &self.virtual_entity))

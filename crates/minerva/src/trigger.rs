@@ -86,22 +86,22 @@ pub async fn list_triggers(
         .map(|row: Row| {
             let name: String = row
                 .try_get(0)
-                .map_err(|e| format!("could not retrieve name: {}", e))?;
+                .map_err(|e| format!("could not retrieve name: {e}"))?;
             let notification_store: Option<String> = row
                 .try_get(1)
-                .map_err(|e| format!("could not retrieve notification store name: {}", e))?;
+                .map_err(|e| format!("could not retrieve notification store name: {e}"))?;
             let granularity: Option<String> = row
                 .try_get(2)
-                .map_err(|e| format!("could not retrieve granularity: {}", e))?;
+                .map_err(|e| format!("could not retrieve granularity: {e}"))?;
             let default_interval: Option<String> = row
                 .try_get(3)
-                .map_err(|e| format!("could not retrieve default interval: {}", e))?;
+                .map_err(|e| format!("could not retrieve default interval: {e}"))?;
             let description: Option<String> = row
                 .try_get(4)
-                .map_err(|e| format!("could not retrieve description: {}", e))?;
+                .map_err(|e| format!("could not retrieve description: {e}"))?;
             let enabled: bool = row
                 .try_get(5)
-                .map_err(|e| format!("could not retrieve enabled: {}", e))?;
+                .map_err(|e| format!("could not retrieve enabled: {e}"))?;
 
             let trigger_row = (
                 name,
@@ -205,7 +205,7 @@ async fn create_type<T: GenericClient + Sync + Send>(
 
     let column_spec = cols
         .iter()
-        .map(|(name, data_type)| format!("{} {}", escape_identifier(&name), &data_type))
+        .map(|(name, data_type)| format!("{} {}", escape_identifier(name), &data_type))
         .collect::<Vec<String>>()
         .join(", ");
 
@@ -218,7 +218,7 @@ async fn create_type<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error creating KPI type: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating KPI type: {e}")))?;
 
     Ok(format!("Added KPI type for trigger '{}'", &trigger.name))
 }
@@ -232,7 +232,7 @@ async fn cleanup_rule<T: GenericClient + Sync + Send>(
     client
         .execute(query, &[&trigger.name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error cleaning up rule: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error cleaning up rule: {e}")))?;
 
     Ok(format!("Cleaned up rule for trigger '{}'", &trigger.name))
 }
@@ -247,7 +247,7 @@ async fn rename_trigger<T: GenericClient + Sync + Send>(
     client
         .execute(query, &[&trigger.name, &old_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error renaming trigger: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error renaming trigger: {e}")))?;
 
     Ok(format!(
         "Renamed trigger '{}' to '{}'",
@@ -272,7 +272,7 @@ async fn create_kpi_function<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error creating KPI function: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating KPI function: {e}")))?;
 
     Ok(format!(
         "Added KPI function for trigger '{}'",
@@ -303,7 +303,7 @@ async fn create_rule<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[&trigger.name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {e}")))?;
 
     let query = concat!(
         "UPDATE trigger.rule ",
@@ -325,7 +325,7 @@ async fn create_rule<T: GenericClient + Sync + Send>(
             ],
         )
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {e}")))?;
 
     Ok(format!("Added rule for trigger '{}'", &trigger.name))
 }
@@ -343,10 +343,7 @@ async fn setup_rule<T: GenericClient + Sync + Send>(
         .execute(&query, &[&trigger.name])
         .await
         .map_err(|e| {
-            DatabaseError::from_msg(format!(
-                "Error setting up rule: {}\nStatement: {}",
-                e, query
-            ))
+            DatabaseError::from_msg(format!("Error setting up rule: {e}\nStatement: {query}"))
         })?;
 
     let query = concat!(
@@ -369,7 +366,7 @@ async fn setup_rule<T: GenericClient + Sync + Send>(
             ],
         )
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {e}")))?;
 
     Ok(format!("Added rule for trigger '{}'", &trigger.name))
 }
@@ -378,12 +375,12 @@ async fn set_weight<T: GenericClient + Sync + Send>(
     trigger: &Trigger,
     client: &mut T,
 ) -> ChangeResult {
-    let query = format!("SELECT trigger.set_weight($1::name, $2::text)",);
+    let query = "SELECT trigger.set_weight($1::name, $2::text)";
 
     client
-        .execute(&query, &[&trigger.name, &trigger.weight])
+        .execute(query, &[&trigger.name, &trigger.weight])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting weight: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting weight: {e}")))?;
 
     Ok(format!("Set weight for trigger '{}'", &trigger.name))
 }
@@ -409,7 +406,7 @@ async fn set_thresholds<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting thresholds: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting thresholds: {e}")))?;
 
     Ok(format!("Set thresholds for trigger '{}'", &trigger.name))
 }
@@ -423,7 +420,7 @@ async fn set_condition<T: GenericClient + Sync + Send>(
     client
         .execute(query, &[&trigger.condition, &trigger.name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting condition: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting condition: {e}")))?;
 
     Ok(format!("Set condition for trigger '{}'", &trigger.name))
 }
@@ -437,7 +434,7 @@ async fn define_notification_message<T: GenericClient + Sync + Send>(
     client
         .execute(query, &[&trigger.name, &trigger.notification])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting message: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting message: {e}")))?;
 
     Ok(format!("Set message for trigger '{}'", &trigger.name))
 }
@@ -451,7 +448,7 @@ async fn define_notification_data<T: GenericClient + Sync + Send>(
     client
         .execute(query, &[&trigger.name, &trigger.data])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error setting data: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error setting data: {e}")))?;
 
     Ok(format!("Set data for trigger '{}'", &trigger.name))
 }
@@ -470,7 +467,7 @@ async fn drop_notification_data_function<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error dropping data function: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error dropping data function: {e}")))?;
 
     Ok(format!(
         "Dropped data function for trigger '{}'",
@@ -490,7 +487,7 @@ async fn create_mapping_functions<T: GenericClient + Sync + Send>(
         );
 
         client.execute(&query, &[]).await.map_err(|e| {
-            DatabaseError::from_msg(format!("Error creating mapping function: {}", e))
+            DatabaseError::from_msg(format!("Error creating mapping function: {e}"))
         })?;
     }
 
@@ -529,7 +526,7 @@ async fn link_trend_stores<T: GenericClient + Sync + Send>(
                 ],
             )
             .await
-            .map_err(|e| DatabaseError::from_msg(format!("Error linking trend store: {}", e)))?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error linking trend store: {e}")))?;
     }
 
     Ok(format!(
@@ -572,14 +569,12 @@ async fn set_enabled<T: GenericClient + Sync + Send>(
         .await
         .map_err(|e| {
             DatabaseError::from_msg(format!(
-                "Error setting enabled state of trigger '{}': {}",
-                trigger_name, e
+                "Error setting enabled state of trigger '{trigger_name}': {e}"
             ))
         })?;
 
     Ok(format!(
-        "Set enabled state of trigger '{}' to '{}'",
-        trigger_name, enabled,
+        "Set enabled state of trigger '{trigger_name}' to '{enabled}'"
     ))
 }
 
@@ -633,13 +628,10 @@ where
 
             Ok(timestamp)
         }
-        _ => Err(Error::Runtime(RuntimeError::from_msg(
-            format!(
-                "Unsupported granularity: {}",
-                &humantime::format_duration(granularity)
-            )
-            .to_string(),
-        ))),
+        _ => Err(Error::Runtime(RuntimeError::from_msg(format!(
+            "Unsupported granularity: {}",
+            &humantime::format_duration(granularity)
+        )))),
     }
 }
 
@@ -651,7 +643,7 @@ async fn trigger_exists<T: GenericClient + Sync + Send>(
     let row = client
         .query_one(query, &[&trigger_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error running check: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error running check: {e}")))?;
 
     let result: bool = row.get(0);
 
@@ -677,7 +669,7 @@ async fn run_checks<T: GenericClient + Sync + Send>(
     client
         .execute(&query, &[&check_timestamp])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error running check: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error running check: {e}")))?;
 
     Ok(format!(
         "Checks run successfully for '{}': '{}'",
@@ -693,7 +685,7 @@ async fn unlink_trend_stores<T: GenericClient + Sync + Send>(
     client
         .execute(query, &[&trigger.name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error unlinking trend stores: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error unlinking trend stores: {e}")))?;
 
     Ok(format!(
         "Unlinked trend stores for trigger '{}'",
@@ -728,7 +720,7 @@ impl GenericChange for DeleteTrigger {
             )
             .await
             .map_err(|e| {
-                DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
+                DatabaseError::from_msg(format!("Error checking for rule existance: {e}"))
             })?;
 
         let count: i64 = row.get(0);
@@ -743,7 +735,7 @@ impl GenericChange for DeleteTrigger {
         client
             .execute("SELECT trigger.delete_rule($1)", &[&self.trigger_name])
             .await
-            .map_err(|e| DatabaseError::from_msg(format!("Error deleting rule: {}", e)))?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error deleting rule: {e}")))?;
 
         Ok(format!("Removed trigger '{}'", &self.trigger_name))
     }
@@ -1059,7 +1051,7 @@ fn extract_rule_from_src(src: &str) -> Result<String, Error> {
         Some(c) => c.get(1).unwrap().as_str(),
         None => {
             return Err(Error::Runtime(RuntimeError {
-                msg: format!("Could not extract condition from SQL: '{}'", src),
+                msg: format!("Could not extract condition from SQL: '{src}'"),
             }))
         }
     };
@@ -1109,14 +1101,13 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
     let row = conn
         .query_one(query, &[&String::from(name)])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load trigger: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load trigger: {e}")))?;
 
     let granularity_str: String = row.try_get(1)?;
 
     let granularity = parse_interval(&granularity_str).map_err(|e| {
         Error::Runtime(RuntimeError::from_msg(format!(
-            "Could not parse granularity '{}': {}",
-            granularity_str, e
+            "Could not parse granularity '{granularity_str}': {e}"
         )))
     })?;
 
@@ -1124,7 +1115,7 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
 
     let description: Option<String> = row.try_get(3)?;
 
-    let kpi_data_columns = load_kpi_data_columns(conn, &name).await?;
+    let kpi_data_columns = load_kpi_data_columns(conn, name).await?;
 
     let kpi_function_source =
         load_function_src(conn, "trigger_rule", &format!("{}_kpi", &name)).await?;
@@ -1143,36 +1134,36 @@ pub async fn load_trigger<T: GenericClient + Send + Sync>(
     )
     .await?;
 
-    let condition_function_source = load_function_src(conn, "trigger_rule", &name).await?;
+    let condition_function_source = load_function_src(conn, "trigger_rule", name).await?;
 
     let condition = extract_rule_from_src(&condition_function_source)?;
 
     let weight_function_source =
         load_function_src(conn, "trigger_rule", &format!("{}_weight", &name)).await?;
 
-    let thresholds = load_thresholds(conn, &name).await?;
+    let thresholds = load_thresholds(conn, name).await?;
 
-    let tags = load_tags(conn, &name).await?;
+    let tags = load_tags(conn, name).await?;
 
     let fingerprint_function_source =
         load_function_src(conn, "trigger_rule", &format!("{}_fingerprint", &name)).await?;
 
-    let trend_store_links = load_trend_store_links(conn, &name).await?;
+    let trend_store_links = load_trend_store_links(conn, name).await?;
 
     Ok(Trigger {
         name: String::from(name),
-        condition: condition.into(),
+        condition,
         data: data_function_source,
         fingerprint: fingerprint_function_source,
-        granularity: granularity,
+        granularity,
         kpi_data: kpi_data_columns,
         kpi_function: kpi_function_source,
         mapping_functions: Vec::<MappingFunction>::new(),
         notification: notification_function_source,
         notification_store: notification_store.unwrap_or("UNDEFINED".into()),
-        tags: tags,
-        thresholds: thresholds,
-        trend_store_links: trend_store_links,
+        tags,
+        thresholds,
+        trend_store_links,
         weight: weight_function_source,
         description: description.unwrap_or("".to_string()),
     })
@@ -1186,7 +1177,7 @@ pub async fn load_triggers<T: GenericClient + Send + Sync>(
     let query = "SELECT name FROM trigger.rule";
 
     let rows = conn.query(query, &[]).await.map_err(|e| {
-        DatabaseError::from_msg(format!("Error loading trend materializations: {}", e))
+        DatabaseError::from_msg(format!("Error loading trend materializations: {e}"))
     })?;
 
     for row in rows {
@@ -1197,7 +1188,7 @@ pub async fn load_triggers<T: GenericClient + Send + Sync>(
         triggers.push(trigger);
     }
 
-    return Ok(triggers);
+    Ok(triggers)
 }
 
 pub struct CreateNotifications<Tz: TimeZone> {
@@ -1276,9 +1267,7 @@ where
     let row = conn
         .query_one(&query, query_args.iter().as_slice())
         .await
-        .map_err(|e| {
-            DatabaseError::from_msg(format!("Error checking for rule existance: {}", e))
-        })?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error checking for rule existance: {e}")))?;
 
     let notification_count: i32 = row.try_get(0)?;
 
@@ -1291,7 +1280,7 @@ async fn load_kpi_data_columns<T: GenericClient + Send + Sync>(
     conn: &mut T,
     trigger_name: &str,
 ) -> Result<Vec<KPIDataColumn>, Error> {
-    let type_name = format!("{}_kpi", trigger_name);
+    let type_name = format!("{trigger_name}_kpi");
 
     let query = concat!(
         "select attname, typname ",
@@ -1303,7 +1292,7 @@ async fn load_kpi_data_columns<T: GenericClient + Send + Sync>(
     let rows = conn
         .query(query, &[&type_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {e}")))?;
 
     let kpi_data_columns = rows
         .iter()
@@ -1332,7 +1321,7 @@ async fn load_tags<T: GenericClient + Send + Sync>(
     let rows = conn
         .query(query, &[&trigger_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {e}")))?;
 
     let tags = rows.iter().map(|row| row.get(0)).collect();
 
@@ -1354,7 +1343,7 @@ async fn load_trend_store_links<T: GenericClient + Send + Sync>(
     let rows = conn
         .query(query, &[&trigger_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load type columns: {e}")))?;
 
     let trend_store_links = rows
         .iter()
@@ -1381,7 +1370,7 @@ async fn load_function_src<T: GenericClient + Send + Sync>(
     let row = conn
         .query_one(query, &[&namespace, &function_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load function source: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load function source: {e}")))?;
 
     let function_source = row.get(0);
 
@@ -1392,7 +1381,7 @@ async fn load_thresholds<T: GenericClient + Send + Sync>(
     conn: &mut T,
     trigger_name: &str,
 ) -> Result<Vec<Threshold>, Error> {
-    let view_name = format!("{}_threshold", trigger_name);
+    let view_name = format!("{trigger_name}_threshold");
 
     let query = concat!(
         "select attname, typname ",
@@ -1404,7 +1393,7 @@ async fn load_thresholds<T: GenericClient + Send + Sync>(
     let rows = conn
         .query(query, &[&view_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {e}")))?;
 
     let values_query = format!(
         "SELECT {} FROM trigger_rule.{}",
@@ -1418,7 +1407,7 @@ async fn load_thresholds<T: GenericClient + Send + Sync>(
     let values_row = conn
         .query_one(&values_query, &[])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {}", e)))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {e}")))?;
 
     let thresholds = rows
         .iter()

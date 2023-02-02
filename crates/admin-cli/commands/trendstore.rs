@@ -93,7 +93,7 @@ impl Cmd for TrendStoreDiff {
                 Ok(())
             }
             Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error loading trend store: {}", e),
+                msg: format!("Error loading trend store: {e}"),
             })),
         }
     }
@@ -135,7 +135,7 @@ impl Cmd for TrendStoreUpdate {
                                 println!("{}", &change);
                             }
                             Err(e) => {
-                                println!("Error applying update: {}", e);
+                                println!("Error applying update: {e}");
                             }
                         }
                     }
@@ -146,7 +146,7 @@ impl Cmd for TrendStoreUpdate {
                 Ok(())
             }
             Err(e) => Err(Error::Runtime(RuntimeError {
-                msg: format!("Error loading trend store: {}", e),
+                msg: format!("Error loading trend store: {e}"),
             })),
         }
     }
@@ -290,13 +290,13 @@ impl TrendStoreOpt {
             TrendStoreOpt::Create(create) => create.run().await,
             TrendStoreOpt::Diff(diff) => diff.run().await,
             TrendStoreOpt::Update(update) => update.run().await,
-            TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(&delete).await,
+            TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(delete).await,
             TrendStoreOpt::Partition(partition) => match partition {
                 TrendStorePartition::Create(create) => {
-                    run_trend_store_partition_create_cmd(&create).await
+                    run_trend_store_partition_create_cmd(create).await
                 }
             },
-            TrendStoreOpt::Check(check) => run_trend_store_check_cmd(&check),
+            TrendStoreOpt::Check(check) => run_trend_store_check_cmd(check),
             TrendStoreOpt::Part(part) => match part {
                 TrendStorePartOpt::Analyze(analyze) => analyze.run().await,
             },
@@ -348,7 +348,7 @@ async fn run_trend_store_delete_cmd(args: &DeleteOpt) -> CmdResult {
     match result {
         Ok(_) => Ok(()),
         Err(e) => Err(Error::Runtime(RuntimeError {
-            msg: format!("Error deleting trend store: {}", e),
+            msg: format!("Error deleting trend store: {e}"),
         })),
     }
 }
