@@ -9,6 +9,8 @@ ENV DEBIAN_FRONTEND noninteractive
 
 VOLUME ["/root/.cargo"]
 
+RUN sed -i -e 's/http:\/\/archive\.ubuntu\.com/http:\/\/nl\.archive\.ubuntu\.com/' /etc/apt/sources.list
+
 RUN apt-get update && apt-get install -y \
     wget \
 # GCC and friends
