@@ -19,7 +19,7 @@ pipeline {
                 }
             }
             steps {
-                sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-service"
+                sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-service --target=x86_64-unknown-linux-musl"
 
                 stash name: 'deb', includes: 'target/debian/*.deb'
             }
@@ -31,7 +31,7 @@ pipeline {
                 }
             }
             steps {
-                sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-admin"
+                sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-admin --target=x86_64-unknown-linux-musl"
 
                 stash name: 'deb', includes: 'target/debian/*.deb'
             }
@@ -40,7 +40,7 @@ pipeline {
             steps {
                 unstash name: 'deb'
                 script {
-                    publishPackages 'target/debian', 'common/focal/stable', 'focal'
+                    publishPackages 'target/debian', 'minerva/stable'
                 }
             }
         }

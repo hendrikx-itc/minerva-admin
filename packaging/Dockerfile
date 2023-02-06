@@ -28,6 +28,7 @@ RUN set -eux; \
     ./rustup-init -y --no-modify-path --default-toolchain $RUST_VERSION; \
     rm rustup-init; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
+    rustup toolchain install 1.50-x86_64-unknown-linux-musl; \
     cargo install cargo-deb; \
     rustup --version; \
     cargo --version; \
