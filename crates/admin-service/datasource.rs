@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::error::Error;
-use super::serviceerror::ServiceError;
+use super::serviceerror::{ServiceError, ServiceErrorKind};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct DataSource {
@@ -28,7 +28,7 @@ pub struct DataSource {
 pub(super) async fn get_data_sources(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let data_sources: Vec<DataSource> = client
         .query(
@@ -69,7 +69,7 @@ pub(super) async fn get_data_source(
 ) -> Result<HttpResponse, ServiceError> {
     let ds_id = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let data_source = client
         .query_one(

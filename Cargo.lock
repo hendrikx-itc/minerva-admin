@@ -1256,6 +1256,7 @@ dependencies = [
  "humantime",
  "humantime-serde",
  "lazy_static",
+ "log",
  "minerva",
  "postgres-types",
  "regex",

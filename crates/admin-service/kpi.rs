@@ -21,7 +21,7 @@ use crate::trendmaterialization::{
 };
 use crate::trendstore::{TrendData, TrendStorePartCompleteData};
 
-use super::serviceerror::ServiceError;
+use super::serviceerror::{ServiceError, ServiceErrorKind};
 use crate::error::{Error, Success};
 
 lazy_static! {
@@ -445,7 +445,7 @@ impl KpiImplementedData {
 pub(super) async fn get_kpis(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let sources: Vec<TrendMaterializationSourceIdentifier> = client
         .query(
@@ -538,7 +538,7 @@ pub(super) async fn get_kpi(
 ) -> Result<HttpResponse, ServiceError> {
     let kpiname = name.into_inner().replace('_', " ");
 
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
     let kpi = client
         .query_one(
             concat!(
@@ -615,7 +615,7 @@ pub(super) async fn post_kpi(
         message: format!("Unable to parse input JSON data: {e}"),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -657,7 +657,7 @@ pub(super) async fn update_kpi(
         message: e.to_string(),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -704,7 +704,7 @@ pub(super) async fn delete_kpi(
     name: Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
     let kpiname = name.into_inner().replace('_', " ");
-    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -723,14 +723,14 @@ pub(super) async fn delete_kpi(
                 "JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id ",
                 "JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id ",
                 "JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function ",
-                "WHERE ds.name = $1 AND ts.granularity = $2 AND t.name = $3"
+                "WHERE ds.name = $1 AND ts.granularity = $2::text::interval AND t.name = $3"
             ),
             &[&*DATASOURCE, &*DEFAULT_GRANULARITY, &kpiname]
         )
         .await
-        .map_err(|_| Error {
-            code: 404,
-            message: format!("KPI {} not found", &kpiname),
+        .map_err(|_| ServiceError {
+            kind: ServiceErrorKind::NotFound,
+            message: format!("KPI '{}' not found", &kpiname),
         })?;
 
     let materialization_id: i32 = kpi.get(5);

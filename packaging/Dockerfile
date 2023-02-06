@@ -22,13 +22,12 @@ RUN apt-get update && apt-get install -y \
 
 RUN set -eux; \
     dpkgArch="$(dpkg --print-architecture)"; \
-    url="https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"; \
+    url="https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init"; \
     wget "$url"; \
     chmod +x rustup-init; \
     ./rustup-init -y --no-modify-path --default-toolchain $RUST_VERSION; \
     rm rustup-init; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
-    rustup target add x86_64-unknown-linux-musl; \
     cargo install cargo-deb; \
     rustup --version; \
     cargo --version; \

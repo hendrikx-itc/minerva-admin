@@ -18,10 +18,8 @@ use minerva::trend_store::{
     TrendStore, TrendStorePart,
 };
 
-use crate::error::BadRequest;
-
 use super::error::Error;
-use super::serviceerror::ServiceError;
+use super::serviceerror::{ServiceError, ServiceErrorKind};
 
 lazy_static! {
     static ref PARTITION_SIZE: HashMap<Duration, Duration> = HashMap::from([
@@ -427,7 +425,7 @@ impl TrendStorePartCompleteData {
 pub(super) async fn get_trend_store_parts(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -541,7 +539,7 @@ pub(super) async fn get_trend_store_part(
 ) -> Result<HttpResponse, ServiceError> {
     let tsp_id = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -636,7 +634,7 @@ pub(super) async fn find_trend_store_part(
 ) -> Result<HttpResponse, ServiceError> {
     let name = &info.name;
 
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let (trend_store_part_id, trend_store_id): (i32, i32) = client
         .query_one(
@@ -729,7 +727,7 @@ pub(super) async fn find_trend_store_part(
 pub(super) async fn get_trend_stores(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -876,7 +874,7 @@ pub(super) async fn get_trend_store(
 ) -> Result<HttpResponse, ServiceError> {
     let tsid = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -1021,11 +1019,9 @@ pub(super) async fn post_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
-    let data: TrendStorePartCompleteData = serde_json::from_str(&post).map_err(|e| BadRequest {
-        message: format!("{e}"),
-    })?;
+    let data: TrendStorePartCompleteData = serde_json::from_str(&post).map_err(|e| ServiceError { kind: ServiceErrorKind::BadRequest, message: format!("{e}")})?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await?;
 
@@ -1048,7 +1044,7 @@ pub(super) async fn post_trend_store_part(
 pub(super) async fn get_trends(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let table_trends: Vec<TrendDataWithTrendStorePart> = client
         .query(
@@ -1127,7 +1123,7 @@ pub(super) async fn get_trends_by_entity_type(
 ) -> Result<HttpResponse, ServiceError> {
     let entity_type = et.into_inner();
 
-    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await?;
 

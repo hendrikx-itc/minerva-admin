@@ -18,8 +18,11 @@ use minerva::trend_materialization::{
 };
 use tokio_postgres::{Client, GenericClient};
 
+use log::error;
+
 use super::serviceerror::ServiceError;
 use crate::error::{Error, Success};
+use crate::serviceerror::ServiceErrorKind;
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationSourceData {
@@ -349,23 +352,29 @@ impl TrendFunctionMaterializationData {
             message: e.to_string(),
         })?;
 
+        let query = concat!(
+            "SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language, m.description ",
+            "FROM trend_directory.function_materialization fm ",
+            "JOIN trend_directory.materialization m ON fm.materialization_id = m.id ",
+            "JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id ",
+            "JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function ",
+            "LEFT JOIN pg_proc ON routine_name = proname ",
+            "WHERE tsp.name = $1"
+        );
+
         let row = client
             .query_one(
-                concat!(
-                    "SELECT fm.id, m.id, src_function, tsp.name, processing_delay::text, stability_delay::text, reprocessing_period::text, enabled, pg_proc.prosrc, data_type, routine_definition, external_language, m.description ",
-                    "FROM trend_directory.function_materialization fm ",
-                    "JOIN trend_directory.materialization m ON fm.materialization_id = m.id ",
-                    "JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id ",
-                    "JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = src_function ",
-                    "LEFT JOIN pg_proc ON routine_name = proname ",
-                    "WHERE tsp.name = $1"
-                ),
+                query,
                 &[&self.target_trend_store_part],
             )
             .await
-            .map_err(|e|Error {
-                code: 404,
-                message: format!("Creation reported as succeeded, but could not find created function materialization afterward: {}", &e)
+            .map_err(|e| {
+                error!("Creation reported as succeeded, but could not find created function materialization afterward: {query}");
+
+                Error {
+                    code: 404,
+                    message: format!("Creation reported as succeeded, but could not find created function materialization afterward: {}", &e)
+                }
             })?;
 
         let id: i32 = row.get(0);
@@ -514,7 +523,7 @@ impl TrendMaterializationDef {
 pub(super) async fn get_trend_view_materializations(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let sources: Vec<TrendMaterializationSourceIdentifier> = client
         .query(
@@ -605,7 +614,7 @@ pub(super) async fn get_trend_view_materialization(
 ) -> Result<HttpResponse, ServiceError> {
     let vm_id = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let sources: Vec<TrendMaterializationSourceData> = client
         .query(
@@ -1003,7 +1012,7 @@ pub(super) async fn post_trend_view_materialization(
         message: e.to_string(),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError::PoolError)?;
+    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
