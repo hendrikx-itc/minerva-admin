@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
 RUN set -eux; \
     dpkgArch="$(dpkg --print-architecture)"; \
     url="https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init"; \
-    wget "$url"; \
+    wget -q "$url"; \
     chmod +x rustup-init; \
     ./rustup-init -y --default-toolchain $RUST_VERSION; \
     rm rustup-init; \
