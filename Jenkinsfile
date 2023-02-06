@@ -21,7 +21,7 @@ pipeline {
             steps {
                 sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-service --target=x86_64-unknown-linux-musl"
 
-                stash name: 'deb', includes: 'target/debian/*.deb'
+                stash name: 'deb', includes: 'target/x86_64-unknown-linux-musl/debian/*.deb'
             }
         }
         stage ('build-minerva-admin') {
@@ -33,7 +33,7 @@ pipeline {
             steps {
                 sh "CARGO_HOME=${WORKSPACE} cargo deb -p minerva-admin --target=x86_64-unknown-linux-musl"
 
-                stash name: 'deb', includes: 'target/debian/*.deb'
+                stash name: 'deb', includes: 'target/x86_64-unknown-linux-musl/debian/*.deb'
             }
         }
         stage('publish-packages') {
