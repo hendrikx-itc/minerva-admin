@@ -27,7 +27,7 @@ RUN set -eux; \
     chmod +x rustup-init; \
     ./rustup-init -y --default-toolchain $RUST_VERSION; \
     rm rustup-init; \
-    source "/usr/local/cargo/env" \
+    . "/usr/local/cargo/env"; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
     cargo install cargo-deb; \
     rustup --version; \
