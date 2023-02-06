@@ -18,17 +18,21 @@ RUN apt-get update && apt-get install -y \
 # For finding the OpenSSL development files
     pkg-config \
 # For publishing resulting packages
-    openssh-client
+    openssh-client \
+# For musl builds
+    musl-tools
 
 RUN set -eux; \
     dpkgArch="$(dpkg --print-architecture)"; \
-    url="https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init"; \
+    url="https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"; \
     wget -q "$url"; \
     chmod +x rustup-init; \
     ./rustup-init -y --default-toolchain $RUST_VERSION; \
-    rm rustup-init; \
-    . "/usr/local/cargo/env"; \
+    rm rustup-init;
+
+RUN . "/usr/local/cargo/env"; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
+    rustup target add x86_64-unknown-linux-musl; \
     cargo install cargo-deb; \
     rustup --version; \
     cargo --version; \
