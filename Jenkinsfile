@@ -40,7 +40,7 @@ pipeline {
             steps {
                 unstash name: 'deb'
                 script {
-                    publishPackages 'target/debian', 'minerva/stable'
+                    publishPackages 'target/debian', 'minerva/any/stable'
                 }
             }
         }
