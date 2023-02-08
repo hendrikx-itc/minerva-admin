@@ -505,9 +505,14 @@ pub(super) async fn get_kpis(
                     .map(|source| source.source.trend_store_part.clone())
                     .collect();
 
+		let full_tsp_name: String = row.get(1);
+		let tsp_name = ((full_tsp_name
+		    .splitn(2, '-').collect::<Vec<&str>>())[1]
+		    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
+
                 KpiImplementedData {
                     kpi_name: row.get(0),
-                    tsp_name: row.get(1),
+                    tsp_name: tsp_name.to_string(),
                     entity_type: row.get(2),
                     data_type: row.get(3),
                     enabled: row.get(4),
@@ -579,9 +584,14 @@ pub(super) async fn get_kpi(
         })
         .map(|rows| rows.iter().map(|row| row.get(1)).collect())?;
 
+    let full_tsp_name: String = kpi.get(1);
+    let tsp_name = ((full_tsp_name
+		     .splitn(2, '-').collect::<Vec<&str>>())[1]
+		    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
+
     let result = KpiImplementedData {
         kpi_name: kpi.get(0),
-        tsp_name: kpi.get(1),
+        tsp_name: tsp_name.to_string(),
         entity_type: kpi.get(2),
         data_type: kpi.get(3),
         enabled: kpi.get(4),
@@ -689,7 +699,7 @@ pub(super) async fn update_kpi(
 
 #[utoipa::path(
     delete,
-    path="/kpis/{name}",
+    path="/kpis/{path}",
     responses(
 	(status = 200, description = "Updated KPI", body = Success),
 	(status = 400, description = "Input format incorrect", body = Error),
@@ -698,12 +708,14 @@ pub(super) async fn update_kpi(
 	(status = 500, description = "General error", body = Error)
     )
 )]
-#[delete("/kpis/{name}")]
+#[delete("/kpis/{path}")]
 pub(super) async fn delete_kpi(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-    name: Path<String>,
+    path: Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
-    let kpiname = name.into_inner().replace('_', " ");
+    let nameparts: Vec<&str> = path.rsplitn(2, '_').collect::<Vec<&str>>();
+    let kpiname = nameparts[1];
+    let entitytype = nameparts[0];
     let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
@@ -713,7 +725,7 @@ pub(super) async fn delete_kpi(
 
     let kpi = transaction
         .query_one(
-            concat!(
+	    concat!(
                 "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
                 "FROM trend_directory.table_trend t ",
                 "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
@@ -723,9 +735,9 @@ pub(super) async fn delete_kpi(
                 "JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id ",
                 "JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id ",
                 "JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function ",
-                "WHERE ds.name = $1 AND ts.granularity = $2::text::interval AND t.name = $3"
+                "WHERE ds.name = $1 AND et.name = $2 AND ts.granularity = $3::text::interval AND t.name = $4",
             ),
-            &[&*DATASOURCE, &*DEFAULT_GRANULARITY, &kpiname]
+            &[&*DATASOURCE, &entitytype, &*DEFAULT_GRANULARITY, &kpiname]
         )
         .await
         .map_err(|_| ServiceError {
@@ -753,7 +765,7 @@ pub(super) async fn delete_kpi(
         .map(|rows| rows.iter().map(|row| row.get(1)).collect())?;
 
     let kpidata = KpiImplementedData {
-        kpi_name: kpi.get(0),
+        kpi_name: kpiname.to_string(),
         tsp_name: kpi.get(1),
         entity_type: kpi.get(2),
         data_type: kpi.get(3),
