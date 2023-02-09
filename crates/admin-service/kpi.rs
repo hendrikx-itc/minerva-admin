@@ -699,7 +699,7 @@ pub(super) async fn update_kpi(
 
 #[utoipa::path(
     delete,
-    path="/kpis/{path}",
+    path="/kpis/{et}/{name}",
     responses(
 	(status = 200, description = "Updated KPI", body = Success),
 	(status = 400, description = "Input format incorrect", body = Error),
@@ -708,14 +708,13 @@ pub(super) async fn update_kpi(
 	(status = 500, description = "General error", body = Error)
     )
 )]
-#[delete("/kpis/{path}")]
+#[delete("/kpis/{et}/{name}")]
 pub(super) async fn delete_kpi(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
-    path: Path<String>,
+    args: Path<(String, String)>,
 ) -> Result<HttpResponse, ServiceError> {
-    let nameparts: Vec<&str> = path.rsplitn(2, '_').collect::<Vec<&str>>();
-    let kpiname = nameparts[1];
-    let entitytype = nameparts[0];
+    let kpiname = &args.1;
+    let entitytype = &args.0;
     let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
@@ -764,9 +763,15 @@ pub(super) async fn delete_kpi(
         })
         .map(|rows| rows.iter().map(|row| row.get(1)).collect())?;
 
+    
+    let full_tsp_name: String = kpi.get(1);
+    let tsp_name = ((full_tsp_name
+		     .splitn(2, '-').collect::<Vec<&str>>())[1]
+		    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
+
     let kpidata = KpiImplementedData {
         kpi_name: kpiname.to_string(),
-        tsp_name: kpi.get(1),
+        tsp_name: tsp_name.to_string(),
         entity_type: kpi.get(2),
         data_type: kpi.get(3),
         enabled: kpi.get(4),
