@@ -516,14 +516,17 @@ impl TrendMaterializationDef {
     path="/trend-view-materializations",
     responses(
         (status = 200, description = "List current trend view materialization items", body = [TrendViewMaterializationFull]),
-	(status = 500, description = "Problem interacting with database", body = Error)
+    (status = 500, description = "Problem interacting with database", body = Error)
     )
 )]
 #[get("/trend-view-materializations")]
 pub(super) async fn get_trend_view_materializations(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let sources: Vec<TrendMaterializationSourceIdentifier> = client
         .query(
@@ -602,9 +605,9 @@ pub(super) async fn get_trend_view_materializations(
     get,
     path="/trend-view-materializations/{id}",
     responses(
-	(status = 200, description = "Get a specific view materialization", body = TrendViewMaterializationFull),
-	(status = 404, description = "View materialization not found", body = Error),
-	(status = 500, description = "Unable to interact with database", body = Error)
+    (status = 200, description = "Get a specific view materialization", body = TrendViewMaterializationFull),
+    (status = 404, description = "View materialization not found", body = Error),
+    (status = 500, description = "Unable to interact with database", body = Error)
     )
 )]
 #[get("/trend-view-materializations/{id}")]
@@ -614,7 +617,10 @@ pub(super) async fn get_trend_view_materialization(
 ) -> Result<HttpResponse, ServiceError> {
     let vm_id = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let sources: Vec<TrendMaterializationSourceData> = client
         .query(
@@ -765,9 +771,9 @@ pub(super) async fn get_trend_function_materializations(
     get,
     path="/trend-function-materializations/{id}",
     responses(
-	(status = 200, description = "Get a specific function materialization", body = TrendFunctionMaterializationFull),
-	(status = 404, description = "View function not found", body = Error),
-	(status = 500, description = "Unable to interact with database", body = Error)
+    (status = 200, description = "Get a specific function materialization", body = TrendFunctionMaterializationFull),
+    (status = 404, description = "View function not found", body = Error),
+    (status = 500, description = "Unable to interact with database", body = Error)
     )
 )]
 #[get("/trend-function-materializations/{id}")]
@@ -841,7 +847,7 @@ pub(super) async fn get_trend_function_materialization(
     path="/trend-materializations",
     responses(
         (status = 200, description = "List current trend materializations", body = [TrendFunctionMaterializationFull]),
-	(status = 500, description = "Unable to correctly interact with database", body = Error)
+    (status = 500, description = "Unable to correctly interact with database", body = Error)
     )
 )]
 #[get("/trend-materializations")]
@@ -995,11 +1001,11 @@ pub(super) async fn get_trend_materializations(
     post,
     path="/trend-view-materializations",
     responses(
-	(status = 200, description = "Create a new view materialization", body = TrendViewMaterializationFull),
-	(status = 400, description = "Incorrect data format", body = Error),
-	(status = 404, description = "Materialization cannot be found after creation", body = Error),
-	(status = 409, description = "View materialization cannot be created with these data", body = Error),
-	(status = 500, description = "Unable to interact with database", body = Error),
+    (status = 200, description = "Create a new view materialization", body = TrendViewMaterializationFull),
+    (status = 400, description = "Incorrect data format", body = Error),
+    (status = 404, description = "Materialization cannot be found after creation", body = Error),
+    (status = 409, description = "View materialization cannot be created with these data", body = Error),
+    (status = 500, description = "Unable to interact with database", body = Error),
     )
 )]
 #[post("/trend-view-materializations")]
@@ -1012,7 +1018,10 @@ pub(super) async fn post_trend_view_materialization(
         message: e.to_string(),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let mut client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -1032,10 +1041,10 @@ pub(super) async fn post_trend_view_materialization(
     post,
     path="/trend-function-materializations",
     responses(
-	(status = 200, description = "Create a new view materialization", body = TrendViewMaterializationFull),
-	(status = 400, description = "Incorrect data format", body = Error),
-	(status = 404, description = "Materialization cannot be found after creation", body = Error),
-	(status = 409, description = "View materialization cannot be created with these data", body = Error),
+    (status = 200, description = "Create a new view materialization", body = TrendViewMaterializationFull),
+    (status = 400, description = "Incorrect data format", body = Error),
+    (status = 404, description = "Materialization cannot be found after creation", body = Error),
+    (status = 409, description = "View materialization cannot be created with these data", body = Error),
     )
 )]
 #[post("/trend-function-materializations")]
@@ -1095,9 +1104,9 @@ pub(super) async fn post_trend_function_materialization(
     delete,
     path="/trend-view-materializations/{id}",
     responses(
-	(status = 200, description = "Deleted function materialization", body = Success),
-	(status = 404, description = "Function materialization not found", body = Error),
-	(status = 500, description = "Deletion failed fully or partially", body = Error)
+    (status = 200, description = "Deleted function materialization", body = Success),
+    (status = 404, description = "Function materialization not found", body = Error),
+    (status = 500, description = "Deletion failed fully or partially", body = Error)
     )
 )]
 #[delete("/trend-view-materializations/{id}")]
@@ -1114,9 +1123,9 @@ pub(super) async fn delete_trend_view_materialization(
         }),
         Ok(client) => {
             let query_result = client.query_one(
-		"SELECT materialization_id FROM trend_directory.view_materialization WHERE id = $1",
-		&[&vm_id],
-	    ).await;
+        "SELECT materialization_id FROM trend_directory.view_materialization WHERE id = $1",
+        &[&vm_id],
+        ).await;
             match query_result {
                 Err(e) => HttpResponse::NotFound().json(Error {
                     code: 404,
@@ -1165,9 +1174,9 @@ pub(super) async fn delete_trend_view_materialization(
     delete,
     path="/trend-function-materializations/{id}",
     responses(
-	(status = 200, description = "Deleted function materialization", body = Success),
-	(status = 404, description = "Function materialization not found", body = Error),
-	(status = 500, description = "Deletion failed fully or partially", body = Error)
+    (status = 200, description = "Deleted function materialization", body = Success),
+    (status = 404, description = "Function materialization not found", body = Error),
+    (status = 500, description = "Deletion failed fully or partially", body = Error)
     )
 )]
 #[delete("/trend-function-materializations/{id}")]
@@ -1184,11 +1193,11 @@ pub(super) async fn delete_trend_function_materialization(
         }),
         Ok(client) => {
             let query_result = client
-		.query_one(
-		    "SELECT materialization_id FROM trend_directory.function_materialization WHERE id = $1",
-		    &[&fm_id],
-		)
-		.await;
+        .query_one(
+            "SELECT materialization_id FROM trend_directory.function_materialization WHERE id = $1",
+            &[&fm_id],
+        )
+        .await;
             match query_result {
                 Err(e) => HttpResponse::NotFound().json(Error {
                     code: 404,
@@ -1238,10 +1247,10 @@ pub(super) async fn delete_trend_function_materialization(
     put,
     path="/trend-view-materializations",
     responses(
-	(status = 200, description = "Updated view materialization", body = Success),
-	(status = 400, description = "Input format incorrect", body = Error),
-	(status = 404, description = "Function materialization not found", body = Error),
-	(status = 500, description = "Deletion failed fully or partially", body = Error)
+    (status = 200, description = "Updated view materialization", body = Success),
+    (status = 400, description = "Input format incorrect", body = Error),
+    (status = 404, description = "Function materialization not found", body = Error),
+    (status = 500, description = "Deletion failed fully or partially", body = Error)
     )
 )]
 #[put("/trend-view-materializations")]
@@ -1314,10 +1323,10 @@ pub(super) async fn update_trend_view_materialization(
     put,
     path="/trend-function-materializations",
     responses(
-	(status = 200, description = "Updated function materialization", body = TrendFunctionMaterializationFull),
-	(status = 400, description = "Input format incorrect", body = Error),
-	(status = 404, description = "Function materialization not found", body = Error),
-	(status = 500, description = "Deletion failed fully or partially", body = Error)
+    (status = 200, description = "Updated function materialization", body = TrendFunctionMaterializationFull),
+    (status = 400, description = "Input format incorrect", body = Error),
+    (status = 404, description = "Function materialization not found", body = Error),
+    (status = 500, description = "Deletion failed fully or partially", body = Error)
     )
 )]
 #[put("/trend-function-materializations")]

@@ -19,8 +19,8 @@ pub struct EntityType {
     get,
     path="/entity-types",
     responses(
-	(status = 200, description = "List all entity types", body = [EntityType]),
-	(status = 500, description = "Unable to interact with database", body = Error)
+    (status = 200, description = "List all entity types", body = [EntityType]),
+    (status = 500, description = "Unable to interact with database", body = Error)
     )
 )]
 #[get("/entity-types")]
@@ -66,9 +66,9 @@ pub(super) async fn get_entity_types(
     get,
     path="/entity-types/{id}",
     responses(
-	(status = 200, description = "Get a specific entity type", body = TrendStorePart),
-	(status = 404, description = "Entity type not found", body = Error),
-	(status = 500, description = "Problem interacting with database", body = Error),
+    (status = 200, description = "Get a specific entity type", body = TrendStorePart),
+    (status = 404, description = "Entity type not found", body = Error),
+    (status = 500, description = "Problem interacting with database", body = Error),
     )
 )]
 #[get("/entity-types/{id}")]

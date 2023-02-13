@@ -312,11 +312,11 @@ pub enum TriggerOpt {
     Create(TriggerCreate),
     #[structopt(about = "delete a trigger")]
     Delete(TriggerDelete),
-    #[structopt(about = "update a trigger")]
-    Enable(TriggerEnable),
     #[structopt(about = "enable a trigger")]
-    Disable(TriggerDisable),
+    Enable(TriggerEnable),
     #[structopt(about = "disable a trigger")]
+    Disable(TriggerDisable),
+    #[structopt(about = "update a trigger")]
     Update(TriggerUpdate),
     #[structopt(about = "rename a trigger")]
     Rename(TriggerRename),

@@ -20,15 +20,18 @@ pub struct DataSource {
     get,
     path="/data-sources",
     responses(
-	(status = 200, description = "List all data sources", body = [DataSource]),
-	(status = 500, description = "Problem interacting with database", body = Error)
+    (status = 200, description = "List all data sources", body = [DataSource]),
+    (status = 500, description = "Problem interacting with database", body = Error)
     )
 )]
 #[get("/data-sources")]
 pub(super) async fn get_data_sources(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let data_sources: Vec<DataSource> = client
         .query(
@@ -57,9 +60,9 @@ pub(super) async fn get_data_sources(
     get,
     path="/data-sources/{id}",
     responses(
-	(status = 200, description = "Get a specific data source", body = TrendStorePart),
-	(status = 404, description = "Data source not found", body = Error),
-	(status = 500, description = "Problem interacting with database", body = Error),
+    (status = 200, description = "Get a specific data source", body = TrendStorePart),
+    (status = 404, description = "Data source not found", body = Error),
+    (status = 500, description = "Problem interacting with database", body = Error),
     )
 )]
 #[get("/data-sources/{id}")]
@@ -69,7 +72,10 @@ pub(super) async fn get_data_source(
 ) -> Result<HttpResponse, ServiceError> {
     let ds_id = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let data_source = client
         .query_one(

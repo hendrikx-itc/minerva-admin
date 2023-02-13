@@ -1,6 +1,6 @@
-use core::fmt::Display;
 use actix_web::error::ResponseError;
-use actix_web::{HttpResponse, http::StatusCode};
+use actix_web::{http::StatusCode, HttpResponse};
+use core::fmt::Display;
 use derive_more::{Display, From};
 use log::error;
 
@@ -43,8 +43,10 @@ impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
         let status_code = self.status_code();
 
-        HttpResponse::build(status_code)
-            .json(Error { code: i32::from(status_code.as_u16()), message: self.to_string() })
+        HttpResponse::build(status_code).json(Error {
+            code: i32::from(status_code.as_u16()),
+            message: self.to_string(),
+        })
     }
 }
 
@@ -52,7 +54,10 @@ impl From<tokio_postgres::error::Error> for ServiceError {
     fn from(value: tokio_postgres::error::Error) -> ServiceError {
         error!("{value:?}");
 
-        ServiceError { kind: ServiceErrorKind::DbError, message: format!("{value}") }
+        ServiceError {
+            kind: ServiceErrorKind::DbError,
+            message: format!("{value}"),
+        }
     }
 }
 
@@ -60,6 +65,9 @@ impl From<Error> for ServiceError {
     fn from(value: Error) -> ServiceError {
         error!("{value:?}");
 
-        ServiceError { kind: ServiceErrorKind::InternalError, message: format!("{value:?}") }
+        ServiceError {
+            kind: ServiceErrorKind::InternalError,
+            message: format!("{value:?}"),
+        }
     }
 }

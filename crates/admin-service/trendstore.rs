@@ -417,15 +417,18 @@ impl TrendStorePartCompleteData {
     get,
     path="/trend-store-parts",
     responses(
-	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull]),
-	(status = 500, description = "Problem interacting with database", body = Error),
+    (status = 200, description = "List all trend store parts", body = [TrendStorePartFull]),
+    (status = 500, description = "Problem interacting with database", body = Error),
     )
 )]
 #[get("/trend-store-parts")]
 pub(super) async fn get_trend_store_parts(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -527,9 +530,9 @@ pub(super) async fn get_trend_store_parts(
     get,
     path="/trend-store-part/{id}",
     responses(
-	(status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
-	(status = 404, description = "Trend store part not found", body = Error),
-	(status = 500, description = "Failure to interact with database", body = Error)
+    (status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
+    (status = 404, description = "Trend store part not found", body = Error),
+    (status = 500, description = "Failure to interact with database", body = Error)
     )
 )]
 #[get("/trend-store-part/{id}")]
@@ -539,7 +542,10 @@ pub(super) async fn get_trend_store_part(
 ) -> Result<HttpResponse, ServiceError> {
     let tsp_id = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -622,9 +628,9 @@ pub(super) async fn get_trend_store_part(
     get,
     path="/trend-store-parts/find",
     responses(
-	(status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
-	(status = 404, description = "Trend store part not found", body = Error),
-	(status = 500, description = "Unable to interact with database", body = Error),
+    (status = 200, description = "Get a specific trend store part", body = TrendStorePartFull),
+    (status = 404, description = "Trend store part not found", body = Error),
+    (status = 500, description = "Unable to interact with database", body = Error),
     )
 )]
 #[get("/trend-store-parts/find")]
@@ -634,7 +640,10 @@ pub(super) async fn find_trend_store_part(
 ) -> Result<HttpResponse, ServiceError> {
     let name = &info.name;
 
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let (trend_store_part_id, trend_store_id): (i32, i32) = client
         .query_one(
@@ -719,15 +728,18 @@ pub(super) async fn find_trend_store_part(
     get,
     path="/trend-stores",
     responses(
-	(status = 200, description = "List all trend store parts", body = [TrendStorePartFull]),
-	(status = 500, description = "Problems interacting with database", body = Error),
+    (status = 200, description = "List all trend store parts", body = [TrendStorePartFull]),
+    (status = 500, description = "Problems interacting with database", body = Error),
     )
 )]
 #[get("/trend-stores")]
 pub(super) async fn get_trend_stores(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -862,9 +874,9 @@ pub(super) async fn get_trend_stores(
     get,
     path="/trend-stores/{id}",
     responses(
-	(status = 200, description = "Get a specific trend store", body = TrendStorePartFull),
-	(status = 404, description = "Trend store not found", body = Error),
-	(status = 500, description = "Unable to interact with database", body = Error),
+    (status = 200, description = "Get a specific trend store", body = TrendStorePartFull),
+    (status = 404, description = "Trend store not found", body = Error),
+    (status = 500, description = "Unable to interact with database", body = Error),
     )
 )]
 #[get("/trend-stores/{id}")]
@@ -874,7 +886,10 @@ pub(super) async fn get_trend_store(
 ) -> Result<HttpResponse, ServiceError> {
     let tsid = id.into_inner();
 
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let trends: Vec<TrendFull> = client
         .query(
@@ -1007,11 +1022,11 @@ pub(super) async fn get_trend_store(
     post,
     path="/trend-store-parts/new",
     responses(
-	(status = 200, description = "Create a new trend store part", body = TrendStorePartData),
-	(status = 400, description = "Incorrect data format", body = Error),
-	(status = 404, description = "Trend store part cannot be found after creation", body = Error),
-	(status = 409, description = "Trend store part cannot be created with these data", body = Error),
-	(status = 500, description = "Problems interacting with database", body = Error),
+    (status = 200, description = "Create a new trend store part", body = TrendStorePartData),
+    (status = 400, description = "Incorrect data format", body = Error),
+    (status = 404, description = "Trend store part cannot be found after creation", body = Error),
+    (status = 409, description = "Trend store part cannot be created with these data", body = Error),
+    (status = 500, description = "Problems interacting with database", body = Error),
     )
 )]
 #[post("/trend-store-parts/new")]
@@ -1019,9 +1034,16 @@ pub(super) async fn post_trend_store_part(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
-    let data: TrendStorePartCompleteData = serde_json::from_str(&post).map_err(|e| ServiceError { kind: ServiceErrorKind::BadRequest, message: format!("{e}")})?;
+    let data: TrendStorePartCompleteData =
+        serde_json::from_str(&post).map_err(|e| ServiceError {
+            kind: ServiceErrorKind::BadRequest,
+            message: format!("{e}"),
+        })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let mut client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let mut transaction = client.transaction().await?;
 
@@ -1036,15 +1058,18 @@ pub(super) async fn post_trend_store_part(
     get,
     path="/trends",
     responses(
-	(status = 200, description = "List all trend store parts", body = [TrendDataWithTrendStorePart]),
-	(status = 500, description = "Problem interacting with database", body = Error),
+    (status = 200, description = "List all trend store parts", body = [TrendDataWithTrendStorePart]),
+    (status = 500, description = "Problem interacting with database", body = Error),
     )
 )]
 #[get("/trends")]
 pub(super) async fn get_trends(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let table_trends: Vec<TrendDataWithTrendStorePart> = client
         .query(
@@ -1112,8 +1137,8 @@ pub(super) async fn get_trends(
     get,
     path="/trendsentitytype/{et}",
     responses(
-	(status = 200, description = "List the name of trend store parts for an entity type", body = [String]),
-	(status = 500, description = "Problem interacting with database", body = Error),
+    (status = 200, description = "List the name of trend store parts for an entity type", body = [String]),
+    (status = 500, description = "Problem interacting with database", body = Error),
     )
 )]
 #[get("/trendsentitytype/{et}")]
@@ -1123,7 +1148,10 @@ pub(super) async fn get_trends_by_entity_type(
 ) -> Result<HttpResponse, ServiceError> {
     let entity_type = et.into_inner();
 
-    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let mut client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let mut transaction = client.transaction().await?;
 

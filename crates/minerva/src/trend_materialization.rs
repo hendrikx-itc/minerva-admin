@@ -46,10 +46,10 @@ impl TrendViewMaterialization {
         client: &mut T,
     ) -> Result<(), Error> {
         let query = concat!(
-		"SELECT trend_directory.define_view_materialization(",
-		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass, $5::jsonb",
-		") ",
-		"FROM trend_directory.trend_store_part WHERE name = $6",
+        "SELECT trend_directory.define_view_materialization(",
+        "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regclass, $5::jsonb",
+        ") ",
+        "FROM trend_directory.trend_store_part WHERE name = $6",
         );
 
         let description_default = serde_json::json!("{}");
@@ -338,10 +338,10 @@ impl TrendFunctionMaterialization {
         client: &mut T,
     ) -> Result<(), Error> {
         let query = concat!(
-		"SELECT trend_directory.define_function_materialization(",
-		"id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure, $5::jsonb",
-		") ",
-		"FROM trend_directory.trend_store_part WHERE name = $6",
+        "SELECT trend_directory.define_function_materialization(",
+        "id, $1::text::interval, $2::text::interval, $3::text::interval, $4::text::regprocedure, $5::jsonb",
+        ") ",
+        "FROM trend_directory.trend_store_part WHERE name = $6",
         );
 
         let description_default = serde_json::json!("{}");
@@ -518,11 +518,11 @@ impl TrendFunctionMaterialization {
     ) -> Result<(), Error> {
         let query = format!(
             concat!(
-		"DELETE FROM trend_directory.materialization_trend_store_link tsl ",
-		"USING trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
-		"ON m.dst_trend_store_part_id = dstp.id ",
-		"WHERE dstp.name = '{}' AND tsl.materialization_id = m.id"
-	    ),
+        "DELETE FROM trend_directory.materialization_trend_store_link tsl ",
+        "USING trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+        "ON m.dst_trend_store_part_id = dstp.id ",
+        "WHERE dstp.name = '{}' AND tsl.materialization_id = m.id"
+        ),
             &self.target_trend_store_part
         );
         match client.query(&query, &[]).await {

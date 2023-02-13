@@ -351,7 +351,7 @@ impl KpiImplementedData {
             match counter {
                 1 => sourcestrings.push(format!("trend.\"{}\" t{}", source, counter)),
                 _ => sourcestrings.push(format!("trend.\"{}\" t{} ON t1.entity_id = t{}.entity_id and t1.timestamp = t{}.timestamp", source, counter, counter, counter)),
-	        };
+            };
             counter += 1
         }
         let srcdef = format!(
@@ -437,15 +437,18 @@ impl KpiImplementedData {
     get,
     path="/kpis",
     responses(
-	(status = 200, description = "List of existing KPIs", body = [KpiImplementedData]),
-	(status = 500, description = "Database unreachable", body = Error),
+    (status = 200, description = "List of existing KPIs", body = [KpiImplementedData]),
+    (status = 500, description = "Database unreachable", body = Error),
     )
 )]
 #[get("/kpis")]
 pub(super) async fn get_kpis(
     pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
 ) -> Result<HttpResponse, ServiceError> {
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let sources: Vec<TrendMaterializationSourceIdentifier> = client
         .query(
@@ -505,10 +508,10 @@ pub(super) async fn get_kpis(
                     .map(|source| source.source.trend_store_part.clone())
                     .collect();
 
-		let full_tsp_name: String = row.get(1);
-		let tsp_name = ((full_tsp_name
-		    .splitn(2, '-').collect::<Vec<&str>>())[1]
-		    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
+                let full_tsp_name: String = row.get(1);
+                let tsp_name = ((full_tsp_name
+                    .splitn(2, '-').collect::<Vec<&str>>())[1]
+                    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
 
                 KpiImplementedData {
                     kpi_name: row.get(0),
@@ -531,9 +534,9 @@ pub(super) async fn get_kpis(
     get,
     path="/kpis/{name}",
     responses(
-	(status = 200, description = "Content of KPI", body = [KpiImplementedData]),
-	(status = 404, description = "KPI does not exist", body = Error),
-	(status = 500, description = "Database unreachable", body = Error),
+    (status = 200, description = "Content of KPI", body = [KpiImplementedData]),
+    (status = 404, description = "KPI does not exist", body = Error),
+    (status = 500, description = "Database unreachable", body = Error),
     )
 )]
 #[get("/kpis/{name}")]
@@ -543,7 +546,10 @@ pub(super) async fn get_kpi(
 ) -> Result<HttpResponse, ServiceError> {
     let kpiname = name.into_inner().replace('_', " ");
 
-    let client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
     let kpi = client
         .query_one(
             concat!(
@@ -585,9 +591,9 @@ pub(super) async fn get_kpi(
         .map(|rows| rows.iter().map(|row| row.get(1)).collect())?;
 
     let full_tsp_name: String = kpi.get(1);
-    let tsp_name = ((full_tsp_name
-		     .splitn(2, '-').collect::<Vec<&str>>())[1]
-		    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
+    let tsp_name = ((full_tsp_name.splitn(2, '-').collect::<Vec<&str>>())[1]
+        .rsplitn(3, '_')
+        .collect::<Vec<&str>>())[2];
 
     let result = KpiImplementedData {
         kpi_name: kpi.get(0),
@@ -609,10 +615,10 @@ pub(super) async fn get_kpi(
     post,
     path="/kpis",
     responses(
-	(status = 200, description = "Create a new KPI", body = Success),
-	(status = 400, description = "Incorrect data format", body = Error),
-	(status = 409, description = "KPI creation failed", body = Error),
-	(status = 500, description = "Database unreachable", body = Error),
+    (status = 200, description = "Create a new KPI", body = Success),
+    (status = 400, description = "Incorrect data format", body = Error),
+    (status = 409, description = "KPI creation failed", body = Error),
+    (status = 500, description = "Database unreachable", body = Error),
     )
 )]
 #[post("/kpis")]
@@ -625,7 +631,10 @@ pub(super) async fn post_kpi(
         message: format!("Unable to parse input JSON data: {e}"),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let mut client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -650,11 +659,11 @@ pub(super) async fn post_kpi(
     put,
     path="/kpis",
     responses(
-	(status = 200, description = "Updated KPI", body = Success),
-	(status = 400, description = "Input format incorrect", body = Error),
-	(status = 404, description = "KPI not found", body = Error),
-	(status = 409, description = "Update failed", body = Error),
-	(status = 500, description = "General error", body = Error)
+    (status = 200, description = "Updated KPI", body = Success),
+    (status = 400, description = "Input format incorrect", body = Error),
+    (status = 404, description = "KPI not found", body = Error),
+    (status = 409, description = "Update failed", body = Error),
+    (status = 500, description = "General error", body = Error)
     )
 )]
 #[put("/kpis")]
@@ -667,7 +676,10 @@ pub(super) async fn update_kpi(
         message: e.to_string(),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let mut client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -701,11 +713,11 @@ pub(super) async fn update_kpi(
     delete,
     path="/kpis/{et}/{name}",
     responses(
-	(status = 200, description = "Updated KPI", body = Success),
-	(status = 400, description = "Input format incorrect", body = Error),
-	(status = 404, description = "KPI not found", body = Error),
-	(status = 409, description = "Update failed", body = Error),
-	(status = 500, description = "General error", body = Error)
+    (status = 200, description = "Updated KPI", body = Success),
+    (status = 400, description = "Input format incorrect", body = Error),
+    (status = 404, description = "KPI not found", body = Error),
+    (status = 409, description = "Update failed", body = Error),
+    (status = 500, description = "General error", body = Error)
     )
 )]
 #[delete("/kpis/{et}/{name}")]
@@ -715,7 +727,10 @@ pub(super) async fn delete_kpi(
 ) -> Result<HttpResponse, ServiceError> {
     let kpiname = &args.1;
     let entitytype = &args.0;
-    let mut client = pool.get().await.map_err(|_| ServiceError { kind: ServiceErrorKind::PoolError, message: "".to_string() })?;
+    let mut client = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -724,7 +739,7 @@ pub(super) async fn delete_kpi(
 
     let kpi = transaction
         .query_one(
-	    concat!(
+        concat!(
                 "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
                 "FROM trend_directory.table_trend t ",
                 "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
@@ -763,11 +778,10 @@ pub(super) async fn delete_kpi(
         })
         .map(|rows| rows.iter().map(|row| row.get(1)).collect())?;
 
-    
     let full_tsp_name: String = kpi.get(1);
-    let tsp_name = ((full_tsp_name
-		     .splitn(2, '-').collect::<Vec<&str>>())[1]
-		    .rsplitn(3, '_').collect::<Vec<&str>>())[2];
+    let tsp_name = ((full_tsp_name.splitn(2, '-').collect::<Vec<&str>>())[1]
+        .rsplitn(3, '_')
+        .collect::<Vec<&str>>())[2];
 
     let kpidata = KpiImplementedData {
         kpi_name: kpiname.to_string(),
