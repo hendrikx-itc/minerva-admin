@@ -1370,7 +1370,7 @@ async fn load_function_src<T: GenericClient + Send + Sync>(
     let row = conn
         .query_one(query, &[&namespace, &function_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load function source: {e}")))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load function source of function '{function_name}': {e}")))?;
 
     let function_source = row.get(0);
 
