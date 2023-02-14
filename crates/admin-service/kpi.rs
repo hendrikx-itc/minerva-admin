@@ -479,7 +479,7 @@ pub(super) async fn get_kpis(
     let result: Vec<KpiImplementedData> = client
         .query(
             concat!(
-                "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, routine_definition, m.description ",
+                "SELECT t.name, tsp.name, et.name, t.data_type, m.enabled, m.id, prosrc, m.description ",
                 "FROM trend_directory.table_trend t ",
                 "JOIN trend_directory.trend_store_part tsp ON t.trend_store_part_id = tsp.id ",
                 "JOIN trend_directory.trend_store ts ON tsp.trend_store_id = ts.id ",
@@ -487,7 +487,7 @@ pub(super) async fn get_kpis(
                 "JOIN directory.entity_type et ON ts.entity_type_id = et.id ",
                 "JOIN trend_directory.materialization m ON tsp.id = m.dst_trend_store_part_id ",
                 "JOIN trend_directory.function_materialization fm ON m.id = fm.materialization_id ",
-                "JOIN information_schema.routines ON FORMAT('%s.\"%s\"', routine_schema, routine_name) = fm.src_function ",
+                "JOIN pg_proc ON pg_proc.oid = format('%s(timestamptz)', fm.src_function)::regprocedure::oid ",
                 "WHERE ds.name = $1 AND ts.granularity = $2::text::interval ",
                 "ORDER BY t.name"
             ),
