@@ -191,6 +191,16 @@ async fn create_type<T: GenericClient + Sync + Send>(
     client: &mut T,
 ) -> ChangeResult {
     let type_name = format!("{}_kpi", &trigger.name);
+
+    let query = format!(
+        "DROP TYPE IF EXISTS trigger_rule.{} CASCADE",
+        escape_identifier(&type_name),
+    );
+
+    client.execute(&query, &[]).await.map_err(|e| {
+        DatabaseError::from_msg(format!("Error removing KPI type before re-creating: {e}"))
+    })?;
+
     let mut cols: Vec<(String, String)> = vec![
         (String::from("entity_id"), String::from("integer")),
         (
@@ -1370,7 +1380,11 @@ async fn load_function_src<T: GenericClient + Send + Sync>(
     let row = conn
         .query_one(query, &[&namespace, &function_name])
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Could not load function source of function '{function_name}': {e}")))?;
+        .map_err(|e| {
+            DatabaseError::from_msg(format!(
+                "Could not load function source of function '{function_name}': {e}"
+            ))
+        })?;
 
     let function_source = row.get(0);
 
