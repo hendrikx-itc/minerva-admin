@@ -4,3 +4,9 @@ members = [
     "crates/admin-cli",
     "crates/admin-service"
 ]
+
+[workspace.package]
+version = "0.1.7"
+authors = ["Alfred Blokland <alfred.blokland@hendrikx-itc.nl>"]
+edition = "2021"
+license = "GPL-3.0-or-later"

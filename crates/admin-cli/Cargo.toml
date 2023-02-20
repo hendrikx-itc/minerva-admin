@@ -1,10 +1,10 @@
 [package]
 name = "minerva-admin"
-version = "0.1.4"
-authors = ["Alfred Blokland <alfred.blokland@hendrikx-itc.nl>"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 description = "Minerva administration toolset"
-license = "GPL-3.0-or-later"
 
 [[bin]]
 path = "main.rs"
