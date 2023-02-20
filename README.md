@@ -8,7 +8,7 @@ To install the latest version of the administration command for your system,
 use the install script:
 
 ```
-$ curl -sS https://raw.githubusercontent.com/hendrikx-itc/minerva-admin/master/install.sh | sh
+curl -sS https://raw.githubusercontent.com/hendrikx-itc/minerva-admin/master/install.sh | sh
 ```
 
 # Start Test Database
@@ -18,7 +18,7 @@ need a running Minerva database. You can start an empty Minerva database using
 Docker:
 
 ```
-$ docker run -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 hendrikxitc/minerva
+docker run -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 hendrikxitc/minerva
 ```
 
 # Load Test Instance
