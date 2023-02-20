@@ -14,20 +14,27 @@ use super::common::{connect_db, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 pub struct InitializeOpt {
     #[structopt(long = "--create-partitions", help = "create partitions")]
     create_partitions: bool,
+    #[structopt(parse(from_os_str), help = "Minerva instance root directory")]
+    instance_root: Option<PathBuf>,
 }
 
 #[async_trait]
 impl Cmd for InitializeOpt {
     async fn run(&self) -> CmdResult {
-        let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
-            Ok(v) => PathBuf::from(v),
-            Err(e) => {
-                return Err(Error::Configuration(ConfigurationError {
-                    msg: format!(
-                        "Environment variable '{}' could not be read: {}",
-                        &ENV_MINERVA_INSTANCE_ROOT, e
-                    ),
-                }));
+        let minerva_instance_root = match &self.instance_root {
+            Some(root) => root.clone(),
+            None => {
+                match env::var(ENV_MINERVA_INSTANCE_ROOT) {
+                    Ok(v) => PathBuf::from(v),
+                    Err(e) => {
+                        return Err(Error::Configuration(ConfigurationError {
+                            msg: format!(
+                                "Environment variable '{}' could not be read: {}",
+                                &ENV_MINERVA_INSTANCE_ROOT, e
+                            ),
+                        }));
+                    }
+                }
             }
         };
 
