@@ -1207,7 +1207,7 @@ dependencies = [
 
 [[package]]
 name = "minerva-admin"
-version = "0.1.7"
+version = "1.0.0"
 dependencies = [
  "actix-cors",
  "actix-web",
@@ -1240,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "minerva-service"
-version = "0.1.6"
+version = "1.0.0"
 dependencies = [
  "actix-cors",
  "actix-web",

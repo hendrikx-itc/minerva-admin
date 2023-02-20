@@ -42,7 +42,7 @@ get_tmpfile() {
     printf "%s.%s" "$(mktemp)" "${suffix}"
   else
     # No really good options here--let's pick a default + hope
-    printf "/tmp/starship.%s" "${suffix}"
+    printf "/tmp/minerva-admin.%s" "${suffix}"
   fi
 }
 
@@ -77,10 +77,10 @@ download() {
 
   error "Command failed (exit code $rc): ${BLUE}${cmd}${NO_COLOR}"
   printf "\n" >&2
-  info "This is likely due to Starship not yet supporting your configuration."
+  info "This is likely due to Minerva admin not yet supporting your configuration."
   info "If you would like to see a build for your configuration,"
   info "please create an issue requesting a build for ${MAGENTA}${TARGET}${NO_COLOR}:"
-  info "${BOLD}${UNDERLINE}https://github.com/starship/starship/issues/new/${NO_COLOR}"
+  info "${BOLD}${UNDERLINE}https://github.com/hendrikx-itc/minerva-admin/issues/new/${NO_COLOR}"
   return $rc
 }
 
@@ -105,7 +105,7 @@ unpack() {
   error "Unknown package extension."
   printf "\n"
   info "This almost certainly results from a bug in this script--please file a"
-  info "bug report at https://github.com/starship/starship/issues"
+  info "bug report at https://github.com/hendrikx-itc/minerva-admin/issues"
   return 1
 }
 
@@ -113,7 +113,7 @@ usage() {
   printf "%s\n" \
     "install.sh [option]" \
     "" \
-    "Fetch and install the latest version of starship, if starship is already" \
+    "Fetch and install the latest version of Minerva admin, if Minerva admin is already" \
     "installed it will be updated to the latest version."
 
   printf "\n%s\n" "Options"
@@ -151,7 +151,7 @@ install() {
     warn "Escalated permissions are required to install to ${BIN_DIR}"
     elevate_priv
     sudo="sudo"
-    msg="Installing Starship as root, please wait…"
+    msg="Installing Minerva admin as root, please wait…"
   fi
   info "$msg"
 
@@ -263,7 +263,7 @@ is_build_available() {
     printf "\n" >&2
     info "If you would like to see a build for your configuration,"
     info "please create an issue requesting a build for ${MAGENTA}${target}${NO_COLOR}:"
-    info "${BOLD}${UNDERLINE}https://github.com/starship/starship/issues/new/${NO_COLOR}"
+    info "${BOLD}${UNDERLINE}https://github.com/hendrikx-itc/minerva-admin/issues/new/${NO_COLOR}"
     printf "\n"
     exit 1
   fi
