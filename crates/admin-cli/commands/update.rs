@@ -18,6 +18,8 @@ use super::common::{connect_db, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 pub struct UpdateOpt {
     #[structopt(short, long)]
     non_interactive: bool,
+    #[structopt(parse(from_os_str), help = "Minerva instance root directory")]
+    instance_root: Option<PathBuf>,
 }
 
 #[async_trait]
@@ -30,15 +32,20 @@ impl Cmd for UpdateOpt {
         let instance_db = MinervaInstance::load_from_db(&mut client).await?;
         println!("Ok");
 
-        let minerva_instance_root = match env::var(ENV_MINERVA_INSTANCE_ROOT) {
-            Ok(v) => PathBuf::from(v),
-            Err(e) => {
-                return Err(Error::Configuration(ConfigurationError {
-                    msg: format!(
-                        "Environment variable '{}' could not be read: {}",
-                        &ENV_MINERVA_INSTANCE_ROOT, e
-                    ),
-                }));
+        let minerva_instance_root = match &self.instance_root {
+            Some(root) => root.clone(),
+            None => {
+                match env::var(ENV_MINERVA_INSTANCE_ROOT) {
+                    Ok(v) => PathBuf::from(v),
+                    Err(e) => {
+                        return Err(Error::Configuration(ConfigurationError {
+                            msg: format!(
+                                "Environment variable '{}' could not be read: {}",
+                                &ENV_MINERVA_INSTANCE_ROOT, e
+                            ),
+                        }));
+                    }
+                }
             }
         };
 

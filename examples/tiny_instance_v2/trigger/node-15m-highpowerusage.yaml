@@ -35,6 +35,10 @@ notification: |-
       ],
       E'\n'
   )
+data: |-
+  SELECT json_build_object(
+    'power_kwh', $1.power_kwh
+  )
 tags: ['online']
 fingerprint: |-
   SELECT trigger.modified_to_fingerprint(
@@ -48,3 +52,7 @@ trend_store_links:
     mapping_function: mapping_id
 mapping_functions: []
 granularity: 15m
+description: |-
+  |||
+  | --- | --- |
+  | Description | A sample trigger |
