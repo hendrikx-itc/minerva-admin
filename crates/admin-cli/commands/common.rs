@@ -68,7 +68,7 @@ pub async fn connect_db() -> Result<Client, Error> {
 }
 
 pub async fn connect_to_db(config: &Config) -> Result<Client, Error> {
-    let client = if true {
+    let client = if config.get_ssl_mode() != SslMode::Disable {
         let mut roots = rustls::RootCertStore::empty();
 
         for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs")
