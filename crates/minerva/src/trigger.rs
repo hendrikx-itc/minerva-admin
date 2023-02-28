@@ -1239,6 +1239,8 @@ where
             create_notifications(&mut transaction, &self.trigger_name, self.timestamp.clone())
                 .await?;
 
+        transaction.commit().await?;
+
         Ok(message)
     }
 }
