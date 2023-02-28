@@ -596,8 +596,10 @@ fn truncate_timestamp_for_granularity<Tz>(
 where
     Tz: chrono::TimeZone,
 {
-    match granularity.as_secs() {
-        900 => {
+    let granularity_text: String = humantime::format_duration(granularity).to_string();
+
+    match granularity_text.as_str() {
+        "15m" => {
             let date = ref_timestamp.date_naive();
 
             let gran_minutes: u32 = 15;
@@ -616,7 +618,7 @@ where
 
             Ok(timestamp)
         }
-        3600 => {
+        "1h" => {
             let date = ref_timestamp.date_naive();
 
             let timestamp = date
@@ -627,7 +629,18 @@ where
 
             Ok(timestamp)
         }
-        86400 => {
+        "1day" => {
+            let date = ref_timestamp.date_naive();
+
+            let timestamp = date
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(ref_timestamp.timezone())
+                .unwrap();
+
+            Ok(timestamp)
+        }
+        "7days" => {
             let date = ref_timestamp.date_naive();
 
             let timestamp = date
@@ -640,7 +653,7 @@ where
         }
         _ => Err(Error::Runtime(RuntimeError::from_msg(format!(
             "Unsupported granularity: {}",
-            &humantime::format_duration(granularity)
+            &granularity_text
         )))),
     }
 }
