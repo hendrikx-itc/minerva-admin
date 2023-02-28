@@ -16,6 +16,7 @@ use crate::interval::parse_interval;
 
 use super::change::{Change, ChangeResult, GenericChange};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
+use super::notification_store::notification_store_exists;
 
 type PostgresName = String;
 
@@ -314,6 +315,10 @@ async fn create_rule<T: GenericClient + Sync + Send>(
         .execute(&query, &[&trigger.name])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error creating rule: {e}")))?;
+
+    if !notification_store_exists(client, &trigger.notification_store).await? {
+        return Err(Error::Configuration(ConfigurationError::from_msg(format!("Error creating rule: No notification store found named '{}'", &trigger.notification_store))));
+    }
 
     let query = concat!(
         "UPDATE trigger.rule ",

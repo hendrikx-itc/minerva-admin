@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use tokio_postgres::types::ToSql;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, GenericClient};
 
 use async_trait::async_trait;
 
@@ -249,4 +249,24 @@ pub fn load_notification_store_from_file(path: &PathBuf) -> Result<NotificationS
     })?;
 
     Ok(notification_store)
+}
+
+pub async fn notification_store_exists<T: GenericClient + Sync + Send>(client: &mut T, data_source_name: &str) -> Result<bool, Error> {
+    let query = concat!(
+        "SELECT notification_store.id, data_source.name ",
+        "FROM notification_directory.notification_store ",
+        "JOIN directory.data_source ON data_source.id = notification_store.data_source_id ",
+        "WHERE data_source.name = $1"
+    );
+
+    let result = client
+        .query(query, &[&data_source_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error checking notification store existence: {e}")))?;
+
+    match result.len() {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Error::Database(DatabaseError{msg: format!("Unexpected number of notification store matches: {}", result.len())}))
+    }
 }
