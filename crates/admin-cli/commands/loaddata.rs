@@ -9,9 +9,9 @@ use super::common::{connect_db, Cmd, CmdResult};
 
 #[derive(Debug, StructOpt)]
 pub struct LoadDataOpt {
-    #[structopt(help = "Data source of data")]
+    #[structopt(long, help = "Data source of data")]
     data_source: Option<String>,
-    #[structopt(parse(from_os_str), help = "File with parser configuration")]
+    #[structopt(long, parse(from_os_str), help = "File with parser configuration")]
     parser_config: Option<PathBuf>,
     #[structopt(parse(from_os_str), help = "File to load")]
     file: PathBuf,
@@ -39,7 +39,7 @@ impl Cmd for LoadDataOpt {
             Some(d) => d.to_string(),
         };
 
-        load_data(&mut client, &data_source, &parser_config, &self.file).await;
+        let result = load_data(&mut client, &data_source, &parser_config, &self.file).await;
 
         Ok(())
     }

@@ -21,11 +21,15 @@ pub async fn load_data<T: GenericClient + Send + Sync, P: AsRef<Path>>(
 ) -> Result<(), String> {
     println!("Loading file {}", file_path.as_ref().to_string_lossy());
 
+    let description = format!("{{\"csv-load\": \"{}\"}}", file_path.as_ref().to_string_lossy());
+
     let f = File::open(file_path).map_err(|e| format!("{}", e))?;
 
     let reader = BufReader::new(f);
 
     let mut csv_reader = csv::Reader::from_reader(reader);
+
+    let job_id = start_job(client, &description).await?;
 
     for result in csv_reader.records() {
         let record = result.unwrap();
@@ -38,6 +42,34 @@ pub async fn load_data<T: GenericClient + Send + Sync, P: AsRef<Path>>(
         println!("Entity: {}", entity);
         println!("Timestamp: {}", timestamp);
     }
+
+    println!("Job ID: {job_id}");
+
+    end_job(client, job_id).await?;
+
+    Ok(())
+}
+
+async fn start_job<T: GenericClient + Send + Sync>(client: &mut T, description: &str) -> Result<i64, String> {
+    let query = "SELECT logging.start_job($1)";
+
+    let result = client
+        .query_one(query, &[&description])
+        .await
+        .map_err(|e| format!("Error starting job: {e}"))?;
+
+    let job_id = result.get(0);
+
+    Ok(job_id)
+}
+
+async fn end_job<T: GenericClient + Send + Sync>(client: &mut T, job_id: i64) -> Result<(), String> {
+    let query = "SELECT logging.end_job($1)";
+
+    client
+        .execute(query, &[&job_id])
+        .await
+        .map_err(|e| format!("Error ending job: {e}"))?;
 
     Ok(())
 }
