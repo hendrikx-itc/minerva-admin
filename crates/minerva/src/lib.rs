@@ -3,6 +3,7 @@ pub mod change;
 pub mod error;
 pub mod instance;
 pub mod interval;
+pub mod loading;
 pub mod notification_store;
 pub mod relation;
 pub mod trend_materialization;

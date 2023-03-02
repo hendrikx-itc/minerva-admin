@@ -7,6 +7,7 @@ use crate::commands::common::Cmd;
 use crate::commands::diff::DiffOpt;
 use crate::commands::dump::DumpOpt;
 use crate::commands::initialize::InitializeOpt;
+use crate::commands::loaddata::LoadDataOpt;
 use crate::commands::trendmaterialization::TrendMaterializationOpt;
 use crate::commands::trendstore::TrendStoreOpt;
 use crate::commands::trigger::TriggerOpt;
@@ -30,6 +31,8 @@ enum Opt {
     AttributeStore(AttributeStoreOpt),
     #[structopt(about = "Manage trend materializations")]
     TrendMaterialization(TrendMaterializationOpt),
+    #[structopt(about = "Load data into Minerva database")]
+    LoadData(LoadDataOpt),
 }
 
 #[tokio::main]
@@ -45,6 +48,7 @@ async fn main() {
         Opt::Trigger(trigger) => trigger.run().await,
         Opt::AttributeStore(attribute_store) => attribute_store.run().await,
         Opt::TrendMaterialization(trend_materialization) => trend_materialization.run().await,
+        Opt::LoadData(load_data) => load_data.run().await,
     };
 
     if let Err(e) = result {
