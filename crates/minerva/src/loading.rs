@@ -35,8 +35,13 @@ pub async fn load_data<P: AsRef<Path>>(
 
     let job_id = start_job(client, &description).await?;
 
+<<<<<<< HEAD
      let data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)> = csv_reader.records().map(|record| {
         let record = record.unwrap();
+=======
+    for result in csv_reader.records() {
+        let record = result.unwrap();
+>>>>>>> 7e425f3 (Initial data loading logic)
 
         println!("{:?}", record);
 
@@ -64,6 +69,34 @@ pub async fn load_data<P: AsRef<Path>>(
     println!("Job ID: {job_id}");
 
     end_job(client, job_id).await?;
+
+    println!("Job ID: {job_id}");
+
+    end_job(client, job_id).await?;
+
+    Ok(())
+}
+
+async fn start_job<T: GenericClient + Send + Sync>(client: &mut T, description: &str) -> Result<i64, String> {
+    let query = "SELECT logging.start_job($1)";
+
+    let result = client
+        .query_one(query, &[&description])
+        .await
+        .map_err(|e| format!("Error starting job: {e}"))?;
+
+    let job_id = result.get(0);
+
+    Ok(job_id)
+}
+
+async fn end_job<T: GenericClient + Send + Sync>(client: &mut T, job_id: i64) -> Result<(), String> {
+    let query = "SELECT logging.end_job($1)";
+
+    client
+        .execute(query, &[&job_id])
+        .await
+        .map_err(|e| format!("Error ending job: {e}"))?;
 
     Ok(())
 }
