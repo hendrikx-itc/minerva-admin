@@ -36,7 +36,6 @@ impl Cmd for TriggerList {
             "Notification Store",
             "Granularity",
             "Default Interval",
-            "Description",
             "Enabled",
         ]);
         for trigger in triggers {
@@ -45,7 +44,6 @@ impl Cmd for TriggerList {
                 trigger.1,
                 trigger.2,
                 trigger.3,
-                trigger.4,
                 trigger.5.to_string(),
             ]);
         }

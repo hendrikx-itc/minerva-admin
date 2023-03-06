@@ -82,7 +82,12 @@ pub async fn connect_to_db(config: &Config) -> Result<Client, Error> {
             .with_no_client_auth();
         let tls = MakeRustlsConnect::new(tls_config);
 
-        let (client, connection) = config.connect(tls).await?;
+        let (client, connection) = config.connect(tls).await.map_err(|e| {
+            ConfigurationError::from_msg(format!(
+                "Could not setup TLS database connection to {:?}: {}",
+                &config, e
+            ))
+        })?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
