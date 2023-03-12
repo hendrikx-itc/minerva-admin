@@ -859,6 +859,8 @@ impl GenericChange for UpdateTrigger {
 
         link_trend_stores(&self.trigger, &mut transaction).await?;
 
+        set_description(&self.trigger, &mut transaction).await?;
+
         let mut check_result: String = "No check has run".to_string();
 
         if self.verify {
