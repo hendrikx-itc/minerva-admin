@@ -11,7 +11,7 @@ use minerva::error::{DatabaseError, Error, RuntimeError};
 use minerva::trigger::{
     dump_trigger, list_triggers, load_trigger, load_trigger_from_file, AddTrigger,
     CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, RenameTrigger,
-    UpdateTrigger, VerifyTrigger,
+    UpdateTrigger, VerifyTrigger, get_notifications,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -258,6 +258,49 @@ impl Cmd for TriggerDisable {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TriggerPreviewNotifications {
+    #[structopt(help = "trigger name")]
+    name: String,
+    #[structopt(help = "timestamp")]
+    timestamp: DateTime<Local>,
+}
+
+#[async_trait]
+impl Cmd for TriggerPreviewNotifications {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let triggers = get_notifications(&mut client, &self.name, self.timestamp)
+            .await
+            .map_err(|e| DatabaseError::from_msg(format!("Error getting notifications: {e}")))?;
+
+        let mut table = Table::new();
+        let style = "     ═╪ ┆          ";
+        table.load_preset(style);
+        table.set_header(vec![
+            "entity_id",
+            "timestamp",
+            "weight",
+            "details",
+            "data"
+        ]);
+        for trigger in triggers {
+            table.add_row(vec![
+                trigger.0.to_string(),
+                trigger.1,
+                trigger.2.to_string(),
+                trigger.3,
+                trigger.4,
+            ]);
+        }
+
+        println!("{table}");
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub struct TriggerCreateNotifications {
     #[structopt(long = "timestamp", help = "timestamp")]
     timestamp: Option<DateTime<Local>>,
@@ -324,6 +367,8 @@ pub enum TriggerOpt {
     Dump(TriggerDump),
     #[structopt(about = "run basic verification on a trigger")]
     Verify(TriggerVerify),
+    #[structopt(about = "preview notifications of a trigger")]
+    PreviewNotifications(TriggerPreviewNotifications),
     #[structopt(about = "create notifications of a trigger")]
     CreateNotifications(TriggerCreateNotifications),
 }
@@ -340,6 +385,9 @@ impl TriggerOpt {
             TriggerOpt::Rename(rename) => rename.run().await,
             TriggerOpt::Dump(dump) => dump.run().await,
             TriggerOpt::Verify(verify) => verify.run().await,
+            TriggerOpt::PreviewNotifications(create_notifications) => {
+                create_notifications.run().await
+            },
             TriggerOpt::CreateNotifications(create_notifications) => {
                 create_notifications.run().await
             }

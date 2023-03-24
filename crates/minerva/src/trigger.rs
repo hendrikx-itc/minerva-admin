@@ -1221,6 +1221,39 @@ pub async fn load_triggers<T: GenericClient + Send + Sync>(
     Ok(triggers)
 }
 
+pub async fn get_notifications<T: GenericClient + Send + Sync, Ts: ToSql + Send + Sync>(
+    conn: &mut T,
+    name: &str,
+    timestamp: Ts,
+) -> Result<Vec<(i32, String, i32, String, String)>, Error>
+where
+    Ts: ToSql,
+{
+    let query = format!("SELECT entity_id, timestamp::text, weight, details, data::text FROM trigger_rule.\"{}_create_notification\"($1::timestamptz)", name);
+
+    let query_args = vec![
+        &timestamp as &(dyn ToSql + Sync),
+    ];
+
+    let notifications: Vec<(i32, String, i32, String, String)> = conn
+        .query(&query, query_args.iter().as_slice())
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Error retrieving notifications: {e}")))?
+        .into_iter()
+        .map(|row| {
+            let n1: i32 = row.get(0);
+            let n2: String = row.get(1);
+            let n3: i32 = row.get(2);
+            let n4: String = row.get(3);
+            let n5: String = row.get(4);
+
+            (n1, n2, n3, n4, n5)
+        })
+        .collect();
+
+    Ok(notifications)
+}
+
 pub struct CreateNotifications<Tz: TimeZone> {
     pub trigger_name: String,
     pub timestamp: Option<DateTime<Tz>>,
