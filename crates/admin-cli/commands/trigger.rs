@@ -385,8 +385,8 @@ impl TriggerOpt {
             TriggerOpt::Rename(rename) => rename.run().await,
             TriggerOpt::Dump(dump) => dump.run().await,
             TriggerOpt::Verify(verify) => verify.run().await,
-            TriggerOpt::PreviewNotifications(create_notifications) => {
-                create_notifications.run().await
+            TriggerOpt::PreviewNotifications(preview_notifications) => {
+                preview_notifications.run().await
             },
             TriggerOpt::CreateNotifications(create_notifications) => {
                 create_notifications.run().await
