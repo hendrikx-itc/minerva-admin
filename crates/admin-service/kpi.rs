@@ -319,6 +319,8 @@ impl KpiImplementedData {
                 })
                 .unwrap();
 
+            let actual_source_name = source_trend_store_parts[0].to_string();
+
             for source_trend_store_part in source_trend_store_parts {
                 sources.push(TrendMaterializationSourceData {
                     trend_store_part: source_trend_store_part.clone(),
@@ -331,7 +333,7 @@ impl KpiImplementedData {
             partmodifieds.push(format!("part{i}.name, modified{i}.last"));
             joins.push(format!(
                 "LEFT JOIN trend_directory.trend_store_part part{} ON part{}.name = '{}'\nJOIN trend_directory.modified modified{} ON modified{}.trend_store_part_id = part{}.id AND modified{}.timestamp = t.timestamp",
-                i, i, source_name.clone(), i, i, i, i
+                i, i, actual_source_name.clone(), i, i, i, i
             ));
 
             i += 1;
