@@ -1,3 +1,4 @@
+use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::From;
@@ -91,6 +92,16 @@ fn default_extra_data() -> Value {
 impl fmt::Display for Trend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Trend({}, {})", &self.name, &self.data_type)
+    }
+}
+
+impl Trend {
+    pub fn sql_type(&self) -> Type {
+        match self.data_type.as_str() {
+            "integer" => Type::INT4,
+            "numeric" => Type::NUMERIC,
+            &_ => Type::TEXT,
+        }
     }
 }
 
