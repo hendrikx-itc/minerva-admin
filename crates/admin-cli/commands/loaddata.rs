@@ -39,7 +39,18 @@ impl Cmd for LoadDataOpt {
             Some(d) => d.to_string(),
         };
 
-        let result = load_data(&mut client, &data_source, &parser_config, &self.file).await;
+        let result = load_data(&mut client, &data_source, &parser_config, &self.file)
+            .await;
+
+        match result {
+            Err(e) => {
+                println!("Could not load CSV file '{}': {}", &self.file.as_path().to_string_lossy(), e);
+
+            },
+            Ok(_) => {
+                println!("Finished processing file '{}'", &self.file.as_path().to_string_lossy())
+            }
+        }
 
         Ok(())
     }

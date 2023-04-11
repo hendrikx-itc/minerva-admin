@@ -7,7 +7,7 @@ use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
 use minerva::trend_materialization;
 use minerva::trend_materialization::{
-    trend_materialization_from_config, AddTrendMaterialization, UpdateTrendMaterialization,
+    trend_materialization_from_config, reset_source_fingerprint, AddTrendMaterialization, UpdateTrendMaterialization,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -80,11 +80,39 @@ impl Cmd for TrendMaterializationUpdate {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TrendMaterializationResetSourceFingerprint {
+    #[structopt(help = "materialization ")]
+    materialization: String,
+}
+
+#[async_trait]
+impl Cmd for TrendMaterializationResetSourceFingerprint {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let result = reset_source_fingerprint(&mut client, &self.materialization).await;
+
+        match result {
+            Ok(_) => {
+                println!("Updated trend materialization");
+
+                Ok(())
+            }
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!("Error updating trend materialization: {e}"),
+            })),
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TrendMaterializationOpt {
     #[structopt(about = "create a trend materialization")]
     Create(TrendMaterializationCreate),
     #[structopt(about = "update a trend materialization")]
     Update(TrendMaterializationUpdate),
+    #[structopt(about = "reset the source fingerprint of the materialization state")]
+    ResetSourceFingerprint(TrendMaterializationResetSourceFingerprint),
 }
 
 impl TrendMaterializationOpt {
@@ -95,6 +123,9 @@ impl TrendMaterializationOpt {
             }
             TrendMaterializationOpt::Update(trend_materialization_update) => {
                 trend_materialization_update.run().await
+            }
+            TrendMaterializationOpt::ResetSourceFingerprint(reset_source_fingerprint) => {
+                reset_source_fingerprint.run().await
             }
         }
     }

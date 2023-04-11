@@ -951,3 +951,22 @@ impl Change for UpdateTrendMaterialization {
         self.generic_apply(client).await
     }
 }
+
+pub async fn reset_source_fingerprint<T: GenericClient + Send + Sync>(client: &mut T, materialization: &str) -> Result<(), String> {
+    let query = format!(concat!(
+        "UPDATE trend_directory.materialization_state nms ",
+        "SET source_fingerprint = (trend.\"{}_fingerprint\"(ms.timestamp)).body ",
+        "FROM trend_directory.materialization_state ms ",
+        "JOIN trend_directory.materialization m ON ms.materialization_id = m.id ",
+        "WHERE m::text = $1 AND nms.materialization_id = m.id AND nms.timestamp = ms.timestamp"
+    ), &materialization);
+
+    client
+        .execute(&query, &[&materialization])
+        .await
+        .map_err(|e| {
+            format!("Error loading trend materializations: {e}")
+        })?;
+
+    Ok(())
+}
