@@ -41,7 +41,7 @@ integration-test:cargo:
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - PGHOST=database PGUSER=postgres PGDATABASE=minerva cargo test --format json --workspace --verbose -- --ignored | cargo2junit > results.xml
+    - PGHOST=database PGUSER=postgres PGDATABASE=minerva cargo test --workspace --verbose -- --format=json --ignored | cargo2junit > results.xml
   artifacts:
     when: always
     reports:
