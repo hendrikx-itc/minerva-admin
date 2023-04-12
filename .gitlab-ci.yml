@@ -34,6 +34,7 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
 
 integration-test:cargo:
+  image: rustlang/rust:nightly
   before_script:
     - cargo install cargo2junit
   services:
