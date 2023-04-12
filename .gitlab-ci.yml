@@ -8,7 +8,7 @@
 
 # Official language image. Look for the different tagged releases at:
 # https://hub.docker.com/r/library/rust/tags/
-image: "rust:latest"
+image: "rustlang/rust:nightly"
 
 # Optional: Pick zero or more services to be used on all builds.
 # Only needed when using a docker container to run your tests in.
@@ -34,7 +34,6 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
 
 integration-test:cargo:
-  image: rustlang/rust:nightly
   before_script:
     - cargo install cargo2junit
   services:
