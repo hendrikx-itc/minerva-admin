@@ -45,6 +45,10 @@ impl Cmd for InitializeOpt {
 
         let mut client = connect_db().await?;
 
+        if !minerva_instance_root.is_dir() {
+            return Err(Error::Configuration(ConfigurationError::from_msg(format!("Not a valid directory: '{}'", &minerva_instance_root.to_string_lossy()))));
+        }
+
         println!(
             "Initializing Minerva instance from {}",
             minerva_instance_root.to_string_lossy()

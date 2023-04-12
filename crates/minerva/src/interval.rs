@@ -19,3 +19,17 @@ pub fn parse_interval(interval_str: &str) -> Result<Duration, humantime::Duratio
 
     humantime::parse_duration(&interval_str)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_interval() {
+        let dur = parse_interval("00:01:00").unwrap();
+
+        let expected_dur = Duration::new(60, 0);
+
+        assert_eq!(dur, expected_dur);
+    }
+}
