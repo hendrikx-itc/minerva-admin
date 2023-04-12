@@ -34,12 +34,18 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
 
 integration-test:cargo:
+  before_script:
+    - cargo install cargo2junit
   services:
     - name: hendrikxitc/minerva
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - PGHOST=database PGUSER=postgres PGDATABASE=minerva cargo test --workspace --verbose -- --ignored
+    - PGHOST=database PGUSER=postgres PGDATABASE=minerva cargo test --format json --workspace --verbose -- --ignored | cargo2junit > results.xml
+  artifacts:
+    when: always
+    reports:
+      junit: results.xml
 
 # Optional: Use a third party library to generate gitlab junit reports
 # test:junit-report:
