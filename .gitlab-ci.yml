@@ -2,6 +2,8 @@ image: "rust:1.68.2-alpine"
 
 # Use cargo to test the project
 test:cargo:
+  before_script:
+    - cargo install cargo2junit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo test --workspace --verbose -- --format=json  -Z unstable-options --report-time | cargo2junit > results.xml
