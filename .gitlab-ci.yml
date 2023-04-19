@@ -28,7 +28,11 @@ image: "rustlang/rust:nightly"
 test:cargo:
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - cargo test --workspace --verbose
+    - cargo test --workspace --verbose -- --format=json  -Z unstable-options --report-time --ignored | cargo2junit > results.xml
+  artifacts:
+    when: always
+    reports:
+      junit: results.xml
 
 variables:
   POSTGRES_HOST_AUTH_METHOD: trust
