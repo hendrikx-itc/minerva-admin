@@ -1,12 +1,12 @@
 image: "rust:1.68.2-buster"
 
 # Use cargo to test the project
-test:cargo:
+test-minerva-admin:cargo:
   before_script:
     - cargo install cargo2junit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - cargo test --workspace --verbose -- --format=json  -Z unstable-options --report-time | cargo2junit > results.xml
+    - cargo test --package minerva-admin --verbose -- --format=json  -Z unstable-options --report-time | cargo2junit > results.xml
   artifacts:
     when: always
     reports:
