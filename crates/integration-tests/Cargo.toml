@@ -1,0 +1,34 @@
+[package]
+name = "integration-tests"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Minerva integration tests"
+
+[dependencies]
+minerva = { version = "0.2.0", path = "../minerva" }
+tokio = { version = "1.20", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
+rustls = "0.20"
+rustls-native-certs = "0.6"
+tokio-postgres-rustls = "0.9"
+postgres-types = { version = "0.2", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+humantime = "2.1"
+humantime-serde = "1.1"
+serde_json = "1.0"
+glob = "0.3"
+regex = "1.5"
+actix-rt = "2.8"
+actix-web = "4.1"
+actix-cors = "0.6"
+bb8 = "0.8"
+bb8-postgres = "0.8"
+env_logger = "0.10"
+lazy_static = "1.4.0"
+assert_cmd = "2.0"
+predicates = "3.0"
+

@@ -1280,6 +1280,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "integration-tests"
+version = "1.3.0"
+dependencies = [
+ "actix-cors",
+ "actix-rt",
+ "actix-web",
+ "assert_cmd",
+ "bb8",
+ "bb8-postgres",
+ "chrono",
+ "env_logger",
+ "glob",
+ "humantime",
+ "humantime-serde",
+ "lazy_static",
+ "minerva",
+ "postgres-types",
+ "predicates",
+ "regex",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "tokio-postgres",
+ "tokio-postgres-rustls",
+]
+
+[[package]]
 name = "io-lifetimes"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
