@@ -4,20 +4,24 @@ mod tests {
 
     use assert_cmd::prelude::*;
     use predicates::prelude::*;
+    use rand::distributions::{Alphanumeric, DistString}; 
 
     use minerva::database::{connect_db, create_database, drop_database};
 
+    fn generate_name() -> String {
+         Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+    }
+
     #[tokio::test]
     async fn initialize() -> Result<(), Box<dyn std::error::Error>> {
-        let database_name = "minerva";
+        let database_name = generate_name();
         let mut client = connect_db().await?;
 
-        drop_database(&mut client, database_name).await?;
-        create_database(&mut client, database_name).await?;
+        create_database(&mut client, &database_name).await?;
 
         println!("Dropped database");
         let mut cmd = Command::cargo_bin("minerva-admin")?;
-        cmd.env("PGDATABASE", database_name);
+        cmd.env("PGDATABASE", &database_name);
 
         let instance_root_path = std::fs::canonicalize("../../examples/tiny_instance_v1").unwrap();
 
@@ -28,7 +32,7 @@ mod tests {
 
         let mut client = connect_db().await?;
 
-        drop_database(&mut client, database_name).await?;
+        drop_database(&mut client, &database_name).await?;
 
         println!("Dropped database");
 

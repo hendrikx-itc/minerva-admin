@@ -5,6 +5,8 @@ mod tests {
     use std::process::Command;
     use std::path::PathBuf;
 
+    use rand::distributions::{Alphanumeric, DistString}; 
+
     use minerva::change::Change;
     use minerva::database::{connect_to_db, get_db_config, create_database, drop_database};
 
@@ -36,18 +38,19 @@ mod tests {
 
     "###;
 
+    fn generate_name() -> String {
+         Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+    }
+
     #[cfg(test)]
     #[tokio::test]
     async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
         let data_source_name = "hub";
-        let database_name = "minerva";
+        let database_name = generate_name();
         let db_config = get_db_config()?;
         let mut client = connect_to_db(&db_config).await?;
 
-        drop_database(&mut client, database_name).await?;
-        println!("Dropped database '{database_name}'");
-
-        create_database(&mut client, database_name).await?;
+        create_database(&mut client, &database_name).await?;
         println!("Created database '{database_name}'");
 
         {
@@ -65,7 +68,7 @@ mod tests {
         }
 
         let mut cmd = Command::cargo_bin("minerva-admin")?;
-        cmd.env("PGDATABASE", database_name);
+        cmd.env("PGDATABASE", &database_name);
 
         let instance_root_path = std::fs::canonicalize("../../examples/tiny_instance_v1").unwrap();
 
@@ -79,7 +82,7 @@ mod tests {
 
         let mut client = connect_to_db(&db_config).await?;
 
-        drop_database(&mut client, database_name).await?;
+        drop_database(&mut client, &database_name).await?;
 
         println!("Dropped database '{database_name}'");
 
