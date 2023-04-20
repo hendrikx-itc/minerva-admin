@@ -1453,10 +1453,14 @@ dependencies = [
  "postgres-types",
  "regex",
  "rust_decimal",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "serde_yaml",
+ "tokio",
  "tokio-postgres",
+ "tokio-postgres-rustls",
 ]
 
 [[package]]
