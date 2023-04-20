@@ -19,7 +19,7 @@ integration-test:cargo:
   before_script:
     - cargo install cargo2junit
   services:
-    - name: hendrikxitc/minerva
+    - name: postgres:13
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
