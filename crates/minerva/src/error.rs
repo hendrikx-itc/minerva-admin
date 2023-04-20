@@ -50,6 +50,24 @@ pub enum Error {
     Runtime(RuntimeError),
 }
 
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        match self {
+            Error::Database(e) => "Database error",
+            Error::Configuration(e) => "Configuration error",
+            Error::Runtime(e) => "Runtime error",
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        None
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

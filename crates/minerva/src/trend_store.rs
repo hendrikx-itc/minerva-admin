@@ -890,6 +890,17 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
     }
 }
 
+/// Create the Minerva base schema
+pub async fn create_schema(
+    client: &mut Client,
+) -> Result<(), Error> {
+    let query = concat!("SELECT id FROM trend_directory.trend_store");
+
+
+    Ok(())
+}
+
+
 /// Create partitions for the full retention period of all trend stores.
 pub async fn create_partitions(
     client: &mut Client,
