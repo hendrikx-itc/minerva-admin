@@ -5,7 +5,8 @@ use predicates::prelude::*;
 
 use minerva::database::{connect_db, create_database, drop_database};
 
-#[actix_rt::test]
+#[cfg(test)]
+#[tokio::test]
 async fn initialize() -> Result<(), Box<dyn std::error::Error>> {
     let database_name = "minerva";
     let mut client = connect_db().await?;

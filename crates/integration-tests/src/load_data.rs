@@ -34,7 +34,8 @@ parts:
 
 "###;
 
-#[actix_rt::test]
+#[cfg(test)]
+#[tokio::test]
 async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
     let data_source_name = "hub";
     let database_name = "minerva";
