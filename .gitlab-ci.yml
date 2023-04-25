@@ -30,7 +30,7 @@ integration-test:cargo:
     reports:
       junit: results.xml
 
-build-minerva-service:cargo:
+build-minerva-service:
   before_script:
     - cargo install cargo2junit
   script:
@@ -43,7 +43,7 @@ build-minerva-service:cargo:
 
 build-service-image:
   stage: build
-  needs: ["build-minerva-service:cargo"]
+  needs: ["build-minerva-service"]
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
