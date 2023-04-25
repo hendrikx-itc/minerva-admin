@@ -44,6 +44,7 @@ mod serviceerror;
 
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
 static ENV_PORT: &str = "SERVICE_PORT";
+static ENV_ADDRESS: &str = "SERVICE_ADDRESS";
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -95,6 +96,8 @@ async fn main() -> std::io::Result<()> {
         ),
     )]
     struct ApiDoc;
+
+    let service_address: String = env::var(ENV_ADDRESS).unwrap_or("0.0.0.0".to_string());
 
     let service_port: u16 = match env::var(ENV_PORT).unwrap_or("8000".to_string()).parse() {
         Err(e) => {
@@ -148,7 +151,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_kpi)
             .service(delete_kpi)
     })
-    .bind(("127.0.0.1", service_port))?
+    .bind((service_address, service_port))?
     .run()
     .await
 }
