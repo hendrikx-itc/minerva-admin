@@ -30,6 +30,17 @@ integration-test:cargo:
     reports:
       junit: results.xml
 
+build-minerva-service:cargo:
+  before_script:
+    - cargo install cargo2junit
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo build --package minerva-service --release
+  artifacts:
+    when: always
+    reports:
+      junit: results.xml
+
 build-image:
   stage: build
   image:
