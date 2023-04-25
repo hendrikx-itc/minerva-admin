@@ -47,8 +47,8 @@ build-minerva-service:
     - cargo build --package minerva-service --release
   artifacts:
     when: always
-    reports:
-      junit: results.xml
+    paths:
+      - target/release/minerva-service
 
 build-service-image:
   stage: build-image
