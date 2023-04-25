@@ -52,7 +52,6 @@ build-minerva-service:
 
 build-service-image:
   stage: build-image
-  needs: ["build-minerva-service"]
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -69,7 +68,6 @@ build-service-image:
 
 deploy:
   stage: deploy
-  needs: ["build-service-image"]
   script: echo "Define your deployment script!"
   environment: production
 
