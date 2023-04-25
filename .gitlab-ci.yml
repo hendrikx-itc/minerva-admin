@@ -3,7 +3,8 @@ image: "rust:1.68.2-buster"
 default:
   cache:
     paths:
-      - .cargo
+      - .cargo/
+      - target/
 
 stages:
   - test
