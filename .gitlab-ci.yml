@@ -41,8 +41,9 @@ build-minerva-service:cargo:
     reports:
       junit: results.xml
 
-build-image:
+build-service-image:
   stage: build
+  needs: ["build-minerva-service:cargo"]
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -59,6 +60,7 @@ build-image:
 
 deploy:
   stage: deploy
+  needs: ["build-service-image"]
   script: echo "Define your deployment script!"
   environment: production
 
