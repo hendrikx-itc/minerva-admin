@@ -49,7 +49,8 @@ build-minerva-service:
   artifacts:
     when: always
     paths:
-      - target/release/minerva-service
+      - target/x86_64-unknown-linux-musl/release/minerva-service
+      - 
 
 build-service-image:
   stage: build-image
