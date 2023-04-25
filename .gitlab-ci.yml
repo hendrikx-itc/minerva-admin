@@ -31,6 +31,7 @@ integration-test:cargo:
       junit: results.xml
 
 build-minerva-service:
+  stage: build
   before_script:
     - cargo install cargo2junit
   script:
