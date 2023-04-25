@@ -41,10 +41,11 @@ integration-test:cargo:
 build-minerva-service:
   stage: build
   before_script:
+    - apt-get update && apt-get install -y wget build-essential libssl-dev pkg-config openssh-client musl-tools
+    - rustup target add x86_64-unknown-linux-musl
     - cargo install cargo2junit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - rustup target add x86_64-unknown-linux-musl
     - cargo build --package minerva-service --release --target=x86_64-unknown-linux-musl
   artifacts:
     when: always
