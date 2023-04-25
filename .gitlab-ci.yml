@@ -1,7 +1,14 @@
 image: "rust:1.68.2-buster"
 
+stages:
+  - test
+  - build
+  - build-image
+  - deploy
+
 # Use cargo to test the project
 test-minerva-admin:cargo:
+  stage: test
   before_script:
     - cargo install cargo2junit
   script:
@@ -16,6 +23,7 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
 
 integration-test:cargo:
+  stage: test
   before_script:
     - cargo install cargo2junit
   services:
@@ -43,7 +51,7 @@ build-minerva-service:
       junit: results.xml
 
 build-service-image:
-  stage: build
+  stage: build-image
   needs: ["build-minerva-service"]
   image:
     name: gcr.io/kaniko-project/executor:debug
