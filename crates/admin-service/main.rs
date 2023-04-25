@@ -1,5 +1,7 @@
 use std::{env, process::exit};
 
+use log::info;
+
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 
@@ -196,8 +198,29 @@ fn get_db_config() -> Result<Config, Error> {
     Ok(config)
 }
 
+fn show_config(config: &Config) -> String {
+    let hosts = config.get_hosts();
+
+    let host = match &hosts[0] {
+        tokio_postgres::config::Host::Tcp(tcp_host) => tcp_host.clone(),
+        tokio_postgres::config::Host::Unix(socket_path) => socket_path.to_string_lossy().to_string(),
+    };
+
+    let port = config.get_ports()[0];
+
+    let dbname = config.get_dbname().unwrap_or("");
+
+    format!("host={} port={} user={} dbname={}", &host, &port, config.get_user().unwrap_or(""), dbname)
+}
+
 async fn connect_db() -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
-    connect_to_db(&get_db_config()?).await
+    let config = get_db_config()?;
+
+    let config_repr = show_config(&config);
+
+    info!("Connecting to database: {}", &config_repr);
+
+    connect_to_db(&config).await
 }
 
 async fn connect_to_db(
