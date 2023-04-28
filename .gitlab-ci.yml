@@ -57,9 +57,6 @@ build-minerva-service:
     when: always
     paths:
       - target/x86_64-unknown-linux-musl/release/minerva-service
-  cache:
-    paths:
-      - target/
 
 build-service-image:
   stage: build-image
