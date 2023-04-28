@@ -4,6 +4,7 @@ mod tests {
     use predicates::prelude::*;
     use std::process::Command;
     use std::path::PathBuf;
+    use std::io::Write;
 
     use rand::distributions::{Alphanumeric, DistString}; 
 
@@ -12,6 +13,12 @@ mod tests {
 
     use minerva::schema::create_schema;
     use minerva::trend_store::{TrendStore, AddTrendStore, create_partitions_for_timestamp};
+
+    const TEST_CSV_DATA: &str = r###"
+node,timestamp,outside_temp,inside_temp,power_kwh,freq_power
+hillside14,2023-03-25T14:00:00Z,14.4,32.4,55.8,212.4
+hillside15,2023-03-25T14:00:00Z,14.5,32.5,55.9,212.5
+    "###;
 
     const TREND_STORE_DEFINITION: &str = r###"
     title: Raw node data
@@ -45,7 +52,6 @@ mod tests {
     #[cfg(test)]
     #[tokio::test]
     async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
-
         let data_source_name = "hub";
         let database_name = generate_name();
         let db_config = get_db_config()?;
@@ -71,6 +77,10 @@ mod tests {
 
         let mut cmd = Command::cargo_bin("minerva-admin")?;
         cmd.env("PGDATABASE", &database_name);
+
+        let mut csv_file = tempfile::tempfile().unwrap();
+
+        csv_file.write_all(TEST_CSV_DATA.as_bytes()).unwrap();
 
         let instance_root_path = std::fs::canonicalize("../../examples/tiny_instance_v1").unwrap();
 
