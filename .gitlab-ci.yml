@@ -1,6 +1,6 @@
 variables:
   POSTGRES_HOST_AUTH_METHOD: trust
-  CARGO_HOME: $CI_PROJECT_IDR/.cargo
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
 
 image: "rust:1.68.2-buster"
 
@@ -8,7 +8,6 @@ default:
   cache:
     paths:
       - .cargo/
-      - target/
 
 stages:
   - test
@@ -20,10 +19,10 @@ stages:
 test-minerva-admin:cargo:
   stage: test
   before_script:
-    - cargo install cargo2junit
+    - cargo install --root . cargo2junit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - cargo test --package minerva-admin --verbose -- --format=json  -Z unstable-options --report-time | cargo2junit > results.xml
+    - cargo test --package minerva-admin --verbose -- --format=json  -Z unstable-options --report-time | bin/cargo2junit > results.xml
   artifacts:
     when: always
     reports:
@@ -32,14 +31,14 @@ test-minerva-admin:cargo:
 integration-test:cargo:
   stage: test
   before_script:
-    - cargo install cargo2junit
+    - cargo install --root . cargo2junit
   services:
     - name: postgres:13
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo build --package minerva-admin
-    - PGHOST=database PGUSER=postgres cargo test --package integration-tests --verbose -- --format=json  -Z unstable-options --report-time --test-threads=1 --nocapture | cargo2junit > results.xml
+    - PGHOST=database PGUSER=postgres cargo test --package integration-tests --verbose -- --format=json  -Z unstable-options --report-time --test-threads=1 --nocapture | bin/cargo2junit > results.xml
   artifacts:
     when: always
     reports:
@@ -58,6 +57,9 @@ build-minerva-service:
     when: always
     paths:
       - target/x86_64-unknown-linux-musl/release/minerva-service
+  cache:
+    paths:
+      - target/
 
 build-service-image:
   stage: build-image
