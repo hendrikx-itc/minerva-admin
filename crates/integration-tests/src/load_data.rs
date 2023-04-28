@@ -11,7 +11,7 @@ mod tests {
     use minerva::database::{connect_to_db, get_db_config, create_database, drop_database};
 
     use minerva::schema::create_schema;
-    use minerva::trend_store::{TrendStore, AddTrendStore, create_partitions};
+    use minerva::trend_store::{TrendStore, AddTrendStore, create_partitions_for_timestamp};
 
     const TREND_STORE_DEFINITION: &str = r###"
     title: Raw node data
@@ -45,6 +45,7 @@ mod tests {
     #[cfg(test)]
     #[tokio::test]
     async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
+
         let data_source_name = "hub";
         let database_name = generate_name();
         let db_config = get_db_config()?;
@@ -64,7 +65,8 @@ mod tests {
             let add_trend_store = AddTrendStore { trend_store };
 
             add_trend_store.apply(&mut client).await?;
-            create_partitions(&mut client, None).await?;
+            let timestamp = chrono::DateTime::parse_from_rfc3339("2023-03-25T14:00:00+00:00").unwrap();
+            create_partitions_for_timestamp(&mut client, timestamp).await?;
         }
 
         let mut cmd = Command::cargo_bin("minerva-admin")?;
