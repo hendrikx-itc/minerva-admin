@@ -2,11 +2,11 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 use std::time::Duration;
 use utoipa::ToSchema;
 
-use bb8::Pool;
-use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use deadpool_postgres::Pool;
 
 use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse};
 
@@ -445,7 +445,7 @@ impl KpiImplementedData {
 )]
 #[get("/kpis")]
 pub(super) async fn get_kpis(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -543,7 +543,7 @@ pub(super) async fn get_kpis(
 )]
 #[get("/kpis/{name}")]
 pub(super) async fn get_kpi(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     name: Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
     let kpiname = name.into_inner().replace('_', " ");
@@ -625,7 +625,7 @@ pub(super) async fn get_kpi(
 )]
 #[post("/kpis")]
 pub(super) async fn post_kpi(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
     let data: KpiRawData = serde_json::from_str(&post).map_err(|e| Error {
@@ -633,10 +633,12 @@ pub(super) async fn post_kpi(
         message: format!("Unable to parse input JSON data: {e}"),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError {
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
     })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -670,7 +672,7 @@ pub(super) async fn post_kpi(
 )]
 #[put("/kpis")]
 pub(super) async fn update_kpi(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
     let data: KpiRawData = serde_json::from_str(&post).map_err(|e| Error {
@@ -678,10 +680,12 @@ pub(super) async fn update_kpi(
         message: e.to_string(),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError {
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
     })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -724,15 +728,17 @@ pub(super) async fn update_kpi(
 )]
 #[delete("/kpis/{et}/{name}")]
 pub(super) async fn delete_kpi(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     args: Path<(String, String)>,
 ) -> Result<HttpResponse, ServiceError> {
     let kpiname = &args.1;
     let entitytype = &args.0;
-    let mut client = pool.get().await.map_err(|_| ServiceError {
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
     })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,

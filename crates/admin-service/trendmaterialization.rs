@@ -1,8 +1,8 @@
 use serde_json::Value;
+use std::ops::DerefMut;
 use std::time::Duration;
 
-use bb8::Pool;
-use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use deadpool_postgres::Pool;
 
 use actix_web::{delete, get, post, put, web::Data, web::Path, HttpResponse, Responder};
 
@@ -521,7 +521,7 @@ impl TrendMaterializationDef {
 )]
 #[get("/trend-view-materializations")]
 pub(super) async fn get_trend_view_materializations(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -612,7 +612,7 @@ pub(super) async fn get_trend_view_materializations(
 )]
 #[get("/trend-view-materializations/{id}")]
 pub(super) async fn get_trend_view_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> Result<HttpResponse, ServiceError> {
     let vm_id = id.into_inner();
@@ -691,7 +691,7 @@ pub(super) async fn get_trend_view_materialization(
 )]
 #[get("/trend-function-materializations")]
 pub(super) async fn get_trend_function_materializations(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> impl Responder {
     let mut m: Vec<TrendFunctionMaterializationFull> = vec![];
     let client_query = pool.get().await;
@@ -778,7 +778,7 @@ pub(super) async fn get_trend_function_materializations(
 )]
 #[get("/trend-function-materializations/{id}")]
 pub(super) async fn get_trend_function_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> impl Responder {
     let fm_id = id.into_inner();
@@ -852,7 +852,7 @@ pub(super) async fn get_trend_function_materialization(
 )]
 #[get("/trend-materializations")]
 pub(super) async fn get_trend_materializations(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> impl Responder {
     let mut m: Vec<TrendMaterializationDef> = vec![];
     let result = pool.get().await;
@@ -1010,7 +1010,7 @@ pub(super) async fn get_trend_materializations(
 )]
 #[post("/trend-view-materializations")]
 pub(super) async fn post_trend_view_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
     let data: TrendViewMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
@@ -1018,10 +1018,12 @@ pub(super) async fn post_trend_view_materialization(
         message: e.to_string(),
     })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError {
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
     })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
     let mut transaction = client.transaction().await.map_err(|e| Error {
         code: 500,
@@ -1049,53 +1051,29 @@ pub(super) async fn post_trend_view_materialization(
 )]
 #[post("/trend-function-materializations")]
 pub(super) async fn post_trend_function_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
-) -> impl Responder {
-    let input: Result<TrendFunctionMaterializationData, serde_json::Error> =
-        serde_json::from_str(&post);
-    match input {
-        Err(e) => HttpResponse::BadRequest().json(Error {
-            code: 400,
-            message: e.to_string(),
-        }),
-        Ok(data) => {
-            let result = pool.get().await;
-            match result {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(mut client) => {
-                    let transaction_query = client.transaction().await;
-                    match transaction_query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(mut transaction) => {
-                            let result = data.create(&mut transaction).await;
-                            match result {
-                                Ok(materialization) => HttpResponse::Ok().json(materialization),
-                                Err(Error {
-                                    code: 404,
-                                    message: e,
-                                }) => HttpResponse::NotFound().json(e),
-                                Err(Error {
-                                    code: 409,
-                                    message: e,
-                                }) => HttpResponse::Conflict().json(e),
-                                Err(Error {
-                                    code: _,
-                                    message: e,
-                                }) => HttpResponse::InternalServerError().json(e),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+) -> Result<HttpResponse, ServiceError> {
+    let data: TrendFunctionMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
+        code: 400,
+        message: e.to_string(),
+    })?;
+
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
+
+    let mut transaction = client.transaction().await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    data.create(&mut transaction)
+        .await
+        .map(|materialization| Ok(HttpResponse::Ok().json(materialization)))?
 }
 
 // curl -X DELETE localhost:8000/trend-view-materializations/1
@@ -1111,7 +1089,7 @@ pub(super) async fn post_trend_function_materialization(
 )]
 #[delete("/trend-view-materializations/{id}")]
 pub(super) async fn delete_trend_view_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> impl Responder {
     let vm_id = id.into_inner();
@@ -1181,7 +1159,7 @@ pub(super) async fn delete_trend_view_materialization(
 )]
 #[delete("/trend-function-materializations/{id}")]
 pub(super) async fn delete_trend_function_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> impl Responder {
     let fm_id = id.into_inner();
@@ -1255,68 +1233,27 @@ pub(super) async fn delete_trend_function_materialization(
 )]
 #[put("/trend-view-materializations")]
 pub(super) async fn update_trend_view_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
-) -> impl Responder {
-    let input: Result<TrendFunctionMaterializationData, serde_json::Error> =
-        serde_json::from_str(&post);
-    match input {
-        Err(e) => HttpResponse::BadRequest().json(Error {
-            code: 400,
-            message: e.to_string(),
-        }),
-        Ok(data) => {
-            let result = pool.get().await;
-            match result {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(mut client) => {
-                    let transaction_query = client.transaction().await;
-                    match transaction_query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(mut transaction) => match data.client_update(&mut transaction).await {
-                            Ok(success) => {
-                                let commission = transaction.commit().await;
-                                match commission {
-                                    Err(e) => HttpResponse::InternalServerError().json(Error {
-                                        code: 500,
-                                        message: e.to_string(),
-                                    }),
-                                    Ok(_) => HttpResponse::Ok().json(success),
-                                }
-                            }
-                            Err(Error {
-                                code: 404,
-                                message: e,
-                            }) => HttpResponse::NotFound().json(Error {
-                                code: 404,
-                                message: e,
-                            }),
-                            Err(Error {
-                                code: 409,
-                                message: e,
-                            }) => HttpResponse::Conflict().json(Error {
-                                code: 409,
-                                message: e,
-                            }),
-                            Err(Error {
-                                code: c,
-                                message: e,
-                            }) => HttpResponse::InternalServerError().json(Error {
-                                code: c,
-                                message: e,
-                            }),
-                        },
-                    }
-                }
-            }
-        }
-    }
+) -> Result<HttpResponse, ServiceError> {
+    let data: TrendFunctionMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
+        code: 400,
+        message: e.to_string(),
+    })?;
+
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
+
+    let mut transaction = client.transaction().await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+   data.client_update(&mut transaction).await.map(|success| Ok(HttpResponse::Ok().json(success)))?
 }
 
 #[utoipa::path(
@@ -1331,66 +1268,25 @@ pub(super) async fn update_trend_view_materialization(
 )]
 #[put("/trend-function-materializations")]
 pub(super) async fn update_trend_function_materialization(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
-) -> impl Responder {
-    let input: Result<TrendFunctionMaterializationData, serde_json::Error> =
-        serde_json::from_str(&post);
-    match input {
-        Err(e) => HttpResponse::BadRequest().json(Error {
-            code: 400,
-            message: e.to_string(),
-        }),
-        Ok(data) => {
-            let result = pool.get().await;
-            match result {
-                Err(e) => HttpResponse::InternalServerError().json(Error {
-                    code: 500,
-                    message: e.to_string(),
-                }),
-                Ok(mut client) => {
-                    let transaction_query = client.transaction().await;
-                    match transaction_query {
-                        Err(e) => HttpResponse::InternalServerError().json(Error {
-                            code: 500,
-                            message: e.to_string(),
-                        }),
-                        Ok(mut transaction) => match data.client_update(&mut transaction).await {
-                            Ok(success) => {
-                                let commission = transaction.commit().await;
-                                match commission {
-                                    Err(e) => HttpResponse::InternalServerError().json(Error {
-                                        code: 500,
-                                        message: e.to_string(),
-                                    }),
-                                    Ok(_) => HttpResponse::Ok().json(success),
-                                }
-                            }
-                            Err(Error {
-                                code: 404,
-                                message: e,
-                            }) => HttpResponse::NotFound().json(Error {
-                                code: 404,
-                                message: e,
-                            }),
-                            Err(Error {
-                                code: 409,
-                                message: e,
-                            }) => HttpResponse::Conflict().json(Error {
-                                code: 409,
-                                message: e,
-                            }),
-                            Err(Error {
-                                code: c,
-                                message: e,
-                            }) => HttpResponse::InternalServerError().json(Error {
-                                code: c,
-                                message: e,
-                            }),
-                        },
-                    }
-                }
-            }
-        }
-    }
+) -> Result<HttpResponse, ServiceError> {
+    let data: TrendFunctionMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
+        code: 400,
+        message: e.to_string(),
+    })?;
+
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
+
+    let mut transaction = client.transaction().await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+   data.client_update(&mut transaction).await.map(|success| Ok(HttpResponse::Ok().json(success)))?
 }
