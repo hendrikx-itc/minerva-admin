@@ -1,9 +1,9 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 use std::time::Duration;
 
-use bb8::Pool;
-use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use deadpool_postgres::Pool;
 use tokio_postgres::GenericClient;
 
 use actix_web::{get, post, web::Data, web::Path, web::Query, HttpResponse};
@@ -423,7 +423,7 @@ impl TrendStorePartCompleteData {
 )]
 #[get("/trend-store-parts")]
 pub(super) async fn get_trend_store_parts(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -537,7 +537,7 @@ pub(super) async fn get_trend_store_parts(
 )]
 #[get("/trend-store-part/{id}")]
 pub(super) async fn get_trend_store_part(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> Result<HttpResponse, ServiceError> {
     let tsp_id = id.into_inner();
@@ -635,7 +635,7 @@ pub(super) async fn get_trend_store_part(
 )]
 #[get("/trend-store-parts/find")]
 pub(super) async fn find_trend_store_part(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     info: Query<QueryData>,
 ) -> Result<HttpResponse, ServiceError> {
     let name = &info.name;
@@ -734,7 +734,7 @@ pub(super) async fn find_trend_store_part(
 )]
 #[get("/trend-stores")]
 pub(super) async fn get_trend_stores(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -881,7 +881,7 @@ pub(super) async fn get_trend_stores(
 )]
 #[get("/trend-stores/{id}")]
 pub(super) async fn get_trend_store(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> Result<HttpResponse, ServiceError> {
     let tsid = id.into_inner();
@@ -1031,7 +1031,7 @@ pub(super) async fn get_trend_store(
 )]
 #[post("/trend-store-parts/new")]
 pub(super) async fn post_trend_store_part(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
     let data: TrendStorePartCompleteData =
@@ -1040,10 +1040,12 @@ pub(super) async fn post_trend_store_part(
             message: format!("{e}"),
         })?;
 
-    let mut client = pool.get().await.map_err(|_| ServiceError {
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
     })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
     let mut transaction = client.transaction().await?;
 
@@ -1064,7 +1066,7 @@ pub(super) async fn post_trend_store_part(
 )]
 #[get("/trends")]
 pub(super) async fn get_trends(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -1143,15 +1145,17 @@ pub(super) async fn get_trends(
 )]
 #[get("/trendsentitytype/{et}")]
 pub(super) async fn get_trends_by_entity_type(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     et: Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
     let entity_type = et.into_inner();
 
-    let mut client = pool.get().await.map_err(|_| ServiceError {
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
     })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
     let mut transaction = client.transaction().await?;
 

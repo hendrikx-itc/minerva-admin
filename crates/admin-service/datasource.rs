@@ -1,5 +1,4 @@
-use bb8::Pool;
-use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use deadpool_postgres::Pool;
 
 use actix_web::{get, web::Data, web::Path, HttpResponse};
 
@@ -26,7 +25,7 @@ pub struct DataSource {
 )]
 #[get("/data-sources")]
 pub(super) async fn get_data_sources(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -67,7 +66,7 @@ pub(super) async fn get_data_sources(
 )]
 #[get("/data-sources/{id}")]
 pub(super) async fn get_data_source(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> Result<HttpResponse, ServiceError> {
     let ds_id = id.into_inner();

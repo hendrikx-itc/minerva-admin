@@ -5,14 +5,15 @@ use log::info;
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 
+use deadpool_postgres::{Pool, Manager, ManagerConfig, RecyclingMethod};
+use rustls::ClientConfig as RustlsClientConfig;
 use tokio_postgres::{config::SslMode, Config};
-
-use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use minerva::error::{ConfigurationError, Error};
+use minerva::error::{ConfigurationError, Error, DatabaseError};
 
 mod trendmaterialization;
 use trendmaterialization::{
@@ -113,6 +114,8 @@ async fn main() -> std::io::Result<()> {
 
     let openapi = ApiDoc::openapi();
 
+    info!("Listening on {service_address}:{service_port}");
+
     HttpServer::new(move || {
         let cors = Cors::permissive()
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
@@ -210,24 +213,67 @@ fn show_config(config: &Config) -> String {
 
     let dbname = config.get_dbname().unwrap_or("");
 
-    format!("host={} port={} user={} dbname={}", &host, &port, config.get_user().unwrap_or(""), dbname)
+    let sslmode = match config.get_ssl_mode() {
+        SslMode::Prefer => "prefer".to_string(),
+        SslMode::Disable => "disable".to_string(),
+        SslMode::Require => "require".to_string(),
+        _ => "<UNSUPPORTED MODE>".to_string(),
+    };
+
+    format!("host={} port={} user={} dbname={} sslmode={}", &host, &port, config.get_user().unwrap_or(""), dbname, sslmode)
 }
 
-async fn connect_db() -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
+async fn connect_db() -> Result<Pool, Error> {
     let config = get_db_config()?;
 
     let config_repr = show_config(&config);
 
     info!("Connecting to database: {}", &config_repr);
 
-    connect_to_db(&config).await
+    make_db_pool(&config).await
 }
 
-async fn connect_to_db(
-    config: &Config,
-) -> Result<bb8::Pool<PostgresConnectionManager<NoTls>>, Error> {
-    let manager = PostgresConnectionManager::new(config.clone(), NoTls);
-    let pool = bb8::Pool::builder().build(manager).await.unwrap();
 
-    Ok(pool)
+//async fn connect_to_db(
+//    config: &Config,
+//) -> Result<bb8::Pool<PostgresConnectionManager<MakeRustlsConnect>>, Error> {
+//    let mut roots = rustls::RootCertStore::empty();
+//
+//    for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs")
+//    {
+//        roots.add(&rustls::Certificate(cert.0)).unwrap();
+//    }
+//
+//    let tls_config = RustlsClientConfig::builder()
+//        .with_safe_defaults()
+//        .with_root_certificates(roots)
+//        .with_no_client_auth();
+//    let tls = MakeRustlsConnect::new(tls_config);
+//    let manager = PostgresConnectionManager::new(config.clone(), tls);
+//
+//    let pool = bb8::Pool::builder().build(manager).await.unwrap();
+//
+//    Ok(pool)
+//}
+
+async fn make_db_pool(config: &Config) -> Result<Pool, Error> {
+    let mut roots = rustls::RootCertStore::empty();
+
+    for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs")
+    {
+        roots.add(&rustls::Certificate(cert.0)).unwrap();
+    }
+
+    let tls_config = RustlsClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let tls = MakeRustlsConnect::new(tls_config);
+    let mgr_config = ManagerConfig {
+        recycling_method: RecyclingMethod::Fast
+    };
+    let mgr = Manager::from_config(config.clone(), tls, mgr_config);
+
+    Pool::builder(mgr).max_size(16).build().map_err(|e| Error::Database(DatabaseError::from_msg("test".to_string())))
 }
+

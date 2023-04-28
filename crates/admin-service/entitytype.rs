@@ -1,5 +1,4 @@
-use bb8::Pool;
-use bb8_postgres::{tokio_postgres::NoTls, PostgresConnectionManager};
+use deadpool_postgres::Pool;
 
 use actix_web::{get, web::Data, web::Path, HttpResponse, Responder};
 
@@ -25,7 +24,7 @@ pub struct EntityType {
 )]
 #[get("/entity-types")]
 pub(super) async fn get_entity_types(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
 ) -> impl Responder {
     let mut m: Vec<EntityType> = vec![];
     let result = pool.get().await;
@@ -73,7 +72,7 @@ pub(super) async fn get_entity_types(
 )]
 #[get("/entity-types/{id}")]
 pub(super) async fn get_entity_type(
-    pool: Data<Pool<PostgresConnectionManager<NoTls>>>,
+    pool: Data<Pool>,
     id: Path<i32>,
 ) -> impl Responder {
     let et_id = id.into_inner();
