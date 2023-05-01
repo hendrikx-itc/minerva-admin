@@ -137,9 +137,9 @@ async fn get_source<T: GenericClient + Send + Sync>(
             &[&trend_name, &*DEFAULT_GRANULARITY, &entity_type],
         )
         .await
-        .map_err(|_| {
+        .map_err(|e| {
             format!(
-                "Could not find source trend store part for trend '{}'",
+                "Error searching for source trend store part for trend '{}': {e}",
                 &trend_name
             )
         })?;
