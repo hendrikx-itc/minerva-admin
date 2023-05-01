@@ -38,7 +38,7 @@ lazy_static! {
     static ref TIME_AGGREGATION: String = "SUM".to_string();
     static ref ENTITY_AGGREGATION: String = "SUM".to_string();
     static ref MAPPING_FUNCTION: String = "trend.mapping_id".to_string();
-    static ref DEFAULT_GRANULARITY: String = "1w".to_string();
+    static ref DEFAULT_GRANULARITY: String = "1d".to_string();
     static ref PROCESSING_DELAY: HashMap<String, Duration> = HashMap::from([
         ("15m".to_string(), parse_interval("10m").unwrap()),
         ("1h".to_string(), parse_interval("10m").unwrap()),
