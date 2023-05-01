@@ -8,6 +8,7 @@ default:
   cache:
     paths:
       - .cargo/
+      - target/
 
 stages:
   - test
@@ -53,9 +54,6 @@ build-minerva-service:
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo build --package minerva-service --release --target=x86_64-unknown-linux-musl
-  cache:
-    paths:
-      - target
   artifacts:
     when: always
     paths:
