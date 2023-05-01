@@ -228,7 +228,7 @@ impl KpiRawData {
     ) -> Result<Kpi, String> {
         let implementedkpi = self.get_implemented_data(client).await?;
 
-        Ok(implementedkpi.get_kpi(client, granularity).await)
+        Ok(implementedkpi.get_kpi(client, granularity).await.unwrap())
     }
 
     async fn create<T: GenericClient + Send + Sync>(
@@ -282,6 +282,26 @@ async fn map_view_sources<T: GenericClient + Send + Sync>(
     }
 }
 
+async fn source_exists<T: GenericClient + Send + Sync>(
+    client: &mut T,
+    source_name: &str,
+) -> Result<bool, tokio_postgres::Error> {
+    let query = concat!(
+        "SELECT c.relname ",
+        "JOIN pg_class c ",
+        "WHERE c.relname = $1 ",
+    );
+
+    let source_relations: Vec<String> = client
+        .query(query, &[&source_name])
+        .await
+        .map(|rows| rows.iter().map(|row| row.get(0)).collect())?;
+
+    let exists = source_relations.len() > 0;
+
+    Ok(exists)
+}
+
 impl KpiImplementedData {
     fn target_trend_store_part(&self, granularity: String) -> String {
         format!(
@@ -294,7 +314,7 @@ impl KpiImplementedData {
         &self,
         client: &mut T,
         granularity: String,
-    ) -> Kpi {
+    ) -> Option<Kpi> {
         let mut sources: Vec<TrendMaterializationSourceData> = vec![];
         let mut query_sources: Vec<String> = Vec::new();
         let mut modifieds: Vec<String> = vec![];
@@ -307,6 +327,11 @@ impl KpiImplementedData {
             // Map the source name for the default granularity to the requested granularity
             let source_name = default_source_name
                 .replace(&DEFAULT_GRANULARITY.to_string(), &granularity.to_string());
+
+            // Check if the source exists
+            if !source_exists(client, &source_name).await.unwrap() {
+                return None
+            }
 
             query_sources.push(source_name.clone());
 
@@ -360,7 +385,7 @@ impl KpiImplementedData {
             "SELECT t1.entity_id, $1 as timestamp, {} as \"{}\"\n FROM {}\nWHERE t1.timestamp = $1\nGROUP BY t1.entity_id",
             self.definition, self.kpi_name, sourcestrings.join("\nJOIN ")
         );
-        Kpi {
+        let kpi = Kpi {
             trend_store_part: TrendStorePartCompleteData {
                 name: self.target_trend_store_part(granularity.clone()),
                 entity_type: self.entity_type.clone(),
@@ -404,7 +429,9 @@ impl KpiImplementedData {
                 description: self.description.clone(),
                 fingerprint_function,
             },
-        }
+        };
+
+        Some(kpi)
     }
 
     async fn create<T: GenericClient + Send + Sync>(
@@ -412,23 +439,23 @@ impl KpiImplementedData {
         client: &mut T,
     ) -> Result<String, Error> {
         for granularity in GRANULARITIES.iter() {
-            let kpi = self.get_kpi(client, granularity.to_string()).await;
+            if let Some(kpi) = self.get_kpi(client, granularity.to_string()).await {
+                kpi.trend_store_part
+                    .create(client)
+                    .await
+                    .map_err(|e| Error {
+                        code: e.code,
+                        message: e.message,
+                    })?;
 
-            kpi.trend_store_part
-                .create(client)
-                .await
-                .map_err(|e| Error {
-                    code: e.code,
-                    message: e.message,
-                })?;
-
-            kpi.materialization
-                .create(client)
-                .await
-                .map_err(|e| Error {
-                    code: e.code,
-                    message: e.message,
-                })?;
+                kpi.materialization
+                    .create(client)
+                    .await
+                    .map_err(|e| Error {
+                        code: e.code,
+                        message: e.message,
+                    })?;
+            }
         }
 
         Ok("KPI created".to_string())
@@ -803,18 +830,20 @@ pub(super) async fn delete_kpi(
     };
 
     for granularity in GRANULARITIES.iter() {
-        let kpi = kpidata
+        let kpi_result = kpidata
             .get_kpi(&mut transaction, granularity.to_string())
             .await;
 
-        kpi.materialization
-            .as_minerva()
-            .delete(&mut transaction)
-            .await
-            .map_err(|e| Error {
-                code: 409,
-                message: e.to_string(),
-            })?;
+        if let Some(kpi) = kpi_result {
+            kpi.materialization
+                .as_minerva()
+                .delete(&mut transaction)
+                .await
+                .map_err(|e| Error {
+                    code: 409,
+                    message: e.to_string(),
+                })?;
+        }
     }
 
     transaction.commit().await.map_err(|e| Error {
