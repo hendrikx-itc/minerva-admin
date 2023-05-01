@@ -1,10 +1,7 @@
 #[cfg(test)]
 mod tests {
     use assert_cmd::prelude::*;
-    use predicates::prelude::*;
     use std::process::Command;
-    use std::path::PathBuf;
-    use std::io::Write;
 
     use rand::distributions::{Alphanumeric, DistString}; 
 
@@ -46,7 +43,6 @@ mod tests {
     #[cfg(test)]
     #[tokio::test]
     async fn get_entity_types() -> Result<(), Box<dyn std::error::Error>> {
-        let data_source_name = "hub";
         let database_name = generate_name();
         let db_config = get_db_config()?;
         let mut client = connect_to_db(&db_config).await?;
@@ -81,7 +77,10 @@ mod tests {
             .text()
             .await?;
 
-        proc_handle.kill();
+        match proc_handle.kill() {
+            Err(e) => println!("Could not stop web service: {e}"),
+            Ok(_) => (),
+        }
 
         let mut client = connect_to_db(&db_config).await?;
 
