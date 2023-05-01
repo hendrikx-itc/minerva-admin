@@ -178,8 +178,10 @@ async fn get_source<T: GenericClient + Send + Sync>(
         .await
         .map_err(|_| {
             format!(
-                "Could not find source trend store part for trend '{}'",
-                &trend_name
+                "Could not find source trend store part for trend '{}', granularity '{}', entity type '{}'",
+                &trend_name,
+                &*DEFAULT_GRANULARITY,
+                &entity_type,
             )
         })?;
 
