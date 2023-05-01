@@ -288,7 +288,7 @@ async fn source_exists<T: GenericClient + Send + Sync>(
 ) -> Result<bool, tokio_postgres::Error> {
     let query = concat!(
         "SELECT c.relname ",
-        "JOIN pg_class c ",
+        "FROM pg_class c ",
         "WHERE c.relname = $1 ",
     );
 
