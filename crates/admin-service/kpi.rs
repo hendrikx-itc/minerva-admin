@@ -170,8 +170,8 @@ async fn get_source<T: GenericClient + Send + Sync>(
         .await
         .map_err(|e| format!("Could not prepare statement: {e}"))?;
 
-    let rows = client
-        .query(
+    let row = client
+        .query_one(
             &statement,
             &[&trend_name, &*DEFAULT_GRANULARITY, &entity_type],
         )
@@ -182,8 +182,6 @@ async fn get_source<T: GenericClient + Send + Sync>(
                 &trend_name
             )
         })?;
-
-    let row = rows.iter().next().unwrap();
 
     let tsp: String = row.get(0);
 
