@@ -19,11 +19,9 @@ stages:
 # Use cargo to test the project
 test-minerva-admin:cargo:
   stage: test
-  before_script:
-    - cargo install --root . cargo2junit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
-    - cargo test --package minerva-admin --verbose -- --format=json  -Z unstable-options --report-time | bin/cargo2junit > results.xml
+    - cargo test --package minerva-admin --verbose -- --format=json  -Z unstable-options --report-time | cargo2junit > results.xml
   artifacts:
     when: always
     reports:
@@ -31,15 +29,13 @@ test-minerva-admin:cargo:
 
 integration-test:cargo:
   stage: test
-  before_script:
-    - cargo install --root . cargo2junit
   services:
     - name: postgres:13
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo build --package minerva-admin
-    - PGHOST=database PGUSER=postgres cargo test --package integration-tests --verbose -- --format=json  -Z unstable-options --report-time --test-threads=1 --nocapture | bin/cargo2junit > results.xml
+    - PGHOST=database PGUSER=postgres cargo test --package integration-tests --verbose -- --format=json  -Z unstable-options --report-time --test-threads=1 --nocapture | cargo2junit > results.xml
   artifacts:
     when: always
     reports:
@@ -50,7 +46,6 @@ build-minerva-service:
   before_script:
     - apt-get update && apt-get install -y wget build-essential libssl-dev pkg-config openssh-client musl-tools
     - rustup target add x86_64-unknown-linux-musl
-    - cargo install cargo2junit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo build --package minerva-service --release --target=x86_64-unknown-linux-musl
@@ -65,7 +60,6 @@ build-service-image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   script:
-    - find target
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"${DOCKER_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${DOCKER_REGISTRY_USER}" "${DOCKER_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
     - >-
