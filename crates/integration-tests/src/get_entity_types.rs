@@ -72,17 +72,24 @@ mod tests {
         let mut cmd = Command::cargo_bin("minerva-service")?;
         cmd.env("PGDATABASE", &database_name);
 
-        let instance_root_path = std::fs::canonicalize("../../examples/tiny_instance_v1").unwrap();
-
-        let proc_handle = cmd.spawn();
+        let mut proc_handle = cmd.spawn().expect("Process started");
 
         println!("Started service");
+
+        let body = reqwest::get("http://localhost:8000/entity-types")
+            .await?
+            .text()
+            .await?;
+
+        proc_handle.kill();
 
         let mut client = connect_to_db(&db_config).await?;
 
         drop_database(&mut client, &database_name).await?;
 
         println!("Dropped database '{database_name}'");
+
+        assert_eq!(body, "[{\"id\":1,\"name\":\"node\",\"description\":\"\"}]");
 
         Ok(())
     }
