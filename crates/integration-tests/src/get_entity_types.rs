@@ -65,14 +65,22 @@ mod tests {
             create_partitions_for_timestamp(&mut client, timestamp).await?;
         }
 
+        let service_address = "127.0.0.1";
+        let service_port = "8010";
+
         let mut cmd = Command::cargo_bin("minerva-service")?;
-        cmd.env("PGDATABASE", &database_name);
+        cmd
+            .env("PGDATABASE", &database_name)
+            .env("SERVICE_ADDRESS", service_address)
+            .env("SERVICE_PORT", service_port);
 
         let mut proc_handle = cmd.spawn().expect("Process started");
 
         println!("Started service");
 
-        let body = reqwest::get("http://localhost:8000/entity-types")
+        let url = format!("http://{service_address}:{service_port}/entity-types");
+
+        let body = reqwest::get(url)
             .await?
             .text()
             .await?;
