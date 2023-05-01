@@ -38,7 +38,7 @@ lazy_static! {
             parse_interval("5y").unwrap()
         ),
     ]);
-    static ref DEFAULT_GRANULARITY: String = "7 days".to_string();
+    static ref DEFAULT_GRANULARITY: String = "1 day".to_string();
 }
 
 #[derive(Debug, Serialize, Deserialize, IntoParams)]
