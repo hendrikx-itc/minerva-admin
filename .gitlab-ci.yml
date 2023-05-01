@@ -2,7 +2,7 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
 
-image: "rust:1.68.2-buster"
+image: "harbor.hendrikx-itc.nl/1optic/rust-ci:1.69.0"
 
 default:
   cache:
