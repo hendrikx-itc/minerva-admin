@@ -3,7 +3,7 @@ mod tests {
     use assert_cmd::prelude::*;
     use std::process::Command;
     use std::time::Duration;
-    use std::net::{TcpStream, SocketAddr};
+    use std::net::{TcpStream, SocketAddr, TcpListener, Ipv4Addr, SocketAddrV4};
 
     use rand::distributions::{Alphanumeric, DistString};
 
@@ -45,6 +45,8 @@ mod tests {
     #[cfg(test)]
     #[tokio::test]
     async fn get_entity_types() -> Result<(), Box<dyn std::error::Error>> {
+        use actix_web::Responder;
+
         let database_name = generate_name();
         let db_config = get_db_config()?;
         let mut client = connect_to_db(&db_config).await?;
@@ -67,14 +69,14 @@ mod tests {
             create_partitions_for_timestamp(&mut client, timestamp).await?;
         }
 
-        let service_address = "127.0.0.1";
-        let service_port = "8010";
+        let service_address = Ipv4Addr::new(127, 0, 0, 1);
+        let service_port = get_available_port(service_address).unwrap();
 
         let mut cmd = Command::cargo_bin("minerva-service")?;
         cmd
             .env("PGDATABASE", &database_name)
-            .env("SERVICE_ADDRESS", service_address)
-            .env("SERVICE_PORT", service_port);
+            .env("SERVICE_ADDRESS", service_address.to_string())
+            .env("SERVICE_PORT", service_port.to_string());
 
         let mut proc_handle = cmd.spawn().expect("Process started");
 
@@ -96,11 +98,8 @@ mod tests {
             }
         }
 
-        //let response = reqwest::get(url).await;
-        //let body = reqwest::get(url)
-        //    .await?
-        //    .text()
-        //    .await?;
+        let response = reqwest::get(url).await?;
+        let body = response.text().await?;
 
         match proc_handle.kill() {
             Err(e) => println!("Could not stop web service: {e}"),
@@ -113,8 +112,20 @@ mod tests {
 
         println!("Dropped database '{database_name}'");
 
-        //assert_eq!(body, "[{\"id\":1,\"name\":\"node\",\"description\":\"\"}]");
+        assert_eq!(body, "[{\"id\":1,\"name\":\"node\",\"description\":\"\"}]");
 
         Ok(())
+    }
+
+    fn get_available_port(ip_addr: Ipv4Addr) -> Option<u16> {
+        (1000..50000)
+            .find(|port| port_available(SocketAddr::V4(SocketAddrV4::new(ip_addr, *port))))
+    }
+
+    fn port_available(addr: SocketAddr) -> bool {
+        match TcpListener::bind(addr) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
     }
 }
