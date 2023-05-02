@@ -12,7 +12,7 @@ path = "main.rs"
 [dependencies]
 actix-web = "4.1"
 actix-cors = "0.6"
-utoipa = "2.3"
+utoipa = "2.4"
 lazy_static = "1.4.0"
 clap = "4.0"
 structopt = "0.3"
