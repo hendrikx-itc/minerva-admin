@@ -329,7 +329,7 @@ async fn run_trend_store_partition_create_cmd(args: &TrendStorePartitionCreate) 
     let mut client = connect_db().await?;
 
     if let Some(for_timestamp) = args.for_timestamp {
-        create_partitions_for_timestamp(&mut client, for_timestamp).await?;
+        create_partitions_for_timestamp(&mut client, for_timestamp.into()).await?;
     } else {
         create_partitions(&mut client, args.ahead_interval).await?;
     }

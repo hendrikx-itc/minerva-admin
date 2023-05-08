@@ -10,7 +10,7 @@ use tokio_postgres::{Client, GenericClient, Row};
 
 use humantime::format_duration;
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Utc};
 
 use async_trait::async_trait;
 
@@ -661,6 +661,29 @@ pub async fn delete_trend_store(conn: &mut Client, id: i32) -> Result<(), Delete
     }
 }
 
+pub async fn get_trend_store_id<T: GenericClient>(
+    conn: &mut T,
+    trend_store: &TrendStore
+) -> Result<i32, Error> {
+    let query = concat!(
+        "SELECT trend_store.id ",
+        "FROM trend_directory.trend_store ",
+        "JOIN directory.data_source ON data_source.id = trend_store.data_source_id ",
+        "JOIN directory.entity_type ON entity_type.id = trend_store.entity_type_id ",
+        "WHERE data_source.name = $1 AND entity_type.name = $2 AND granularity = $3::text::interval"
+    );
+
+    let granularity_str: String = format_duration(trend_store.granularity).to_string();
+
+    let result = conn
+        .query_one(query, &[&trend_store.data_source, &trend_store.entity_type, &granularity_str])
+        .await?;
+
+    let trend_store_id = result.get::<usize, i32>(0);
+
+    Ok(trend_store_id)
+}
+
 pub async fn load_trend_store<T: GenericClient>(
     conn: &mut T,
     data_source: &str,
@@ -890,17 +913,6 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
     }
 }
 
-/// Create the Minerva base schema
-pub async fn create_schema(
-    client: &mut Client,
-) -> Result<(), Error> {
-    let query = concat!("SELECT id FROM trend_directory.trend_store");
-
-
-    Ok(())
-}
-
-
 /// Create partitions for the full retention period of all trend stores.
 pub async fn create_partitions(
     client: &mut Client,
@@ -929,7 +941,7 @@ pub async fn create_partitions(
 
 pub async fn create_partitions_for_timestamp(
     client: &mut Client,
-    timestamp: DateTime<FixedOffset>,
+    timestamp: DateTime<Utc>,
 ) -> Result<(), Error> {
     let query = concat!("SELECT id FROM trend_directory.trend_store");
 
@@ -995,7 +1007,7 @@ pub async fn create_partitions_for_trend_store(
 pub async fn create_partitions_for_trend_store_and_timestamp(
     client: &mut Client,
     trend_store_id: i32,
-    timestamp: DateTime<FixedOffset>,
+    timestamp: DateTime<Utc>,
 ) -> Result<(), Error> {
     println!("Creating partitions for trend store {}", &trend_store_id);
 
