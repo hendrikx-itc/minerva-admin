@@ -13,6 +13,8 @@ pub struct LoadDataOpt {
     data_source: Option<String>,
     #[structopt(long, parse(from_os_str), help = "File with parser configuration")]
     parser_config: Option<PathBuf>,
+    #[structopt(long, help = "Create partitions for timestamps in data")]
+    create_partitions: bool,
     #[structopt(parse(from_os_str), help = "File to load")]
     file: PathBuf,
 }
@@ -39,7 +41,7 @@ impl Cmd for LoadDataOpt {
             Some(d) => d.to_string(),
         };
 
-        let result = load_data(&mut client, &data_source, &parser_config, &self.file)
+        let result = load_data(&mut client, &data_source, &parser_config, &self.file, self.create_partitions)
             .await;
 
         match result {
