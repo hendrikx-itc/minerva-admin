@@ -14,9 +14,8 @@ use rust_decimal::prelude::*;
 use futures_util::pin_mut;
 
 use crate::interval::parse_interval;
-use crate::trend_store::TrendStore;
-use crate::trend_store::TrendStorePart;
-use crate::trend_store::load_trend_store;
+use crate::trend_store::get_trend_store_id;
+use crate::trend_store::{TrendStore, TrendStorePart, load_trend_store, create_partitions_for_trend_store_and_timestamp};
 
 #[derive(Serialize, Deserialize)]
 pub struct ParserConfig {
@@ -30,6 +29,7 @@ pub async fn load_data<P: AsRef<Path>>(
     data_source: &str,
     parser_config: &ParserConfig,
     file_path: P,
+    create_partitions: bool,
 ) -> Result<(), String> {
     println!("Loading file {}", file_path.as_ref().to_string_lossy());
 
@@ -73,7 +73,15 @@ pub async fn load_data<P: AsRef<Path>>(
 
     let trend_store: TrendStore = load_trend_store(client, data_source, &parser_config.entity_type, &granularity)
         .await
-        .map_err(|e| format!("Error loading trend store: {e}"))?;
+        .map_err(|e| format!("Error loading trend store for data source '{data_source}', entity type '{}' and granularity '{}': {e}", parser_config.entity_type, parser_config.granularity))?;
+
+    let trend_store_id: i32 = get_trend_store_id(client, &trend_store).await.map_err(|e| format!("Error loading trend store Id from database: {e}"))?;
+
+    if create_partitions {
+        for record in &data_package  {
+            create_partitions_for_trend_store_and_timestamp(client, trend_store_id,  record.1).await.map_err(|e| format!("Error creating partition for timestamp: {e}"))?;
+        }
+    }
 
     let trend_store_part: TrendStorePart = trend_store.parts.first().unwrap().clone();
 
@@ -152,11 +160,13 @@ impl ToSql for MeasValue {
             MeasValue::Numeric(x) => x.to_sql(ty, out),
         }
     }
-    fn accepts(ty: &Type) -> bool
+
+    fn accepts(_ty: &Type) -> bool
         where
             Self: Sized {
         true
     }
+
     fn to_sql_checked(
             &self,
             ty: &Type,
@@ -240,6 +250,13 @@ impl MeasurementStore for TrendStorePart {
     }
 
     async fn mark_modified<T: GenericClient + Send + Sync>(&self, client: &mut T, timestamp: DateTime<chrono::Utc>) -> Result<(), String> {
+        let query = "SELECT trend_directory.mark_modified(id, $2) FROM trend_directory.trend_store_part WHERE name = $1";
+
+        client
+            .execute(query, &[&self.name, &timestamp])
+            .await
+            .map_err(|e| format!("Error marking timestamp as modified: {e}"))?;
+
         Ok(())
     }   
 }

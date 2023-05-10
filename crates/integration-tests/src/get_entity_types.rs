@@ -66,7 +66,7 @@ mod tests {
 
             add_trend_store.apply(&mut client).await?;
             let timestamp = chrono::DateTime::parse_from_rfc3339("2023-03-25T14:00:00+00:00").unwrap();
-            create_partitions_for_timestamp(&mut client, timestamp).await?;
+            create_partitions_for_timestamp(&mut client, timestamp.into()).await?;
         }
 
         let service_address = Ipv4Addr::new(127, 0, 0, 1);
