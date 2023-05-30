@@ -24,6 +24,12 @@ trait SanityCheck {
     fn check(&self) -> Result<(), String>;
 }
 
+#[async_trait]
+pub trait MeasurementStore {
+    async fn store_copy_from(&self, client: &mut Client, job_id: i64, data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>) -> Result<(), String>;
+    async fn mark_modified<T: GenericClient + Send + Sync>(&self, client: &mut T, timestamp: DateTime<chrono::Utc>) -> Result<(), String>;
+}
+
 pub struct DeleteTrendStoreError {
     original: String,
     kind: DeleteTrendStoreErrorKind,

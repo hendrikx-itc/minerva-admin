@@ -15,7 +15,7 @@ use futures_util::pin_mut;
 
 use crate::interval::parse_interval;
 use crate::trend_store::get_trend_store_id;
-use crate::trend_store::{TrendStore, TrendStorePart, load_trend_store, create_partitions_for_trend_store_and_timestamp};
+use crate::trend_store::{MeasurementStore, TrendStore, TrendStorePart, load_trend_store, create_partitions_for_trend_store_and_timestamp};
 
 #[derive(Serialize, Deserialize)]
 pub struct ParserConfig {
@@ -181,12 +181,6 @@ impl ToSql for MeasValue {
             MeasValue::Numeric(x) => x.to_sql_checked(ty, out),
         }
     }
-}
-
-#[async_trait]
-trait MeasurementStore {
-    async fn store_copy_from(&self, client: &mut Client, job_id: i64, data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>) -> Result<(), String>;
-    async fn mark_modified<T: GenericClient + Send + Sync>(&self, client: &mut T, timestamp: DateTime<chrono::Utc>) -> Result<(), String>;
 }
 
 fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
