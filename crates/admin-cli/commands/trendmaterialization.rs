@@ -7,7 +7,8 @@ use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
 use minerva::trend_materialization;
 use minerva::trend_materialization::{
-    trend_materialization_from_config, reset_source_fingerprint, AddTrendMaterialization, UpdateTrendMaterialization,
+    reset_source_fingerprint, trend_materialization_from_config, AddTrendMaterialization,
+    UpdateTrendMaterialization,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};

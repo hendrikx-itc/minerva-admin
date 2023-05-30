@@ -4,12 +4,12 @@ mod tests {
 
     use assert_cmd::prelude::*;
     use predicates::prelude::*;
-    use rand::distributions::{Alphanumeric, DistString}; 
+    use rand::distributions::{Alphanumeric, DistString};
 
     use minerva::database::{connect_db, create_database, drop_database};
 
     fn generate_name() -> String {
-         Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+        Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
     }
 
     #[tokio::test]
@@ -25,7 +25,10 @@ mod tests {
 
         let instance_root_path = std::fs::canonicalize("../../examples/tiny_instance_v1").unwrap();
 
-        cmd.arg("initialize").arg("--create-schema").arg("--with-definition").arg(&instance_root_path);
+        cmd.arg("initialize")
+            .arg("--create-schema")
+            .arg("--with-definition")
+            .arg(&instance_root_path);
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Created trigger"));

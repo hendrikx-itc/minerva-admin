@@ -690,9 +690,7 @@ pub(super) async fn get_trend_view_materialization(
     )
 )]
 #[get("/trend-function-materializations")]
-pub(super) async fn get_trend_function_materializations(
-    pool: Data<Pool>,
-) -> impl Responder {
+pub(super) async fn get_trend_function_materializations(pool: Data<Pool>) -> impl Responder {
     let mut m: Vec<TrendFunctionMaterializationFull> = vec![];
     let client_query = pool.get().await;
     match client_query {
@@ -851,9 +849,7 @@ pub(super) async fn get_trend_function_materialization(
     )
 )]
 #[get("/trend-materializations")]
-pub(super) async fn get_trend_materializations(
-    pool: Data<Pool>,
-) -> impl Responder {
+pub(super) async fn get_trend_materializations(pool: Data<Pool>) -> impl Responder {
     let mut m: Vec<TrendMaterializationDef> = vec![];
     let result = pool.get().await;
     match result {
@@ -1054,10 +1050,11 @@ pub(super) async fn post_trend_function_materialization(
     pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
-    let data: TrendFunctionMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
-        code: 400,
-        message: e.to_string(),
-    })?;
+    let data: TrendFunctionMaterializationData =
+        serde_json::from_str(&post).map_err(|e| Error {
+            code: 400,
+            message: e.to_string(),
+        })?;
 
     let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -1236,10 +1233,11 @@ pub(super) async fn update_trend_view_materialization(
     pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
-    let data: TrendFunctionMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
-        code: 400,
-        message: e.to_string(),
-    })?;
+    let data: TrendFunctionMaterializationData =
+        serde_json::from_str(&post).map_err(|e| Error {
+            code: 400,
+            message: e.to_string(),
+        })?;
 
     let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -1253,7 +1251,9 @@ pub(super) async fn update_trend_view_materialization(
         message: e.to_string(),
     })?;
 
-   data.client_update(&mut transaction).await.map(|success| Ok(HttpResponse::Ok().json(success)))?
+    data.client_update(&mut transaction)
+        .await
+        .map(|success| Ok(HttpResponse::Ok().json(success)))?
 }
 
 #[utoipa::path(
@@ -1271,10 +1271,11 @@ pub(super) async fn update_trend_function_materialization(
     pool: Data<Pool>,
     post: String,
 ) -> Result<HttpResponse, ServiceError> {
-    let data: TrendFunctionMaterializationData = serde_json::from_str(&post).map_err(|e| Error {
-        code: 400,
-        message: e.to_string(),
-    })?;
+    let data: TrendFunctionMaterializationData =
+        serde_json::from_str(&post).map_err(|e| Error {
+            code: 400,
+            message: e.to_string(),
+        })?;
 
     let mut manager = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
@@ -1288,5 +1289,7 @@ pub(super) async fn update_trend_function_materialization(
         message: e.to_string(),
     })?;
 
-   data.client_update(&mut transaction).await.map(|success| Ok(HttpResponse::Ok().json(success)))?
+    data.client_update(&mut transaction)
+        .await
+        .map(|success| Ok(HttpResponse::Ok().json(success)))?
 }

@@ -330,7 +330,7 @@ impl KpiImplementedData {
 
             // Check if the source exists
             if !source_exists(client, &source_name).await.unwrap() {
-                return None
+                return None;
             }
 
             query_sources.push(source_name.clone());
@@ -471,9 +471,7 @@ impl KpiImplementedData {
     )
 )]
 #[get("/kpis")]
-pub(super) async fn get_kpis(
-    pool: Data<Pool>,
-) -> Result<HttpResponse, ServiceError> {
+pub(super) async fn get_kpis(pool: Data<Pool>) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
@@ -651,10 +649,7 @@ pub(super) async fn get_kpi(
     )
 )]
 #[post("/kpis")]
-pub(super) async fn post_kpi(
-    pool: Data<Pool>,
-    post: String,
-) -> Result<HttpResponse, ServiceError> {
+pub(super) async fn post_kpi(pool: Data<Pool>, post: String) -> Result<HttpResponse, ServiceError> {
     let data: KpiRawData = serde_json::from_str(&post).map_err(|e| Error {
         code: 400,
         message: format!("Unable to parse input JSON data: {e}"),

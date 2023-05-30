@@ -1,7 +1,10 @@
-use tokio_postgres::GenericClient;
 use serde_json::Value;
+use tokio_postgres::GenericClient;
 
-pub async fn start_job<T: GenericClient + Send + Sync>(client: &mut T, description: &Value) -> Result<i64, String> {
+pub async fn start_job<T: GenericClient + Send + Sync>(
+    client: &mut T,
+    description: &Value,
+) -> Result<i64, String> {
     let query = "SELECT logging.start_job($1)";
 
     let result = client
@@ -14,7 +17,10 @@ pub async fn start_job<T: GenericClient + Send + Sync>(client: &mut T, descripti
     Ok(job_id)
 }
 
-pub async fn end_job<T: GenericClient + Send + Sync>(client: &mut T, job_id: i64) -> Result<(), String> {
+pub async fn end_job<T: GenericClient + Send + Sync>(
+    client: &mut T,
+    job_id: i64,
+) -> Result<(), String> {
     let query = "SELECT logging.end_job($1)";
 
     client

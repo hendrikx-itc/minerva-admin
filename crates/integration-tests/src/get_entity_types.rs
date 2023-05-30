@@ -1,17 +1,17 @@
 #[cfg(test)]
 mod tests {
     use assert_cmd::prelude::*;
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
     use std::process::Command;
     use std::time::Duration;
-    use std::net::{TcpStream, SocketAddr, TcpListener, Ipv4Addr, SocketAddrV4};
 
     use rand::distributions::{Alphanumeric, DistString};
 
     use minerva::change::Change;
-    use minerva::database::{connect_to_db, get_db_config, create_database, drop_database};
+    use minerva::database::{connect_to_db, create_database, drop_database, get_db_config};
 
     use minerva::schema::create_schema;
-    use minerva::trend_store::{TrendStore, AddTrendStore, create_partitions_for_timestamp};
+    use minerva::trend_store::{create_partitions_for_timestamp, AddTrendStore, TrendStore};
 
     const TREND_STORE_DEFINITION: &str = r###"
     title: Raw node data
@@ -39,7 +39,7 @@ mod tests {
     "###;
 
     fn generate_name() -> String {
-         Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+        Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
     }
 
     #[cfg(test)]
@@ -58,14 +58,14 @@ mod tests {
             let mut client = connect_to_db(&db_config.clone().dbname(&database_name)).await?;
             create_schema(&mut client).await?;
 
-            let trend_store: TrendStore = serde_yaml::from_str(TREND_STORE_DEFINITION).map_err(|e| {
-                format!("Could not read trend store definition: {}", e)
-            })?;
+            let trend_store: TrendStore = serde_yaml::from_str(TREND_STORE_DEFINITION)
+                .map_err(|e| format!("Could not read trend store definition: {}", e))?;
 
             let add_trend_store = AddTrendStore { trend_store };
 
             add_trend_store.apply(&mut client).await?;
-            let timestamp = chrono::DateTime::parse_from_rfc3339("2023-03-25T14:00:00+00:00").unwrap();
+            let timestamp =
+                chrono::DateTime::parse_from_rfc3339("2023-03-25T14:00:00+00:00").unwrap();
             create_partitions_for_timestamp(&mut client, timestamp.into()).await?;
         }
 
@@ -73,8 +73,7 @@ mod tests {
         let service_port = get_available_port(service_address).unwrap();
 
         let mut cmd = Command::cargo_bin("minerva-service")?;
-        cmd
-            .env("PGDATABASE", &database_name)
+        cmd.env("PGDATABASE", &database_name)
             .env("SERVICE_ADDRESS", service_address.to_string())
             .env("SERVICE_PORT", service_port.to_string());
 
@@ -94,7 +93,7 @@ mod tests {
 
             match result {
                 Ok(_) => break,
-                Err(_) => tokio::time::sleep(timeout).await
+                Err(_) => tokio::time::sleep(timeout).await,
             }
         }
 
@@ -118,8 +117,7 @@ mod tests {
     }
 
     fn get_available_port(ip_addr: Ipv4Addr) -> Option<u16> {
-        (1000..50000)
-            .find(|port| port_available(SocketAddr::V4(SocketAddrV4::new(ip_addr, *port))))
+        (1000..50000).find(|port| port_available(SocketAddr::V4(SocketAddrV4::new(ip_addr, *port))))
     }
 
     fn port_available(addr: SocketAddr) -> bool {

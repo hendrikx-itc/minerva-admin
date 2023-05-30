@@ -1,3 +1,4 @@
+use futures_util::pin_mut;
 use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -6,11 +7,13 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_postgres::types::ToSql;
-use tokio_postgres::{Client, GenericClient, Row};
+use tokio_postgres::{binary_copy::BinaryCopyInWriter, Client, GenericClient, Row};
 
 use humantime::format_duration;
 
 use chrono::{DateTime, Utc};
+use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 
 use async_trait::async_trait;
 
@@ -26,8 +29,17 @@ trait SanityCheck {
 
 #[async_trait]
 pub trait MeasurementStore {
-    async fn store_copy_from(&self, client: &mut Client, job_id: i64, data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>) -> Result<(), String>;
-    async fn mark_modified<T: GenericClient + Send + Sync>(&self, client: &mut T, timestamp: DateTime<chrono::Utc>) -> Result<(), String>;
+    async fn store_copy_from(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), String>;
+    async fn mark_modified<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+        timestamp: DateTime<chrono::Utc>,
+    ) -> Result<(), String>;
 }
 
 pub struct DeleteTrendStoreError {
@@ -431,6 +443,168 @@ fn default_generated_trends() -> Vec<GeneratedTrend> {
     Vec::new()
 }
 
+#[derive(Debug)]
+pub enum MeasValue {
+    Integer(i32),
+    Int8(i64),
+    Real(f64),
+    Text(String),
+    Timestamp(chrono::DateTime<chrono::Utc>),
+    Numeric(Decimal),
+}
+
+trait ToType {
+    fn to_type(&self) -> &Type;
+}
+
+impl ToType for MeasValue {
+    fn to_type(&self) -> &Type {
+        match self {
+            MeasValue::Integer(_) => &Type::INT4,
+            MeasValue::Int8(_) => &Type::INT8,
+            MeasValue::Real(_) => &Type::NUMERIC,
+            MeasValue::Text(_) => &Type::TEXT,
+            MeasValue::Timestamp(_) => &Type::TIMESTAMPTZ,
+            MeasValue::Numeric(_) => &Type::NUMERIC,
+        }
+    }
+}
+
+impl ToSql for MeasValue {
+    fn to_sql(
+        &self,
+        ty: &Type,
+        out: &mut bytes::BytesMut,
+    ) -> Result<postgres_types::IsNull, Box<dyn std::error::Error + Sync + Send>>
+    where
+        Self: Sized,
+    {
+        match self {
+            MeasValue::Integer(x) => x.to_sql(ty, out),
+            MeasValue::Int8(x) => x.to_sql(ty, out),
+            MeasValue::Real(x) => x.to_sql(ty, out),
+            MeasValue::Text(x) => x.to_sql(ty, out),
+            MeasValue::Timestamp(x) => x.to_sql(ty, out),
+            MeasValue::Numeric(x) => x.to_sql(ty, out),
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool
+    where
+        Self: Sized,
+    {
+        true
+    }
+
+    fn to_sql_checked(
+        &self,
+        ty: &Type,
+        out: &mut bytes::BytesMut,
+    ) -> Result<postgres_types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        match self {
+            MeasValue::Integer(x) => x.to_sql_checked(ty, out),
+            MeasValue::Int8(x) => x.to_sql_checked(ty, out),
+            MeasValue::Real(x) => x.to_sql_checked(ty, out),
+            MeasValue::Text(x) => x.to_sql_checked(ty, out),
+            MeasValue::Timestamp(x) => x.to_sql_checked(ty, out),
+            MeasValue::Numeric(x) => x.to_sql_checked(ty, out),
+        }
+    }
+}
+
+fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
+    let trend_names_part = trend_store_part
+        .trends
+        .iter()
+        .map(|t| format!("\"{}\"", t.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let query = format!(
+        "COPY trend.{}(entity_id, timestamp, created, job_id, {}) FROM STDIN BINARY",
+        trend_store_part.name, &trend_names_part
+    );
+
+    query
+}
+
+#[async_trait]
+impl MeasurementStore for TrendStorePart {
+    async fn store_copy_from(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), String> {
+        let tx = client.transaction().await.unwrap();
+
+        let query = copy_from_query(self);
+
+        let copy_in_sink = tx
+            .copy_in(&query)
+            .await
+            .map_err(|e| format!("Error starting COPY command: {}", e))?;
+
+        let value_types: Vec<Type> = vec![
+            Type::INT4,
+            Type::TIMESTAMPTZ,
+            Type::TIMESTAMPTZ,
+            Type::INT8,
+            Type::NUMERIC,
+            Type::NUMERIC,
+            Type::NUMERIC,
+            Type::NUMERIC,
+        ];
+
+        let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
+        pin_mut!(binary_copy_writer);
+
+        for (entity_id, timestamp, vals) in data_package {
+            let mut measurements: Vec<MeasValue> = Vec::new();
+            measurements.push(MeasValue::Integer(entity_id as i32));
+            measurements.push(MeasValue::Timestamp(timestamp));
+            measurements.push(MeasValue::Timestamp(timestamp));
+            measurements.push(MeasValue::Int8(job_id));
+
+            for val in vals {
+                measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
+            }
+
+            let values: Vec<&'_ (dyn ToSql + Sync)> = measurements
+                .iter()
+                .map(|v| v as &(dyn ToSql + Sync))
+                .collect();
+
+            binary_copy_writer
+                .as_mut()
+                .write(&values)
+                .await
+                .map_err(|e| format!("Error writing row: {e}"))?
+        }
+
+        binary_copy_writer.finish().await.unwrap();
+
+        tx.commit().await.unwrap();
+
+        Ok(())
+    }
+
+    async fn mark_modified<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+        timestamp: DateTime<chrono::Utc>,
+    ) -> Result<(), String> {
+        let query = "SELECT trend_directory.mark_modified(id, $2) FROM trend_directory.trend_store_part WHERE name = $1";
+
+        client
+            .execute(query, &[&self.name, &timestamp])
+            .await
+            .map_err(|e| format!("Error marking timestamp as modified: {e}"))?;
+
+        Ok(())
+    }
+}
+
 impl TrendStorePart {
     pub fn diff(&self, other: &TrendStorePart) -> Vec<Box<dyn Change + Send>> {
         let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
@@ -669,7 +843,7 @@ pub async fn delete_trend_store(conn: &mut Client, id: i32) -> Result<(), Delete
 
 pub async fn get_trend_store_id<T: GenericClient>(
     conn: &mut T,
-    trend_store: &TrendStore
+    trend_store: &TrendStore,
 ) -> Result<i32, Error> {
     let query = concat!(
         "SELECT trend_store.id ",
@@ -682,7 +856,14 @@ pub async fn get_trend_store_id<T: GenericClient>(
     let granularity_str: String = format_duration(trend_store.granularity).to_string();
 
     let result = conn
-        .query_one(query, &[&trend_store.data_source, &trend_store.entity_type, &granularity_str])
+        .query_one(
+            query,
+            &[
+                &trend_store.data_source,
+                &trend_store.entity_type,
+                &granularity_str,
+            ],
+        )
         .await?;
 
     let trend_store_id = result.get::<usize, i32>(0);

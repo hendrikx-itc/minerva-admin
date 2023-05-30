@@ -5,7 +5,7 @@ use log::info;
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 
-use deadpool_postgres::{Pool, Manager, ManagerConfig, RecyclingMethod};
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use rustls::ClientConfig as RustlsClientConfig;
 use tokio_postgres::{config::SslMode, Config};
 use tokio_postgres_rustls::MakeRustlsConnect;
@@ -13,7 +13,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use minerva::error::{ConfigurationError, Error, DatabaseError};
+use minerva::error::{ConfigurationError, DatabaseError, Error};
 
 mod trendmaterialization;
 use trendmaterialization::{
@@ -206,7 +206,9 @@ fn show_config(config: &Config) -> String {
 
     let host = match &hosts[0] {
         tokio_postgres::config::Host::Tcp(tcp_host) => tcp_host.clone(),
-        tokio_postgres::config::Host::Unix(socket_path) => socket_path.to_string_lossy().to_string(),
+        tokio_postgres::config::Host::Unix(socket_path) => {
+            socket_path.to_string_lossy().to_string()
+        }
     };
 
     let port = config.get_ports()[0];
@@ -220,7 +222,14 @@ fn show_config(config: &Config) -> String {
         _ => "<UNSUPPORTED MODE>".to_string(),
     };
 
-    format!("host={} port={} user={} dbname={} sslmode={}", &host, &port, config.get_user().unwrap_or(""), dbname, sslmode)
+    format!(
+        "host={} port={} user={} dbname={} sslmode={}",
+        &host,
+        &port,
+        config.get_user().unwrap_or(""),
+        dbname,
+        sslmode
+    )
 }
 
 async fn connect_db() -> Result<Pool, Error> {
@@ -232,7 +241,6 @@ async fn connect_db() -> Result<Pool, Error> {
 
     make_db_pool(&config).await
 }
-
 
 //async fn connect_to_db(
 //    config: &Config,
@@ -259,8 +267,7 @@ async fn connect_db() -> Result<Pool, Error> {
 async fn make_db_pool(config: &Config) -> Result<Pool, Error> {
     let mut roots = rustls::RootCertStore::empty();
 
-    for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs")
-    {
+    for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
         roots.add(&rustls::Certificate(cert.0)).unwrap();
     }
 
@@ -270,10 +277,12 @@ async fn make_db_pool(config: &Config) -> Result<Pool, Error> {
         .with_no_client_auth();
     let tls = MakeRustlsConnect::new(tls_config);
     let mgr_config = ManagerConfig {
-        recycling_method: RecyclingMethod::Fast
+        recycling_method: RecyclingMethod::Fast,
     };
     let mgr = Manager::from_config(config.clone(), tls, mgr_config);
 
-    Pool::builder(mgr).max_size(16).build().map_err(|e| Error::Database(DatabaseError::from_msg("test".to_string())))
+    Pool::builder(mgr)
+        .max_size(16)
+        .build()
+        .map_err(|e| Error::Database(DatabaseError::from_msg("test".to_string())))
 }
-

@@ -31,7 +31,8 @@ impl Cmd for LoadDataOpt {
                 extra: None,
             },
             Some(path) => {
-                let config_file = std::fs::File::open(path).map_err(|e| ConfigurationError::from_msg(format!("{}", e)))?;
+                let config_file = std::fs::File::open(path)
+                    .map_err(|e| ConfigurationError::from_msg(format!("{}", e)))?;
                 serde_json::from_reader(config_file).unwrap()
             }
         };
@@ -41,16 +42,28 @@ impl Cmd for LoadDataOpt {
             Some(d) => d.to_string(),
         };
 
-        let result = load_data(&mut client, &data_source, &parser_config, &self.file, self.create_partitions)
-            .await;
+        let result = load_data(
+            &mut client,
+            &data_source,
+            &parser_config,
+            &self.file,
+            self.create_partitions,
+        )
+        .await;
 
         match result {
             Err(e) => {
-                println!("Could not load CSV file '{}': {}", &self.file.as_path().to_string_lossy(), e);
-
-            },
+                println!(
+                    "Could not load CSV file '{}': {}",
+                    &self.file.as_path().to_string_lossy(),
+                    e
+                );
+            }
             Ok(_) => {
-                println!("Finished processing file '{}'", &self.file.as_path().to_string_lossy())
+                println!(
+                    "Finished processing file '{}'",
+                    &self.file.as_path().to_string_lossy()
+                )
             }
         }
 

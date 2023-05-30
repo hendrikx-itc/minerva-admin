@@ -422,9 +422,7 @@ impl TrendStorePartCompleteData {
     )
 )]
 #[get("/trend-store-parts")]
-pub(super) async fn get_trend_store_parts(
-    pool: Data<Pool>,
-) -> Result<HttpResponse, ServiceError> {
+pub(super) async fn get_trend_store_parts(pool: Data<Pool>) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
@@ -733,9 +731,7 @@ pub(super) async fn find_trend_store_part(
     )
 )]
 #[get("/trend-stores")]
-pub(super) async fn get_trend_stores(
-    pool: Data<Pool>,
-) -> Result<HttpResponse, ServiceError> {
+pub(super) async fn get_trend_stores(pool: Data<Pool>) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
@@ -1065,9 +1061,7 @@ pub(super) async fn post_trend_store_part(
     )
 )]
 #[get("/trends")]
-pub(super) async fn get_trends(
-    pool: Data<Pool>,
-) -> Result<HttpResponse, ServiceError> {
+pub(super) async fn get_trends(pool: Data<Pool>) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),

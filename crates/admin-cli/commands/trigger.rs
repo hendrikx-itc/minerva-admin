@@ -9,9 +9,9 @@ use comfy_table::Table;
 use minerva::change::Change;
 use minerva::error::{DatabaseError, Error, RuntimeError};
 use minerva::trigger::{
-    dump_trigger, list_triggers, load_trigger, load_trigger_from_file, AddTrigger,
-    CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, RenameTrigger,
-    UpdateTrigger, VerifyTrigger, get_notifications,
+    dump_trigger, get_notifications, list_triggers, load_trigger, load_trigger_from_file,
+    AddTrigger, CreateNotifications, DeleteTrigger, DisableTrigger, EnableTrigger, RenameTrigger,
+    UpdateTrigger, VerifyTrigger,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -277,13 +277,7 @@ impl Cmd for TriggerPreviewNotifications {
         let mut table = Table::new();
         let style = "     ═╪ ┆          ";
         table.load_preset(style);
-        table.set_header(vec![
-            "entity_id",
-            "timestamp",
-            "weight",
-            "details",
-            "data"
-        ]);
+        table.set_header(vec!["entity_id", "timestamp", "weight", "details", "data"]);
         for trigger in triggers {
             table.add_row(vec![
                 trigger.0.to_string(),
@@ -387,7 +381,7 @@ impl TriggerOpt {
             TriggerOpt::Verify(verify) => verify.run().await,
             TriggerOpt::PreviewNotifications(preview_notifications) => {
                 preview_notifications.run().await
-            },
+            }
             TriggerOpt::CreateNotifications(create_notifications) => {
                 create_notifications.run().await
             }

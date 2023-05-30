@@ -1,6 +1,6 @@
 use tokio_postgres::Client;
 
- pub async fn create_schema<'a>(client: &'a mut Client,) -> Result<(), String> {
+pub async fn create_schema<'a>(client: &'a mut Client) -> Result<(), String> {
     let sql = include_str!("schema.sql");
 
     if let Err(e) = client.batch_execute(&sql).await {

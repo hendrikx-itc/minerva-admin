@@ -23,9 +23,7 @@ pub struct EntityType {
     )
 )]
 #[get("/entity-types")]
-pub(super) async fn get_entity_types(
-    pool: Data<Pool>,
-) -> impl Responder {
+pub(super) async fn get_entity_types(pool: Data<Pool>) -> impl Responder {
     let mut m: Vec<EntityType> = vec![];
     let result = pool.get().await;
     match result {
@@ -71,10 +69,7 @@ pub(super) async fn get_entity_types(
     )
 )]
 #[get("/entity-types/{id}")]
-pub(super) async fn get_entity_type(
-    pool: Data<Pool>,
-    id: Path<i32>,
-) -> impl Responder {
+pub(super) async fn get_entity_type(pool: Data<Pool>, id: Path<i32>) -> impl Responder {
     let et_id = id.into_inner();
 
     let result = pool.get().await;

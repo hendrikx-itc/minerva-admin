@@ -1234,9 +1234,7 @@ where
 {
     let query = format!("SELECT entity_id, timestamp::text, weight, details, data::text FROM trigger_rule.\"{}_create_notification\"($1::timestamptz)", name);
 
-    let query_args = vec![
-        &timestamp as &(dyn ToSql + Sync),
-    ];
+    let query_args = vec![&timestamp as &(dyn ToSql + Sync)];
 
     let notifications: Vec<(i32, String, i32, String, String)> = conn
         .query(&query, query_args.iter().as_slice())

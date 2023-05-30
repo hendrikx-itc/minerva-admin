@@ -2,17 +2,17 @@
 mod tests {
     use assert_cmd::prelude::*;
     use predicates::prelude::*;
-    use std::process::Command;
-    use std::path::PathBuf;
     use std::io::Write;
+    use std::path::PathBuf;
+    use std::process::Command;
 
-    use rand::distributions::{Alphanumeric, DistString}; 
+    use rand::distributions::{Alphanumeric, DistString};
 
     use minerva::change::Change;
-    use minerva::database::{connect_to_db, get_db_config, create_database, drop_database};
+    use minerva::database::{connect_to_db, create_database, drop_database, get_db_config};
 
     use minerva::schema::create_schema;
-    use minerva::trend_store::{TrendStore, AddTrendStore, create_partitions_for_timestamp};
+    use minerva::trend_store::{create_partitions_for_timestamp, AddTrendStore, TrendStore};
 
     const TEST_CSV_DATA: &str = r###"
 node,timestamp,outside_temp,inside_temp,power_kwh,freq_power
@@ -46,7 +46,7 @@ hillside15,2023-03-25T14:00:00Z,14.5,32.5,55.9,212.5
     "###;
 
     fn generate_name() -> String {
-         Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+        Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
     }
 
     #[cfg(test)]
@@ -64,14 +64,14 @@ hillside15,2023-03-25T14:00:00Z,14.5,32.5,55.9,212.5
             let mut client = connect_to_db(&db_config.clone().dbname(&database_name)).await?;
             create_schema(&mut client).await?;
 
-            let trend_store: TrendStore = serde_yaml::from_str(TREND_STORE_DEFINITION).map_err(|e| {
-                format!("Could not read trend store definition: {}", e)
-            })?;
+            let trend_store: TrendStore = serde_yaml::from_str(TREND_STORE_DEFINITION)
+                .map_err(|e| format!("Could not read trend store definition: {}", e))?;
 
             let add_trend_store = AddTrendStore { trend_store };
 
             add_trend_store.apply(&mut client).await?;
-            let timestamp = chrono::DateTime::parse_from_rfc3339("2023-03-25T14:00:00+00:00").unwrap();
+            let timestamp =
+                chrono::DateTime::parse_from_rfc3339("2023-03-25T14:00:00+00:00").unwrap();
             create_partitions_for_timestamp(&mut client, timestamp.into()).await?;
         }
 
@@ -87,7 +87,10 @@ hillside15,2023-03-25T14:00:00Z,14.5,32.5,55.9,212.5
         let mut file_path = PathBuf::from(instance_root_path);
         file_path.push("sample-data/sample.csv");
 
-        cmd.arg("load-data").arg("--data-source").arg(&data_source_name).arg(&file_path);
+        cmd.arg("load-data")
+            .arg("--data-source")
+            .arg(&data_source_name)
+            .arg(&file_path);
         cmd.assert()
             .success()
             .stdout(predicate::str::contains("Job ID"));

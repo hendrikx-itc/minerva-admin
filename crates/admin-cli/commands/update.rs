@@ -40,7 +40,7 @@ impl Cmd for UpdateOpt {
                 std::env::set_var(&ENV_MINERVA_INSTANCE_ROOT, &root);
 
                 root.clone()
-            },
+            }
             None => match env::var(ENV_MINERVA_INSTANCE_ROOT) {
                 Ok(v) => PathBuf::from(v),
                 Err(e) => {

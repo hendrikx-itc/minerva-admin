@@ -24,9 +24,7 @@ pub struct DataSource {
     )
 )]
 #[get("/data-sources")]
-pub(super) async fn get_data_sources(
-    pool: Data<Pool>,
-) -> Result<HttpResponse, ServiceError> {
+pub(super) async fn get_data_sources(pool: Data<Pool>) -> Result<HttpResponse, ServiceError> {
     let client = pool.get().await.map_err(|_| ServiceError {
         kind: ServiceErrorKind::PoolError,
         message: "".to_string(),
