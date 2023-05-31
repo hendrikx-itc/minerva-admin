@@ -557,16 +557,17 @@ impl MeasurementStore for TrendStorePart {
         ];
 
         // List of indexes of matched trends to extract corresponding values
-        let mut matched_trend_indexes: Vec<usize> = Vec::new();
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
 
         // Filter trends that match the trend store parts trends and add corresponding types
-        for (i, trend_name) in trends.iter().enumerate() {
-            for t in self.trends.iter() {
-                if trend_name == &t.name {
-                    value_types.push(t.sql_type());
-                    matched_trend_indexes.push(i);
-                }
-            }
+        for t in self.trends.iter() {
+            value_types.push(t.sql_type());
+
+            let index = trends
+                .iter()
+                .position(|trend_name| trend_name == &t.name);
+
+            matched_trend_indexes.push(index);
         }
 
         let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
@@ -580,8 +581,15 @@ impl MeasurementStore for TrendStorePart {
             measurements.push(MeasValue::Int8(job_id));
 
             for i in &matched_trend_indexes {
-                let val = vals.get(*i).unwrap();
-                measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
+                match i {
+                    Some(index) => {
+                        let val = vals.get(*index).unwrap();
+                        measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
+                    },
+                    None => {
+                        measurements.push(MeasValue::Integer(0));
+                    }
+                }
             }
 
             let values: Vec<&'_ (dyn ToSql + Sync)> = measurements
