@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{binary_copy::BinaryCopyInWriter, Client, GenericClient, Row};
-
+use postgres_protocol::escape::escape_identifier;
 use humantime::format_duration;
 
 use chrono::{DateTime, Utc};
@@ -33,6 +33,7 @@ pub trait MeasurementStore {
         &self,
         client: &mut Client,
         job_id: i64,
+        trends: &Vec<String>,
         data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), String>;
     async fn mark_modified<T: GenericClient + Send + Sync>(
@@ -516,17 +517,19 @@ fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
     let trend_names_part = trend_store_part
         .trends
         .iter()
-        .map(|t| format!("\"{}\"", t.name))
+        .map(|t| escape_identifier(&t.name))
         .collect::<Vec<_>>()
         .join(", ");
 
     let query = format!(
         "COPY trend.{}(entity_id, timestamp, created, job_id, {}) FROM STDIN BINARY",
-        trend_store_part.name, &trend_names_part
+        escape_identifier(&trend_store_part.name), &trend_names_part
     );
 
     query
 }
+
+
 
 #[async_trait]
 impl MeasurementStore for TrendStorePart {
@@ -534,6 +537,7 @@ impl MeasurementStore for TrendStorePart {
         &self,
         client: &mut Client,
         job_id: i64,
+        trends: &Vec<String>,
         data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), String> {
         let tx = client.transaction().await.unwrap();
@@ -545,16 +549,25 @@ impl MeasurementStore for TrendStorePart {
             .await
             .map_err(|e| format!("Error starting COPY command: {}", e))?;
 
-        let value_types: Vec<Type> = vec![
+        let mut value_types: Vec<Type> = vec![
             Type::INT4,
             Type::TIMESTAMPTZ,
             Type::TIMESTAMPTZ,
             Type::INT8,
-            Type::NUMERIC,
-            Type::NUMERIC,
-            Type::NUMERIC,
-            Type::NUMERIC,
         ];
+
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<usize> = Vec::new();
+
+        // Filter trends that match the trend store parts trends and add corresponding types
+        for (i, trend_name) in trends.iter().enumerate() {
+            for t in self.trends.iter() {
+                if trend_name == &t.name {
+                    value_types.push(t.sql_type());
+                    matched_trend_indexes.push(i);
+                }
+            }
+        }
 
         let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
         pin_mut!(binary_copy_writer);
@@ -566,7 +579,8 @@ impl MeasurementStore for TrendStorePart {
             measurements.push(MeasValue::Timestamp(timestamp));
             measurements.push(MeasValue::Int8(job_id));
 
-            for val in vals {
+            for i in &matched_trend_indexes {
+                let val = vals.get(*i).unwrap();
                 measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
             }
 

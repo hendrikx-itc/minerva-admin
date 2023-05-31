@@ -93,8 +93,10 @@ pub async fn load_data<P: AsRef<Path>>(
 
     let trend_store_part: TrendStorePart = trend_store.parts.first().unwrap().clone();
 
+    let trends: Vec<String> = Vec::new();
+
     trend_store_part
-        .store_copy_from(client, job_id, data_package)
+        .store_copy_from(client, job_id, &trends, data_package)
         .await?;
 
     trend_store_part.mark_modified(client, timestamp).await?;
