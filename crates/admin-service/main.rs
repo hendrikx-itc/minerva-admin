@@ -42,6 +42,9 @@ use entitytype::{get_entity_type, get_entity_types, EntityType};
 mod kpi;
 use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedData, KpiRawData};
 
+mod trigger;
+use trigger::{get_triggers, TriggerData};
+
 mod error;
 mod serviceerror;
 
@@ -84,6 +87,7 @@ async fn main() -> std::io::Result<()> {
             kpi::update_kpi,
             kpi::get_kpi,
             kpi::delete_kpi,
+            trigger::get_triggers
         ),
         components(
             schemas(
@@ -91,7 +95,8 @@ async fn main() -> std::io::Result<()> {
                 TrendViewMaterializationFull, TrendFunctionMaterializationFull,
                 TrendViewMaterializationData, TrendFunctionMaterializationData,
                 TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
-                DataSource, EntityType, KpiRawData, KpiImplementedData
+                DataSource, EntityType, KpiRawData, KpiImplementedData,
+                TriggerData
             )
         ),
         tags(
@@ -155,6 +160,7 @@ async fn main() -> std::io::Result<()> {
             .service(update_kpi)
             .service(get_kpi)
             .service(delete_kpi)
+            .service(get_triggers)
     })
     .bind((service_address, service_port))?
     .run()
