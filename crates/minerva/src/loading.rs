@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_postgres::Client;
 
+use crate::error::Error;
 use crate::interval::parse_interval;
 use crate::job::{end_job, start_job};
 use crate::trend_store::get_trend_store_id;
@@ -28,7 +29,7 @@ pub async fn load_data<P: AsRef<Path>>(
     parser_config: &ParserConfig,
     file_path: P,
     create_partitions: bool,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     println!("Loading file {}", file_path.as_ref().to_string_lossy());
 
     let description = json!({"csv-load": file_path.as_ref().to_string_lossy()});

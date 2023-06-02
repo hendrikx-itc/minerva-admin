@@ -35,12 +35,12 @@ pub trait MeasurementStore {
         job_id: i64,
         trends: &Vec<String>,
         data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
-    ) -> Result<(), String>;
+    ) -> Result<(), Error>;
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
         timestamp: DateTime<chrono::Utc>,
-    ) -> Result<(), String>;
+    ) -> Result<(), Error>;
 }
 
 pub struct DeleteTrendStoreError {
@@ -529,8 +529,6 @@ fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
     query
 }
 
-
-
 #[async_trait]
 impl MeasurementStore for TrendStorePart {
     async fn store_copy_from(
@@ -539,7 +537,7 @@ impl MeasurementStore for TrendStorePart {
         job_id: i64,
         trends: &Vec<String>,
         data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let tx = client.transaction().await.unwrap();
 
         let query = copy_from_query(self);
@@ -547,7 +545,7 @@ impl MeasurementStore for TrendStorePart {
         let copy_in_sink = tx
             .copy_in(&query)
             .await
-            .map_err(|e| format!("Error starting COPY command: {}", e))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
 
         let mut value_types: Vec<Type> = vec![
             Type::INT4,
@@ -601,12 +599,18 @@ impl MeasurementStore for TrendStorePart {
                 .as_mut()
                 .write(&values)
                 .await
-                .map_err(|e| format!("Error writing row: {e}"))?
+                .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error writing row: {e}"))))?;
         }
 
-        binary_copy_writer.finish().await.unwrap();
+        binary_copy_writer
+            .finish()
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could load data using COPY command: {e}"))))?;
 
-        tx.commit().await.unwrap();
+        tx
+            .commit()
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could load data using COPY command: {e}"))))?;
 
         Ok(())
     }
@@ -615,13 +619,13 @@ impl MeasurementStore for TrendStorePart {
         &self,
         client: &mut T,
         timestamp: DateTime<chrono::Utc>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let query = "SELECT trend_directory.mark_modified(id, $2) FROM trend_directory.trend_store_part WHERE name = $1";
 
         client
             .execute(query, &[&self.name, &timestamp])
             .await
-            .map_err(|e| format!("Error marking timestamp as modified: {e}"))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error marking timestamp as modified: {e}"))))?;
 
         Ok(())
     }

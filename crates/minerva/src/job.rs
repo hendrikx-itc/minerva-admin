@@ -1,16 +1,18 @@
 use serde_json::Value;
 use tokio_postgres::GenericClient;
 
+use crate::error::{Error, DatabaseError};
+
 pub async fn start_job<T: GenericClient + Send + Sync>(
     client: &mut T,
     description: &Value,
-) -> Result<i64, String> {
+) -> Result<i64, Error> {
     let query = "SELECT logging.start_job($1)";
 
     let result = client
         .query_one(query, &[&description])
         .await
-        .map_err(|e| format!("Error starting job: {e}"))?;
+        .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting job: {e}"))))?;
 
     let job_id = result.get(0);
 
@@ -20,13 +22,13 @@ pub async fn start_job<T: GenericClient + Send + Sync>(
 pub async fn end_job<T: GenericClient + Send + Sync>(
     client: &mut T,
     job_id: i64,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     let query = "SELECT logging.end_job($1)";
 
     client
         .execute(query, &[&job_id])
         .await
-        .map_err(|e| format!("Error ending job: {e}"))?;
+        .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error ending job: {e}"))))?;
 
     Ok(())
 }
