@@ -1,12 +1,12 @@
 use deadpool_postgres::Pool;
 use std::ops::DerefMut;
 
-use actix_web::{get, web::Data, HttpResponse};
+use actix_web::{get, put, web::Data, HttpResponse};
 
 use serde::{Deserialize, Serialize};
 use utoipa::{ToSchema};
 
-use minerva::trigger::{list_triggers, load_thresholds_with_client, Threshold};
+use minerva::trigger::{list_triggers, load_trigger, load_thresholds_with_client, set_thresholds, Threshold};
 
 use super::serviceerror::{ServiceError, ServiceErrorKind};
 use crate::error::{Error, Success};
@@ -15,6 +15,12 @@ use crate::error::{Error, Success};
 pub struct TriggerData {
     name: String,
     enabled: bool,
+    thresholds: Vec<Threshold>
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct TriggerBasicData {
+    name: String,
     thresholds: Vec<Threshold>
 }
 
@@ -51,4 +57,58 @@ pub(super) async fn get_triggers(pool: Data<Pool>) -> Result<HttpResponse, Servi
     }
 
     Ok(HttpResponse::Ok().json(result))
+}
+
+// curl -H "Content-Type: application/json" -X PUT -d '{"name":"average-output","entity_type":"Cell","data_type":"numeric","enabled":true,"source_trends":["L.Thrp.bits.UL.NsaDc"],"definition":"public.safe_division(SUM(\"L.Thrp.bits.UL.NsaDc\"),1000::numeric)","description":{"type": "ratio", "numerator": [{"type": "trend", "value": "L.Thrp.bits.UL.NsaDC"}], "denominator": [{"type": "constant", "value": "1000"}]}}' localhost:8000/kpis
+#[utoipa::path(
+    put,
+    path="/triggers",
+    responses(
+    (status = 200, description = "Updated trigger", body = Success),
+    (status = 400, description = "Input format incorrect", body = Error),
+    (status = 404, description = "Trigger not found", body = Error),
+    (status = 409, description = "Update failed", body = Error),
+    (status = 500, description = "General error", body = Error)
+    )
+)]
+#[put("/triggers")]
+pub(super) async fn change_thresholds(
+    pool: Data<Pool>,
+    post: String,
+) -> Result<HttpResponse, ServiceError> {
+    let data: TriggerBasicData = serde_json::from_str(&post).map_err(|e| Error {
+        code: 400,
+        message: e.to_string(),
+    })?;
+
+    let mut manager = pool.get().await.map_err(|_| ServiceError {
+        kind: ServiceErrorKind::PoolError,
+        message: "".to_string(),
+    })?;
+
+    let client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
+
+    let mut transaction = client.transaction().await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
+
+    let mut trigger = load_trigger(&mut transaction, &data.name).await.map_err(|e| Error { 
+        code: 404, message: e.to_string()
+    })?;
+
+    trigger.thresholds = data.thresholds;
+
+    set_thresholds(&trigger, &mut transaction).await.map_err(|e| Error {
+        code: 409, message: e.to_string()
+    })?;
+
+    transaction.commit().await.map_err(|e| Error {
+        code: 409, message: e.to_string()
+    })?;
+
+    Ok(HttpResponse::Ok().json(Success {
+        code: 200,
+        message: "thresholds updated".to_string(),
+    }))
 }

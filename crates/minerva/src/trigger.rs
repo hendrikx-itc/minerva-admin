@@ -403,7 +403,7 @@ async fn set_weight<T: GenericClient + Sync + Send>(
     Ok(format!("Set weight for trigger '{}'", &trigger.name))
 }
 
-async fn set_thresholds<T: GenericClient + Sync + Send>(
+pub async fn set_thresholds<T: GenericClient + Sync + Send>(
     trigger: &Trigger,
     client: &mut T,
 ) -> ChangeResult {
