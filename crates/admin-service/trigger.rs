@@ -15,6 +15,7 @@ use crate::error::{Error, Success};
 pub struct TriggerData {
     name: String,
     enabled: bool,
+    description: String,
     thresholds: Vec<Threshold>
 }
 
@@ -51,6 +52,7 @@ pub(super) async fn get_triggers(pool: Data<Pool>) -> Result<HttpResponse, Servi
             TriggerData {
                 name: trigger.0.clone(),
                 enabled: trigger.5,
+                description: trigger.4.clone(),
                 thresholds: thresholds
             }
         )
