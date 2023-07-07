@@ -1447,8 +1447,53 @@ async fn load_function_src<T: GenericClient + Send + Sync>(
     Ok(function_source)
 }
 
-async fn load_thresholds<T: GenericClient + Send + Sync>(
+pub async fn load_thresholds<T: GenericClient + Send + Sync>(
     conn: &mut T,
+    trigger_name: &str,
+) -> Result<Vec<Threshold>, Error> {
+    let view_name = format!("{trigger_name}_threshold");
+
+    let query = concat!(
+        "select attname, typname ",
+        "from pg_class c join pg_attribute a on attrelid = c.oid ",
+        "join pg_type t on t.oid = atttypid ",
+        "where relname = $1"
+    );
+
+    let rows = conn
+        .query(query, &[&view_name])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {e}")))?;
+
+    let values_query = format!(
+        "SELECT {} FROM trigger_rule.{}",
+        rows.iter()
+            .map(|row| format!("{}::text", escape_identifier(row.get(0))))
+            .collect::<Vec<String>>()
+            .join(","),
+        escape_identifier(&view_name),
+    );
+
+    let values_row = conn
+        .query_one(&values_query, &[])
+        .await
+        .map_err(|e| DatabaseError::from_msg(format!("Could not load threshold columns: {e}")))?;
+
+    let thresholds = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| Threshold {
+            name: row.get(0),
+            data_type: row.get(1),
+            value: values_row.get(index),
+        })
+        .collect();
+
+    Ok(thresholds)
+}
+
+pub async fn load_thresholds_with_client(
+    conn: &mut Client,
     trigger_name: &str,
 ) -> Result<Vec<Threshold>, Error> {
     let view_name = format!("{trigger_name}_threshold");
