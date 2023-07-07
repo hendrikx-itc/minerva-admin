@@ -43,7 +43,7 @@ mod kpi;
 use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedData, KpiRawData};
 
 mod trigger;
-use trigger::{get_triggers, TriggerData};
+use trigger::{get_triggers, change_thresholds, TriggerData, TriggerBasicData};
 
 mod error;
 mod serviceerror;
@@ -87,7 +87,8 @@ async fn main() -> std::io::Result<()> {
             kpi::update_kpi,
             kpi::get_kpi,
             kpi::delete_kpi,
-            trigger::get_triggers
+            trigger::get_triggers,
+            trigger::change_thresholds
         ),
         components(
             schemas(
@@ -96,7 +97,7 @@ async fn main() -> std::io::Result<()> {
                 TrendViewMaterializationData, TrendFunctionMaterializationData,
                 TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
                 DataSource, EntityType, KpiRawData, KpiImplementedData,
-                TriggerData
+                TriggerData, TriggerBasicData
             )
         ),
         tags(
@@ -161,6 +162,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_kpi)
             .service(delete_kpi)
             .service(get_triggers)
+            .service(change_thresholds)
     })
     .bind((service_address, service_port))?
     .run()
