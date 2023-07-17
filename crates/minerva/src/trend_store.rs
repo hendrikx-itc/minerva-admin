@@ -585,7 +585,7 @@ impl MeasurementStore for TrendStorePart {
                         measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
                     },
                     None => {
-                        measurements.push(MeasValue::Integer(0));
+                        measurements.push(MeasValue::Numeric(Decimal::from_f64_retain(0.0).unwrap()));
                     }
                 }
             }
