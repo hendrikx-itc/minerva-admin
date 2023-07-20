@@ -292,5 +292,5 @@ async fn make_db_pool(config: &Config) -> Result<Pool, Error> {
     Pool::builder(mgr)
         .max_size(16)
         .build()
-        .map_err(|e| Error::Database(DatabaseError::from_msg("test".to_string())))
+        .map_err(|_| Error::Database(DatabaseError::from_msg("test".to_string())))
 }

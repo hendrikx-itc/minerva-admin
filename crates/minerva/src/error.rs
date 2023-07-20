@@ -1,15 +1,33 @@
 use std::fmt;
 
-use tokio_postgres;
+use tokio_postgres::{self, error::SqlState};
+
+#[derive(Debug)]
+pub enum DatabaseErrorKind {
+    Default,
+    UniqueViolation,
+}
+
 
 #[derive(Debug)]
 pub struct DatabaseError {
     pub msg: String,
+    pub kind: DatabaseErrorKind,
+}
+
+fn map_error_kind(sql_state: &SqlState) -> DatabaseErrorKind {
+    match sql_state {
+        &SqlState::UNIQUE_VIOLATION => DatabaseErrorKind::UniqueViolation,
+        _ => DatabaseErrorKind::Default
+    }
 }
 
 impl DatabaseError {
     pub fn from_msg(msg: String) -> DatabaseError {
-        DatabaseError { msg }
+        DatabaseError {
+            msg,
+            kind: DatabaseErrorKind::Default
+        }
     }
 }
 
@@ -17,6 +35,7 @@ impl From<tokio_postgres::Error> for DatabaseError {
     fn from(err: tokio_postgres::Error) -> DatabaseError {
         DatabaseError {
             msg: format!("{err}"),
+            kind: err.code().map_or(DatabaseErrorKind::Default, |c| map_error_kind(c)),
         }
     }
 }
@@ -34,7 +53,7 @@ impl ConfigurationError {
 
 #[derive(Debug)]
 pub struct RuntimeError {
-    pub msg: String,
+   pub msg: String,
 }
 
 impl RuntimeError {
@@ -57,9 +76,9 @@ impl std::error::Error for Error {
 
     fn description(&self) -> &str {
         match self {
-            Error::Database(e) => "Database error",
-            Error::Configuration(e) => "Configuration error",
-            Error::Runtime(e) => "Runtime error",
+            Error::Database(_) => "Database error",
+            Error::Configuration(_) => "Configuration error",
+            Error::Runtime(_) => "Runtime error",
         }
     }
 
@@ -98,9 +117,7 @@ impl From<RuntimeError> for Error {
 
 impl From<tokio_postgres::Error> for Error {
     fn from(err: tokio_postgres::Error) -> Error {
-        Error::Database(DatabaseError {
-            msg: format!("{err}"),
-        })
+        Error::Database(DatabaseError::from(err))
     }
 }
 

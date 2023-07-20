@@ -97,7 +97,7 @@ pub async fn load_data<P: AsRef<Path>>(
     let trends: Vec<String> = Vec::new();
 
     trend_store_part
-        .store_copy_from(client, job_id, &trends, data_package)
+        .store(client, job_id, &trends, &data_package)
         .await?;
 
     trend_store_part.mark_modified(client, timestamp).await?;
