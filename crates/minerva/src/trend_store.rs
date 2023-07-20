@@ -605,12 +605,12 @@ impl MeasurementStore for TrendStorePart {
         binary_copy_writer
             .finish()
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could load data using COPY command: {e}"))))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could not load data using COPY command: {e}"))))?;
 
         tx
             .commit()
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could load data using COPY command: {e}"))))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could not load data using COPY command: {e}"))))?;
 
         Ok(())
     }
