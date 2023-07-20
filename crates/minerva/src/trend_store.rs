@@ -36,6 +36,15 @@ pub trait MeasurementStore {
         trends: &Vec<String>,
         data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error>;
+
+    async fn store_insert(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), Error>;
+
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
@@ -513,6 +522,39 @@ impl ToSql for MeasValue {
     }
 }
 
+fn insert_query(trend_store_part: &TrendStorePart) -> String {
+    let update_part = trend_store_part.trends
+        .iter()
+        .map(|trend| format!("{} = excluded.{}", escape_identifier(&trend.name), escape_identifier(&trend.name)))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let trend_names_part = trend_store_part
+        .trends
+        .iter()
+        .map(|t| escape_identifier(&t.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let values_placeholders = trend_store_part
+        .trends
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("${}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    
+    let insert_query = format!(
+        "INSERT INTO trend.{}(entity_id, timestamp, {}) VALUES ({}) ON CONFLICT (entity_id, timestamp) DO UPDATE SET {}",
+        escape_identifier(&trend_store_part.name),
+        &trend_names_part,
+        &values_placeholders,
+        update_part,
+    );
+
+    insert_query
+}
+
 fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
     let trend_names_part = trend_store_part
         .trends
@@ -611,6 +653,52 @@ impl MeasurementStore for TrendStorePart {
             .commit()
             .await
             .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could not load data using COPY command: {e}"))))?;
+
+        Ok(())
+    }
+
+    async fn store_insert(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), Error> {
+        let query = insert_query(self);
+
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
+
+        // Filter trends that match the trend store parts trends
+        for t in self.trends.iter() {
+            let index = trends
+                .iter()
+                .position(|trend_name| trend_name == &t.name);
+
+            matched_trend_indexes.push(index);
+        }
+
+        for (entity_id, timestamp, vals) in data_package {
+            let mut measurements: Vec<MeasValue> = Vec::new();
+            measurements.push(MeasValue::Integer(entity_id as i32));
+            measurements.push(MeasValue::Timestamp(timestamp));
+            measurements.push(MeasValue::Timestamp(timestamp));
+            measurements.push(MeasValue::Int8(job_id));
+
+            for i in &matched_trend_indexes {
+                match i {
+                    Some(index) => {
+                        let val = vals.get(*index).unwrap();
+                        measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
+                    },
+                    None => {
+                        measurements.push(MeasValue::Numeric(Decimal::from_f64_retain(0.0).unwrap()));
+                    }
+                }
+            }
+
+            client.execute_raw(&query, measurements).await?;
+        }
 
         Ok(())
     }
