@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use minerva::error::ConfigurationError;
-use minerva::loading::{load_data, ParserConfig};
+use minerva::loading::{load_data, ParserConfig, TrendsFrom, TrendsFromHeader};
 
 use super::common::{connect_db, Cmd, CmdResult};
 
@@ -28,6 +28,10 @@ impl Cmd for LoadDataOpt {
             None => ParserConfig {
                 entity_type: "node".into(),
                 granularity: "15m".into(),
+                trends: TrendsFrom::Header(TrendsFromHeader {
+                    entity_column: String::from("node"),
+                    timestamp_column: String::from("timestamp")
+                }), 
                 extra: None,
             },
             Some(path) => {

@@ -45,8 +45,6 @@ mod tests {
     #[cfg(test)]
     #[tokio::test]
     async fn get_entity_types() -> Result<(), Box<dyn std::error::Error>> {
-        use actix_web::Responder;
-
         let database_name = generate_name();
         let db_config = get_db_config()?;
         let mut client = connect_to_db(&db_config).await?;
