@@ -1,13 +1,15 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::collections::HashMap;
+use std::iter::zip;
 
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_postgres::Client;
 
-use crate::error::Error;
+use crate::error::{Error, RuntimeError};
 use crate::interval::parse_interval;
 use crate::job::{end_job, start_job};
 use crate::trend_store::get_trend_store_id;
@@ -17,9 +19,22 @@ use crate::trend_store::{
 };
 
 #[derive(Serialize, Deserialize)]
+pub struct TrendsFromHeader {
+    pub entity_column: String,
+    pub timestamp_column: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum TrendsFrom {
+    List(Vec<String>),
+    Header(TrendsFromHeader),
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct ParserConfig {
     pub entity_type: String,
     pub granularity: String,
+    pub trends: TrendsFrom,
     pub extra: Option<Value>,
 }
 
@@ -40,37 +55,51 @@ pub async fn load_data<P: AsRef<Path>>(
 
     let mut csv_reader = csv::Reader::from_reader(reader);
 
+    let (trends, entity_column, timestamp_column) = match &parser_config.trends {
+        TrendsFrom::Header(from_header) => {
+            let trends = match csv_reader.headers() {
+                Ok(headers) => headers.iter().map(String::from).collect(),
+                Err(_) => Vec::new()
+            };
+
+            (trends, from_header.entity_column.clone(), from_header.timestamp_column.clone())
+        },
+        TrendsFrom::List(list) => (list.clone(), String::from("entity"), String::from("timestamp"))
+    };
+
+    let entity_column_index = match trends.iter().position(|t| t.eq(&entity_column)) {
+        Some(index) => index,
+        None => return Err(Error::Runtime(RuntimeError::from_msg(format!("No column matching entity column '{entity_column}'")))),
+    };
+
+    let timestamp_column_index = match trends.iter().position(|t| t.eq(&timestamp_column)) {
+        Some(index) => index,
+        None => return Err(Error::Runtime(RuntimeError::from_msg(format!("No column matching timestamp column '{timestamp_column}'")))),
+    };
+
     let job_id = start_job(client, &description).await?;
 
-    let data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)> = csv_reader
+    let raw_data_package: Vec<(String, DateTime<chrono::Utc>, Vec<String>)> = csv_reader
         .records()
-        .enumerate()
-        .map(|(num, record)| {
+        .map(|record| {
             let record = record.unwrap();
 
-            println!("{:?}", record);
-
-            let entity: &str = record.get(0).unwrap();
-            let timestamp_txt: &str = record.get(1).unwrap();
+            let entity: String = String::from(record.get(entity_column_index).unwrap());
+            let timestamp_txt: &str = record.get(timestamp_column_index).unwrap();
 
             let timestamp: DateTime<chrono::Utc> = DateTime::parse_from_rfc3339(timestamp_txt)
                 .unwrap()
                 .with_timezone(&chrono::offset::Utc);
 
-            println!("Entity: {}", entity);
-            println!("Timestamp: {}", timestamp);
+            let values: Vec<String> = record.iter().map(String::from).collect();
 
-            let mut values: Vec<String> = Vec::new();
-
-            for i in 0..record.len() - 2 {
-                values.push(record.get(i + 2).unwrap().to_string());
-            }
-
-            let record: (i64, DateTime<chrono::Utc>, Vec<String>) = (num as i64, timestamp, values);
+            let record: (String, DateTime<chrono::Utc>, Vec<String>) = (entity, timestamp, values);
 
             record
         })
         .collect();
+
+    let entity_names: Vec<String> = raw_data_package.iter().map(|r| r.0.clone()).collect();
 
     let timestamp = chrono::offset::Utc::now();
 
@@ -79,6 +108,20 @@ pub async fn load_data<P: AsRef<Path>>(
     let trend_store: TrendStore = load_trend_store(client, data_source, &parser_config.entity_type, &granularity)
         .await
         .map_err(|e| format!("Error loading trend store for data source '{data_source}', entity type '{}' and granularity '{}': {e}", parser_config.entity_type, parser_config.granularity))?;
+
+    let entity_ids: Vec<i64> = names_to_entity_ids(
+        client,
+        &trend_store.entity_type,
+        entity_names,
+    )
+    .await?;
+
+    let data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)> = zip(entity_ids, raw_data_package)
+        .into_iter()
+        .map(|(entity_id, record)| {
+            (entity_id, record.1, record.2)
+        })
+        .collect();
 
     let trend_store_id: i32 = get_trend_store_id(client, &trend_store)
         .await
@@ -94,8 +137,6 @@ pub async fn load_data<P: AsRef<Path>>(
 
     let trend_store_part: TrendStorePart = trend_store.parts.first().unwrap().clone();
 
-    let trends: Vec<String> = Vec::new();
-
     trend_store_part
         .store(client, job_id, &trends, &data_package)
         .await?;
@@ -107,4 +148,80 @@ pub async fn load_data<P: AsRef<Path>>(
     end_job(client, job_id).await?;
 
     Ok(())
+}
+
+async fn names_to_entity_ids<I>(
+    client: &mut Client,
+    entity_type: &str,
+    names: I,
+) -> Result<Vec<i64>, Error>
+where
+    I: IntoIterator,
+    I::Item: ToString,
+{
+    let row = client
+        .query_one(
+            "SELECT name \
+            FROM directory.entity_type \
+            WHERE lower(name) = lower($1)",
+            &[&entity_type],
+        )
+        .await?;
+
+    let entity_type_name: String = row.get(0);
+
+    let query = format!(
+        "WITH lookup_list AS (SELECT unnest($1::text[]) AS name) \
+        SELECT l.name, e.id FROM lookup_list l \
+        LEFT JOIN entity.\"{}\" e ON l.name = e.name ",
+        &entity_type_name
+    );
+
+    let names_list: Vec<String> = names.into_iter().map(|n| n.to_string()).collect();
+
+    let rows = client.query(&query, &[&names_list]).await?;
+
+    let mut entity_ids: HashMap<String, i64> = HashMap::new();
+
+    for row in rows {
+        let name: String = row.get(0);
+        let entity_id_value: Option<i32> = row.try_get(1).unwrap();
+        let entity_id: i64 = match entity_id_value {
+            Some(entity_id) => entity_id as i64,
+            None => create_entity(client, entity_type, &name).await?,
+        };
+
+        entity_ids.insert(name, entity_id);
+    }
+
+    Ok(names_list.iter().map(|name| *(entity_ids.get(name).unwrap())).collect())
+}
+
+async fn create_entity(client: &mut Client, entity_type: &str, name: &str) -> Result<i64, Error> {
+    let row = client
+        .query_one(
+            "SELECT name FROM directory.entity_type WHERE lower(name) = lower($1)",
+            &[&entity_type],
+        )
+        .await?;
+
+    let entity_type_name: String = row.get(0);
+
+    let query = format!(
+        "INSERT INTO entity.\"{}\"(name) VALUES($1) ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id",
+        &entity_type_name
+    );
+
+    let rows = client.query(&query, &[&name]).await?;
+
+    match rows.iter().next() {
+        Some(row) => row.try_get(0).map(|v: i32| v as i64).map_err(|e| {
+            Error::Runtime(RuntimeError::from_msg(format!(
+                "Could not create entity: {e}"
+            )))
+        }),
+        None => Err(Error::Runtime(RuntimeError::from_msg(format!(
+            "Could not insert entity"
+        )))),
+    }
 }

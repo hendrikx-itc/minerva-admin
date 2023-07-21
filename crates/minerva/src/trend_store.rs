@@ -517,21 +517,20 @@ impl ToSql for MeasValue {
     }
 }
 
-fn insert_query(trend_store_part: &TrendStorePart) -> String {
-    let update_part = trend_store_part.trends
+fn insert_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> String {
+    let update_part = trends
         .iter()
         .map(|trend| format!("{} = excluded.{}", escape_identifier(&trend.name), escape_identifier(&trend.name)))
         .collect::<Vec<_>>()
         .join(", ");
 
-    let trend_names_part = trend_store_part
-        .trends
+    let trend_names_part = trends
         .iter()
         .map(|t| escape_identifier(&t.name))
         .collect::<Vec<_>>()
         .join(", ");
 
-    let values_placeholders = (1..(trend_store_part.trends.len() + 5)) 
+    let values_placeholders = (1..(trends.len() + 5)) 
         .map(|i| format!("${}", i))
         .collect::<Vec<_>>()
         .join(", ");
@@ -547,9 +546,8 @@ fn insert_query(trend_store_part: &TrendStorePart) -> String {
     insert_query
 }
 
-fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
-    let trend_names_part = trend_store_part
-        .trends
+fn copy_from_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> String {
+    let trend_names_part = trends
         .iter()
         .map(|t| escape_identifier(&t.name))
         .collect::<Vec<_>>()
@@ -595,7 +593,11 @@ impl MeasurementStore for TrendStorePart {
         client: &mut T,
         timestamp: DateTime<chrono::Utc>,
     ) -> Result<(), Error> {
-        let query = "SELECT trend_directory.mark_modified(id, $2) FROM trend_directory.trend_store_part WHERE name = $1";
+        let query = concat!(
+            "SELECT trend_directory.mark_modified(id, $2) ",
+            "FROM trend_directory.trend_store_part ",
+            "WHERE name = $1"
+        );
 
         client
             .execute(query, &[&self.name, &timestamp])
@@ -614,14 +616,10 @@ impl TrendStorePart {
         trends: &Vec<String>,
         data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error> {
-        let tx = client.transaction().await.unwrap();
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
 
-        let query = copy_from_query(self);
-
-        let copy_in_sink = tx
-            .copy_in(&query)
-            .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
+        let mut matched_trends: Vec<&Trend> = Vec::new();
 
         let mut value_types: Vec<Type> = vec![
             Type::INT4,
@@ -630,19 +628,28 @@ impl TrendStorePart {
             Type::INT8,
         ];
 
-        // List of indexes of matched trends to extract corresponding values
-        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
-
         // Filter trends that match the trend store parts trends and add corresponding types
         for t in self.trends.iter() {
-            value_types.push(t.sql_type());
-
             let index = trends
                 .iter()
                 .position(|trend_name| trend_name == &t.name);
 
-            matched_trend_indexes.push(index);
+            if index.is_some() {
+                value_types.push(t.sql_type());
+                matched_trends.push(t);
+
+                matched_trend_indexes.push(index);
+            }
         }
+
+        let tx = client.transaction().await?;
+
+        let query = copy_from_query(self, &matched_trends);
+
+        let copy_in_sink = tx
+            .copy_in(&query)
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
 
         let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
         pin_mut!(binary_copy_writer);
@@ -657,7 +664,11 @@ impl TrendStorePart {
             for i in &matched_trend_indexes {
                 match i {
                     Some(index) => {
-                        let val = vals.get(*index).unwrap();
+                        let val = match vals.get(*index) {
+                            Some(v) => v,
+                            None => "0.0", 
+                        };
+
                         measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
                     },
                     None => {
@@ -713,10 +724,9 @@ impl TrendStorePart {
         trends: &Vec<String>,
         data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error> {
-        let query = insert_query(self);
-
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
+        let mut matched_trends: Vec<&Trend> = Vec::new();
 
         // Filter trends that match the trend store parts trends
         for t in self.trends.iter() {
@@ -724,8 +734,15 @@ impl TrendStorePart {
                 .iter()
                 .position(|trend_name| trend_name == &t.name);
 
-            matched_trend_indexes.push(index);
+            if index.is_some() {
+                matched_trend_indexes.push(index);
+                matched_trends.push(t);
+            }
         }
+
+        let tx = client.transaction().await?;
+
+        let query = insert_query(self, &matched_trends);
 
         for (entity_id, timestamp, vals) in data_package {
             let mut measurements: Vec<MeasValue> = Vec::new();
@@ -746,11 +763,17 @@ impl TrendStorePart {
                 }
             }
 
-            client.execute_raw(&query, measurements).await?;
+            tx.execute_raw(&query, measurements).await?;
         }
+
+        tx
+            .commit()
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could commit data load using COPY command: {e}"))))?;
 
         Ok(())
     }
+
     pub fn diff(&self, other: &TrendStorePart) -> Vec<Box<dyn Change + Send>> {
         let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
