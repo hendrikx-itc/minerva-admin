@@ -2,6 +2,7 @@ use futures_util::pin_mut;
 use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio_postgres::error::SqlState;
 use std::convert::From;
 use std::fmt;
 use std::path::PathBuf;
@@ -17,6 +18,8 @@ use rust_decimal::Decimal;
 
 use async_trait::async_trait;
 
+use crate::error::DatabaseErrorKind;
+
 use super::change::{Change, ChangeResult, GenericChange};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 use super::interval::parse_interval;
@@ -29,13 +32,14 @@ trait SanityCheck {
 
 #[async_trait]
 pub trait MeasurementStore {
-    async fn store_copy_from(
+    async fn store(
         &self,
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error>;
+
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
@@ -513,9 +517,37 @@ impl ToSql for MeasValue {
     }
 }
 
-fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
-    let trend_names_part = trend_store_part
-        .trends
+fn insert_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> String {
+    let update_part = trends
+        .iter()
+        .map(|trend| format!("{} = excluded.{}", escape_identifier(&trend.name), escape_identifier(&trend.name)))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let trend_names_part = trends
+        .iter()
+        .map(|t| escape_identifier(&t.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let values_placeholders = (1..(trends.len() + 5)) 
+        .map(|i| format!("${}", i))
+        .collect::<Vec<_>>()
+        .join(", ");
+    
+    let insert_query = format!(
+        "INSERT INTO trend.{}(entity_id, timestamp, created, job_id, {}) VALUES ({}) ON CONFLICT (entity_id, timestamp) DO UPDATE SET {}",
+        escape_identifier(&trend_store_part.name),
+        &trend_names_part,
+        &values_placeholders,
+        update_part,
+    );
+
+    insert_query
+}
+
+fn copy_from_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> String {
+    let trend_names_part = trends
         .iter()
         .map(|t| escape_identifier(&t.name))
         .collect::<Vec<_>>()
@@ -531,21 +563,63 @@ fn copy_from_query(trend_store_part: &TrendStorePart) -> String {
 
 #[async_trait]
 impl MeasurementStore for TrendStorePart {
-    async fn store_copy_from(
+    async fn store(
         &self,
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error> {
-        let tx = client.transaction().await.unwrap();
+        match self.store_copy_from(client, job_id, trends, data_package).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                match e {
+                    Error::Database(dbe) => {
+                        match dbe.kind {
+                            DatabaseErrorKind::UniqueViolation => {
+                                self.store_insert(client, job_id, trends, data_package).await
+                            },
+                            _ => Err(Error::Database(dbe))
+                        }
+                    },
+                    _ => Err(e)
+                }
+            }
+        }
+    }
 
-        let query = copy_from_query(self);
+    async fn mark_modified<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+        timestamp: DateTime<chrono::Utc>,
+    ) -> Result<(), Error> {
+        let query = concat!(
+            "SELECT trend_directory.mark_modified(id, $2) ",
+            "FROM trend_directory.trend_store_part ",
+            "WHERE name = $1"
+        );
 
-        let copy_in_sink = tx
-            .copy_in(&query)
+        client
+            .execute(query, &[&self.name, &timestamp])
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error marking timestamp as modified: {e}"))))?;
+
+        Ok(())
+    }
+}
+
+impl TrendStorePart {
+    pub async fn store_copy_from(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), Error> {
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
+
+        let mut matched_trends: Vec<&Trend> = Vec::new();
 
         let mut value_types: Vec<Type> = vec![
             Type::INT4,
@@ -554,34 +628,47 @@ impl MeasurementStore for TrendStorePart {
             Type::INT8,
         ];
 
-        // List of indexes of matched trends to extract corresponding values
-        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
-
         // Filter trends that match the trend store parts trends and add corresponding types
         for t in self.trends.iter() {
-            value_types.push(t.sql_type());
-
             let index = trends
                 .iter()
                 .position(|trend_name| trend_name == &t.name);
 
-            matched_trend_indexes.push(index);
+            if index.is_some() {
+                value_types.push(t.sql_type());
+                matched_trends.push(t);
+
+                matched_trend_indexes.push(index);
+            }
         }
+
+        let tx = client.transaction().await?;
+
+        let query = copy_from_query(self, &matched_trends);
+
+        let copy_in_sink = tx
+            .copy_in(&query)
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
 
         let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
         pin_mut!(binary_copy_writer);
 
         for (entity_id, timestamp, vals) in data_package {
             let mut measurements: Vec<MeasValue> = Vec::new();
-            measurements.push(MeasValue::Integer(entity_id as i32));
-            measurements.push(MeasValue::Timestamp(timestamp));
-            measurements.push(MeasValue::Timestamp(timestamp));
+            measurements.push(MeasValue::Integer(*entity_id as i32));
+            measurements.push(MeasValue::Timestamp(*timestamp));
+            measurements.push(MeasValue::Timestamp(*timestamp));
             measurements.push(MeasValue::Int8(job_id));
 
             for i in &matched_trend_indexes {
                 match i {
                     Some(index) => {
-                        let val = vals.get(*index).unwrap();
+                        let val = match vals.get(*index) {
+                            Some(v) => v,
+                            None => "0.0", 
+                        };
+
                         measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
                     },
                     None => {
@@ -605,33 +692,88 @@ impl MeasurementStore for TrendStorePart {
         binary_copy_writer
             .finish()
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could not load data using COPY command: {e}"))))?;
+            .map_err(|e| {
+                let kind = match e.code() {
+                    Some(code) => {
+                        match code {
+                            &SqlState::UNIQUE_VIOLATION => crate::error::DatabaseErrorKind::UniqueViolation,
+                            _ => crate::error::DatabaseErrorKind::Default
+                        }
+                    },
+                    None => crate::error::DatabaseErrorKind::Default
+                };
+
+                Error::Database(DatabaseError {
+                    msg: format!("Could not load data using COPY command: {e}"),
+                    kind, 
+                })
+            })?;
 
         tx
             .commit()
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could not load data using COPY command: {e}"))))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could commit data load using COPY command: {e}"))))?;
 
         Ok(())
     }
 
-    async fn mark_modified<T: GenericClient + Send + Sync>(
+    async fn store_insert(
         &self,
-        client: &mut T,
-        timestamp: DateTime<chrono::Utc>,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error> {
-        let query = "SELECT trend_directory.mark_modified(id, $2) FROM trend_directory.trend_store_part WHERE name = $1";
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
+        let mut matched_trends: Vec<&Trend> = Vec::new();
 
-        client
-            .execute(query, &[&self.name, &timestamp])
+        // Filter trends that match the trend store parts trends
+        for t in self.trends.iter() {
+            let index = trends
+                .iter()
+                .position(|trend_name| trend_name == &t.name);
+
+            if index.is_some() {
+                matched_trend_indexes.push(index);
+                matched_trends.push(t);
+            }
+        }
+
+        let tx = client.transaction().await?;
+
+        let query = insert_query(self, &matched_trends);
+
+        for (entity_id, timestamp, vals) in data_package {
+            let mut measurements: Vec<MeasValue> = Vec::new();
+            measurements.push(MeasValue::Integer(*entity_id as i32));
+            measurements.push(MeasValue::Timestamp(*timestamp));
+            measurements.push(MeasValue::Timestamp(*timestamp));
+            measurements.push(MeasValue::Int8(job_id));
+
+            for i in &matched_trend_indexes {
+                match i {
+                    Some(index) => {
+                        let val = vals.get(*index).unwrap();
+                        measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
+                    },
+                    None => {
+                        measurements.push(MeasValue::Numeric(Decimal::from_f64_retain(0.0).unwrap()));
+                    }
+                }
+            }
+
+            tx.execute_raw(&query, measurements).await?;
+        }
+
+        tx
+            .commit()
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error marking timestamp as modified: {e}"))))?;
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could commit data load using COPY command: {e}"))))?;
 
         Ok(())
     }
-}
 
-impl TrendStorePart {
     pub fn diff(&self, other: &TrendStorePart) -> Vec<Box<dyn Change + Send>> {
         let mut changes: Vec<Box<dyn Change + Send>> = Vec::new();
 
