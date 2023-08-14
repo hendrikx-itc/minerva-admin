@@ -23,6 +23,6 @@ async-trait = "0.1"
 csv = "1.2"
 anyhow = "1.0"
 bytes = "1.0"
-rust_decimal = { version = "1.0", features = ["db-postgres"] }
+rust_decimal = { version = "1.31", features = ["db-postgres"] }
 rustls = "0.20"
 rustls-native-certs = "0.6"
