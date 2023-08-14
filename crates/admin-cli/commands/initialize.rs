@@ -56,6 +56,8 @@ impl Cmd for InitializeOpt {
             let mut config = get_db_config()?;
             config.dbname(database_name);
             client = connect_to_db(&config).await?;
+
+            std::env::set_var("PGDATABASE", &database_name);
         }
 
         if self.create_schema {
