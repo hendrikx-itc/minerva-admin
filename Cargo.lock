@@ -1402,7 +1402,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "1.5.3"
+version = "6.0.0-rc.1"
 dependencies = [
  "actix-cors",
  "actix-rt",
@@ -1620,7 +1620,7 @@ dependencies = [
 
 [[package]]
 name = "minerva-admin"
-version = "1.5.3"
+version = "6.0.0-rc.1"
 dependencies = [
  "actix-cors",
  "actix-rt",
@@ -1656,7 +1656,7 @@ dependencies = [
 
 [[package]]
 name = "minerva-service"
-version = "1.5.3"
+version = "6.0.0-rc.1"
 dependencies = [
  "actix-cors",
  "actix-web",

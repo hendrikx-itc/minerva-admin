@@ -30,7 +30,7 @@ test-minerva-admin:cargo:
 integration-test:cargo:
   stage: test
   services:
-    - name: postgres:13
+    - name: citusdata/citus:12.0.0
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
