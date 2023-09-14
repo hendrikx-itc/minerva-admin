@@ -146,15 +146,14 @@ impl fmt::Display for AddAttributeStore {
 impl Change for AddAttributeStore {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         let query = concat!(
-            "SELECT id ",
-            "FROM attribute_directory.create_attribute_store(",
+            "CALL attribute_directory.create_attribute_store(",
             "$1::text, $2::text, ",
             "$3::attribute_directory.attribute_descr[]",
             ")"
         );
 
         client
-            .query_one(
+            .execute(
                 query,
                 &[
                     &self.attribute_store.data_source,
