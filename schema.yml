@@ -1190,7 +1190,7 @@ objects:
             format(
               'CREATE TABLE IF NOT EXISTS entity.%I('
               'id serial,'
-              'name text,'
+              'name text UNIQUE,'
               'created timestamp with time zone default now()'
               ');',
               $1.name
@@ -13013,7 +13013,8 @@ objects:
     arguments:
       - data_type: trigger.rule
     source: |-
-      SELECT CASE WHEN trigger.has_thresholds($1) THEN
+      --SELECT CASE WHEN trigger.has_thresholds($1) THEN
+      SELECT CASE WHEN true THEN
           trigger.with_threshold_fn_sql_normal($1)
       ELSE
           trigger.with_threshold_fn_sql_no_thresholds($1)

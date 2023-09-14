@@ -512,14 +512,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
-CREATE FUNCTION "public"."raise_warning"("message" anyelement)
-    RETURNS void
-AS $$
-BEGIN
-    RAISE WARNING '%', message;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
-
 
 CREATE FUNCTION "public"."raise_info"("message" anyelement)
     RETURNS void
@@ -742,7 +734,7 @@ SELECT ARRAY[
     format(
       'CREATE TABLE IF NOT EXISTS entity.%I('
       'id serial,'
-      'name text,'
+      'name text UNIQUE,'
       'created timestamp with time zone default now()'
       ');',
       $1.name
