@@ -6,9 +6,22 @@ use tokio_postgres::{config::SslMode, Config};
 use tokio_postgres::{Client, NoTls};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
+use serde::{Serialize, Deserialize};
+
 use super::error::{ConfigurationError, Error};
 
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Node {
+    address: String,
+    port: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClusterConfig {
+    nodes: Vec<Node>,
+}
 
 pub fn get_db_config() -> Result<Config, Error> {
     let config = match env::var(ENV_DB_CONN) {
@@ -103,6 +116,7 @@ pub async fn connect_to_db(config: &Config) -> Result<Client, Error> {
 pub async fn create_database<'a>(
     client: &'a mut Client,
     database_name: &str,
+    cluster_config: Option<ClusterConfig>,
 ) -> Result<(), String> {
     let query = format!("CREATE DATABASE \"{database_name}\"");
 
@@ -110,6 +124,17 @@ pub async fn create_database<'a>(
         .execute(&query, &[])
         .await
         .map_err(|e| format!("Error creating database '{database_name}': {e}"))?;
+
+    if let Some(c) = cluster_config {
+        let query = format!("SELECT * FROM citus_add_node($1, $2)");
+
+        for node in c.nodes {
+            client
+                .execute(&query, &[&node.address, &(node.port as i32)])
+                .await
+                .map_err(|e| format!("Error adding node to cluster: {e}"))?;
+        }
+    }
 
     Ok(())
 }

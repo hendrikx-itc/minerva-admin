@@ -116,7 +116,7 @@ objects:
 - schema:
     name: relation
     comment: >
-      Stores the actual relations between entities in materialized views.
+      Stores the actual relations between entities in tables.
     privileges:
     - role: minerva_writer
       privilege: USAGE,CREATE
@@ -133,6 +133,27 @@ objects:
     - query: run_command_on_workers($$ CREATE SCHEMA "relation"; $$)
     - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer"; $$)
     - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation" GRANT SELECT ON tables TO "minerva"; $$)
+
+- schema:
+    name: relation_def
+    comment: >
+      Stores the views that define the contents of the relation tables.
+    privileges:
+    - role: minerva_writer
+      privilege: USAGE,CREATE
+    - role: minerva
+      privilege: USAGE
+    default-privileges:
+    - role: minerva_writer
+      objclass: tables
+      privilege: SELECT,INSERT,UPDATE,DELETE
+    - role: minerva
+      objclass: tables
+      privilege: SELECT
+    postqueries:
+    - query: run_command_on_workers($$ CREATE SCHEMA "relation_def"; $$)
+    - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation_def" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer"; $$)
+    - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation_def" GRANT SELECT ON tables TO "minerva"; $$)
 
 - schema:
     name: relation_directory

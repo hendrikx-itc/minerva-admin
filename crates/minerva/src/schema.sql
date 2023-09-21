@@ -96,7 +96,7 @@ SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_direc
 
 
 CREATE SCHEMA IF NOT EXISTS "relation";
-COMMENT ON SCHEMA "relation" IS 'Stores the actual relations between entities in materialized views.
+COMMENT ON SCHEMA "relation" IS 'Stores the actual relations between entities in tables.
 ';
 GRANT USAGE,CREATE ON SCHEMA "relation" TO "minerva_writer";
 GRANT USAGE ON SCHEMA "relation" TO "minerva";
@@ -107,6 +107,20 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation" GRANT SELECT ON tables TO "minerva
 SELECT run_command_on_workers($$ CREATE SCHEMA "relation"; $$);
 SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer"; $$);
 SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation" GRANT SELECT ON tables TO "minerva"; $$);
+
+
+CREATE SCHEMA IF NOT EXISTS "relation_def";
+COMMENT ON SCHEMA "relation_def" IS 'Stores the views that define the contents of the relation tables.
+';
+GRANT USAGE,CREATE ON SCHEMA "relation_def" TO "minerva_writer";
+GRANT USAGE ON SCHEMA "relation_def" TO "minerva";
+ALTER DEFAULT PRIVILEGES IN SCHEMA "relation_def" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer";
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA "relation_def" GRANT SELECT ON tables TO "minerva";
+
+SELECT run_command_on_workers($$ CREATE SCHEMA "relation_def"; $$);
+SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation_def" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer"; $$);
+SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "relation_def" GRANT SELECT ON tables TO "minerva"; $$);
 
 
 CREATE SCHEMA IF NOT EXISTS "relation_directory";
