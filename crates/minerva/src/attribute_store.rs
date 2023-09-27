@@ -21,6 +21,16 @@ pub struct Attribute {
     pub description: String,
 }
 
+impl fmt::Display for Attribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Attribute({}: {})",
+            &self.name, &self.data_type
+        )
+    }
+}
+
 fn default_empty_string() -> String {
     String::new()
 }
@@ -83,6 +93,69 @@ impl Change for AddAttributes {
     }
 }
 
+pub struct ChangeAttribute {
+    pub attribute_store: AttributeStore,
+    pub attribute: Attribute,
+}
+
+
+impl fmt::Display for ChangeAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ChangeAttribute({}, {})",
+            &self.attribute_store,
+            &self.attribute.name
+        )
+    }
+}
+
+impl fmt::Debug for ChangeAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ChangeAttribute({}, {})",
+            &self.attribute_store, &self.attribute
+        )
+    }
+}
+
+#[async_trait]
+impl Change for ChangeAttribute {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        let query = concat!(
+            "UPDATE attribute_directory.attribute ",
+            "SET data_type = $1 ",
+            "FROM attribute_directory.attribute_store ",
+            "JOIN directory.data_source ON data_source.id = attribute_store.data_source_id ",
+            "JOIN directory.entity_type ON entity_type.id = attribute_store.entity_type_id ",
+            "WHERE attribute.attribute_store_id = attribute_store.id ",
+            "AND attribute.name = $2 AND data_source.name = $3 AND entity_type.name = $4",
+        );
+
+        client
+            .execute(
+                query,
+                &[
+                    &self.attribute.data_type,
+                    &self.attribute.name,
+                    &self.attribute_store.data_source,
+                    &self.attribute_store.entity_type,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                DatabaseError::from_msg(format!("Error changing trend data type: {e}"))
+            })?;
+
+        Ok(format!(
+            "Changed type of attribute '{}' in store '{}'",
+            &self.attribute, &self.attribute_store
+        ))
+    }
+}
+
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AttributeStore {
     pub data_source: String,
@@ -102,8 +175,13 @@ impl AttributeStore {
                 .iter()
                 .find(|my_part| my_part.name == other_attribute.name)
             {
-                Some(_my_part) => {
-                    // Ok attribute exists
+                Some(my_part) => {
+                    if my_part.data_type != other_attribute.data_type {
+                        changes.push(Box::new(ChangeAttribute {
+                            attribute_store: self.clone(),
+                            attribute: other_attribute.clone(),
+                        }))
+                    }
                 }
                 None => {
                     new_attributes.push(other_attribute.clone());
