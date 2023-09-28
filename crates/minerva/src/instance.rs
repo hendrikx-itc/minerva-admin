@@ -23,6 +23,7 @@ use super::trend_store::{
 };
 use super::trigger::{load_trigger_from_file, load_triggers, AddTrigger, Trigger};
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
+use super::entity_set::{load_entity_sets, EntitySet};
 
 pub struct MinervaInstance {
     pub instance_root: Option<PathBuf>,
@@ -33,6 +34,7 @@ pub struct MinervaInstance {
     pub relations: Vec<Relation>,
     pub trend_materializations: Vec<TrendMaterialization>,
     pub triggers: Vec<Trigger>,
+    pub entity_sets: Vec<EntitySet>,
 }
 
 impl MinervaInstance {
@@ -55,6 +57,8 @@ impl MinervaInstance {
 
         let triggers = load_triggers(client).await?;
 
+        let entity_sets = load_entity_sets(client).await?;
+
         Ok(MinervaInstance {
             instance_root: None,
             trend_stores,
@@ -64,6 +68,7 @@ impl MinervaInstance {
             relations,
             trend_materializations,
             triggers,
+            entity_sets,
         })
     }
 
@@ -75,6 +80,7 @@ impl MinervaInstance {
         let relations = load_relations_from(minerva_instance_root).collect();
         let trend_materializations = load_materializations_from(minerva_instance_root).collect();
         let triggers = load_triggers_from(minerva_instance_root).collect();
+        let entity_sets: Vec<EntitySet> = vec!();
 
         MinervaInstance {
             instance_root: Some(PathBuf::from(minerva_instance_root)),
@@ -85,6 +91,7 @@ impl MinervaInstance {
             relations,
             trend_materializations,
             triggers,
+            entity_sets,
         }
     }
 
