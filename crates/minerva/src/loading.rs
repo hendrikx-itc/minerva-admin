@@ -15,7 +15,7 @@ use crate::job::{end_job, start_job};
 use crate::trend_store::get_trend_store_id;
 use crate::trend_store::{
     create_partitions_for_trend_store_and_timestamp, load_trend_store, MeasurementStore,
-    TrendStore, TrendStorePart,
+    TrendStore, TrendStorePart
 };
 
 #[derive(Serialize, Deserialize)]
@@ -109,14 +109,14 @@ pub async fn load_data<P: AsRef<Path>>(
         .await
         .map_err(|e| format!("Error loading trend store for data source '{data_source}', entity type '{}' and granularity '{}': {e}", parser_config.entity_type, parser_config.granularity))?;
 
-    let entity_ids: Vec<i64> = names_to_entity_ids(
+    let entity_ids: Vec<i32> = names_to_entity_ids(
         client,
         &trend_store.entity_type,
         entity_names,
     )
     .await?;
 
-    let data_package: Vec<(i64, DateTime<chrono::Utc>, Vec<String>)> = zip(entity_ids, raw_data_package)
+    let data_package: Vec<(i32, DateTime<chrono::Utc>, Vec<String>)> = zip(entity_ids, raw_data_package)
         .into_iter()
         .map(|(entity_id, record)| {
             (entity_id, record.1, record.2)
@@ -138,7 +138,7 @@ pub async fn load_data<P: AsRef<Path>>(
     let trend_store_part: TrendStorePart = trend_store.parts.first().unwrap().clone();
 
     trend_store_part
-        .store(client, job_id, &trends, &data_package)
+        .store_raw(client, job_id, &trends, &data_package)
         .await?;
 
     trend_store_part.mark_modified(client, timestamp).await?;
@@ -154,7 +154,7 @@ async fn names_to_entity_ids<I>(
     client: &mut Client,
     entity_type: &str,
     names: I,
-) -> Result<Vec<i64>, Error>
+) -> Result<Vec<i32>, Error>
 where
     I: IntoIterator,
     I::Item: ToString,
@@ -181,13 +181,13 @@ where
 
     let rows = client.query(&query, &[&names_list]).await?;
 
-    let mut entity_ids: HashMap<String, i64> = HashMap::new();
+    let mut entity_ids: HashMap<String, i32> = HashMap::new();
 
     for row in rows {
         let name: String = row.get(0);
         let entity_id_value: Option<i32> = row.try_get(1).unwrap();
-        let entity_id: i64 = match entity_id_value {
-            Some(entity_id) => entity_id as i64,
+        let entity_id: i32 = match entity_id_value {
+            Some(entity_id) => entity_id,
             None => create_entity(client, entity_type, &name).await?,
         };
 
@@ -197,7 +197,7 @@ where
     Ok(names_list.iter().map(|name| *(entity_ids.get(name).unwrap())).collect())
 }
 
-async fn create_entity(client: &mut Client, entity_type: &str, name: &str) -> Result<i64, Error> {
+async fn create_entity(client: &mut Client, entity_type: &str, name: &str) -> Result<i32, Error> {
     let row = client
         .query_one(
             "SELECT name FROM directory.entity_type WHERE lower(name) = lower($1)",
@@ -215,7 +215,7 @@ async fn create_entity(client: &mut Client, entity_type: &str, name: &str) -> Re
     let rows = client.query(&query, &[&name]).await?;
 
     match rows.iter().next() {
-        Some(row) => row.try_get(0).map(|v: i32| v as i64).map_err(|e| {
+        Some(row) => row.try_get(0).map_err(|e| {
             Error::Runtime(RuntimeError::from_msg(format!(
                 "Could not create entity: {e}"
             )))

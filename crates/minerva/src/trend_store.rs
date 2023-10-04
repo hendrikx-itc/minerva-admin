@@ -12,6 +12,8 @@ use tokio_postgres::{binary_copy::BinaryCopyInWriter, Client, GenericClient, Row
 use postgres_protocol::escape::escape_identifier;
 use humantime::format_duration;
 
+use lazy_static::lazy_static;
+
 use chrono::{DateTime, Utc};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
@@ -37,7 +39,15 @@ pub trait MeasurementStore {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
+    ) -> Result<(), Error>;
+
+    async fn store_raw(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error>;
 
     async fn mark_modified<T: GenericClient + Send + Sync>(
@@ -128,9 +138,19 @@ impl Trend {
         }
     }
 
+    pub fn none_value(&self) -> MeasValue {
+        match self.data_type.as_str() {
+            "integer" => MeasValue::Integer(None),
+            "numeric" => MeasValue::Numeric(None),
+            "bigint" => MeasValue::Int8(None),
+            _ => MeasValue::Text("".to_string()),
+        }
+    }
+
     pub fn meas_value_from_str(&self, value: &str) -> Result<MeasValue, Error> {
         match self.data_type.as_str() {
             "integer" => {
+
                 if value.len() == 0 {
                     Ok(MeasValue::Integer(None))
                 } else {
@@ -545,6 +565,13 @@ impl ToSql for MeasValue {
     }
 }
 
+lazy_static! {
+    static ref INTEGER_NONE_VALUE: MeasValue = MeasValue::Integer(None);
+    static ref INT8_NONE_VALUE: MeasValue = MeasValue::Int8(None);
+    static ref NUMERIC_NONE_VALUE: MeasValue = MeasValue::Numeric(None);
+    static ref TEXT_NONE_VALUE: MeasValue = MeasValue::Text("".to_string());
+}
+
 fn insert_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> String {
     let update_part = trends
         .iter()
@@ -596,7 +623,7 @@ impl MeasurementStore for TrendStorePart {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
     ) -> Result<(), Error> {
         if trends.len() == 0 {
             return Ok(())
@@ -618,6 +645,16 @@ impl MeasurementStore for TrendStorePart {
                 }
             }
         }
+    }
+
+    async fn store_raw(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), Error> {
+        Ok(())
     }
 
     async fn mark_modified<T: GenericClient + Send + Sync>(
@@ -646,7 +683,7 @@ impl TrendStorePart {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
     ) -> Result<(), Error> {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
@@ -691,35 +728,34 @@ impl TrendStorePart {
         pin_mut!(binary_copy_writer);
 
         for (entity_id, timestamp, vals) in data_package {
-            let mut measurements: Vec<MeasValue> = Vec::new();
-            measurements.push(MeasValue::Integer(Some(*entity_id as i32)));
-            measurements.push(MeasValue::Timestamp(*timestamp));
-            measurements.push(MeasValue::Timestamp(*timestamp));
-            measurements.push(MeasValue::Int8(Some(job_id)));
+            let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
+            values.push(entity_id);
+            values.push(timestamp);
+            values.push(timestamp);
+            values.push(&job_id);
 
             for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
                     Some(index) => {
                         match vals.get(*index) {
                             Some(v) => {
-                                measurements.push(t.meas_value_from_str(&v)?)
+                                values.push(v)
                             },
                             None => {
                                 // This should not be possible
-                                measurements.push(t.meas_value_from_str("")?)
                             },
                         };
                     },
                     None => {
-                        measurements.push(t.meas_value_from_str("")?);
+                        match t.data_type.as_str() {
+                            "integer" => values.push(&(*INTEGER_NONE_VALUE)),
+                            "bigint" => values.push(&(*INT8_NONE_VALUE)),
+                            "numeric" => values.push(&(*NUMERIC_NONE_VALUE)),
+                            _ => values.push(&(*TEXT_NONE_VALUE)),
+                        }
                     }
                 }
             }
-
-            let values: Vec<&'_ (dyn ToSql + Sync)> = measurements
-                .iter()
-                .map(|v| v as &(dyn ToSql + Sync))
-                .collect();
 
             binary_copy_writer
                 .as_mut()
@@ -761,7 +797,7 @@ impl TrendStorePart {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
+        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
     ) -> Result<(), Error> {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
@@ -784,32 +820,37 @@ impl TrendStorePart {
         let query = insert_query(self, &matched_trends);
 
         for (entity_id, timestamp, vals) in data_package {
-            let mut measurements: Vec<MeasValue> = Vec::new();
-            measurements.push(MeasValue::Integer(Some(*entity_id as i32)));
-            measurements.push(MeasValue::Timestamp(*timestamp));
-            measurements.push(MeasValue::Timestamp(*timestamp));
-            measurements.push(MeasValue::Int8(Some(job_id)));
+            let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
+            values.push(entity_id);
+            values.push(timestamp);
+            values.push(timestamp);
+            values.push(&job_id);
 
             for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
                     Some(index) => {
                         match vals.get(*index) {
                             Some(v) => {
-                                measurements.push(t.meas_value_from_str(&v)?)
+                                values.push(v)
                             },
                             None => {
                                 // This should not be possible
-                                measurements.push(t.meas_value_from_str("")?)
+                                return Err(Error::Runtime(RuntimeError::from_msg(format!("Expected value not found at index {}", index))));
                             },
                         };
                     },
                     None => {
-                        measurements.push(t.meas_value_from_str("")?);
+                        match t.data_type.as_str() {
+                            "integer" => values.push(&(*INTEGER_NONE_VALUE)),
+                            "bigint" => values.push(&(*INT8_NONE_VALUE)),
+                            "numeric" => values.push(&(*NUMERIC_NONE_VALUE)),
+                            _ => values.push(&(*TEXT_NONE_VALUE)),
+                        };
                     }
                 }
             }
 
-            tx.execute_raw(&query, measurements).await?;
+            tx.execute(&query, &values).await?;
         }
 
         tx
