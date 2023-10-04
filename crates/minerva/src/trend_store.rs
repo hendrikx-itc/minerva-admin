@@ -130,9 +130,27 @@ impl Trend {
 
     pub fn meas_value_from_str(&self, value: &str) -> Result<MeasValue, Error> {
         match self.data_type.as_str() {
-            "integer" => Ok(MeasValue::Integer(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value: {e}") }))?)),
-            "numeric" => Ok(MeasValue::Numeric(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value: {e}") }))?)),
-            "bigint" => Ok(MeasValue::Int8(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value: {e}") }))?)),
+            "integer" => {
+                if value.len() == 0 {
+                    Ok(MeasValue::Integer(None))
+                } else {
+                    Ok(MeasValue::Integer(Some(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value: {e}") }))?)))
+                }
+            },
+            "numeric" => {
+                if value.len() == 0 {
+                    Ok(MeasValue::Numeric(None))
+                } else {
+                    Ok(MeasValue::Numeric(Some(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value: {e}") }))?)))
+                }
+            },
+            "bigint" => {
+                if value.len() == 0 {
+                    Ok(MeasValue::Int8(None))
+                } else {
+                    Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value: {e}") }))?)))
+                }
+            },
             _ => Ok(MeasValue::Text("".to_string())),
         }
     }
@@ -460,12 +478,12 @@ fn default_generated_trends() -> Vec<GeneratedTrend> {
 
 #[derive(Debug)]
 pub enum MeasValue {
-    Integer(i32),
-    Int8(i64),
-    Real(f64),
+    Integer(Option<i32>),
+    Int8(Option<i64>),
+    Real(Option<f64>),
     Text(String),
     Timestamp(chrono::DateTime<chrono::Utc>),
-    Numeric(Decimal),
+    Numeric(Option<Decimal>),
 }
 
 trait ToType {
@@ -674,10 +692,10 @@ impl TrendStorePart {
 
         for (entity_id, timestamp, vals) in data_package {
             let mut measurements: Vec<MeasValue> = Vec::new();
-            measurements.push(MeasValue::Integer(*entity_id as i32));
+            measurements.push(MeasValue::Integer(Some(*entity_id as i32)));
             measurements.push(MeasValue::Timestamp(*timestamp));
             measurements.push(MeasValue::Timestamp(*timestamp));
-            measurements.push(MeasValue::Int8(job_id));
+            measurements.push(MeasValue::Int8(Some(job_id)));
 
             for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
@@ -767,10 +785,10 @@ impl TrendStorePart {
 
         for (entity_id, timestamp, vals) in data_package {
             let mut measurements: Vec<MeasValue> = Vec::new();
-            measurements.push(MeasValue::Integer(*entity_id as i32));
+            measurements.push(MeasValue::Integer(Some(*entity_id as i32)));
             measurements.push(MeasValue::Timestamp(*timestamp));
             measurements.push(MeasValue::Timestamp(*timestamp));
-            measurements.push(MeasValue::Int8(job_id));
+            measurements.push(MeasValue::Int8(Some(job_id)));
 
             for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
