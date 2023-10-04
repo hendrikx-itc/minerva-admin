@@ -122,8 +122,18 @@ impl Trend {
     pub fn sql_type(&self) -> Type {
         match self.data_type.as_str() {
             "integer" => Type::INT4,
+            "bigint" => Type::INT8,
             "numeric" => Type::NUMERIC,
             &_ => Type::TEXT,
+        }
+    }
+
+    pub fn meas_value_from_str(&self, value: &str) -> Result<MeasValue, Error> {
+        match self.data_type.as_str() {
+            "integer" => Ok(MeasValue::Integer(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value: {e}") }))?)),
+            "numeric" => Ok(MeasValue::Numeric(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value: {e}") }))?)),
+            "bigint" => Ok(MeasValue::Int8(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value: {e}") }))?)),
+            _ => Ok(MeasValue::Text("".to_string())),
         }
     }
 }
@@ -570,6 +580,10 @@ impl MeasurementStore for TrendStorePart {
         trends: &Vec<String>,
         data_package: &Vec<(i64, DateTime<chrono::Utc>, Vec<String>)>,
     ) -> Result<(), Error> {
+        if trends.len() == 0 {
+            return Ok(())
+        };
+
         match self.store_copy_from(client, job_id, trends, data_package).await {
             Ok(_) => Ok(()),
             Err(e) => {
@@ -644,6 +658,10 @@ impl TrendStorePart {
 
         let tx = client.transaction().await?;
 
+        if matched_trends.len() == 0 {
+            return Ok(());
+        }
+
         let query = copy_from_query(self, &matched_trends);
 
         let copy_in_sink = tx
@@ -661,18 +679,21 @@ impl TrendStorePart {
             measurements.push(MeasValue::Timestamp(*timestamp));
             measurements.push(MeasValue::Int8(job_id));
 
-            for i in &matched_trend_indexes {
+            for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
                     Some(index) => {
-                        let val = match vals.get(*index) {
-                            Some(v) => v,
-                            None => "0.0", 
+                        match vals.get(*index) {
+                            Some(v) => {
+                                measurements.push(t.meas_value_from_str(&v)?)
+                            },
+                            None => {
+                                // This should not be possible
+                                measurements.push(t.meas_value_from_str("")?)
+                            },
                         };
-
-                        measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
                     },
                     None => {
-                        measurements.push(MeasValue::Numeric(Decimal::from_f64_retain(0.0).unwrap()));
+                        measurements.push(t.meas_value_from_str("")?);
                     }
                 }
             }
@@ -751,14 +772,21 @@ impl TrendStorePart {
             measurements.push(MeasValue::Timestamp(*timestamp));
             measurements.push(MeasValue::Int8(job_id));
 
-            for i in &matched_trend_indexes {
+            for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
                     Some(index) => {
-                        let val = vals.get(*index).unwrap();
-                        measurements.push(MeasValue::Numeric(Decimal::from_str(&val).unwrap()));
+                        match vals.get(*index) {
+                            Some(v) => {
+                                measurements.push(t.meas_value_from_str(&v)?)
+                            },
+                            None => {
+                                // This should not be possible
+                                measurements.push(t.meas_value_from_str("")?)
+                            },
+                        };
                     },
                     None => {
-                        measurements.push(MeasValue::Numeric(Decimal::from_f64_retain(0.0).unwrap()));
+                        measurements.push(t.meas_value_from_str("")?);
                     }
                 }
             }

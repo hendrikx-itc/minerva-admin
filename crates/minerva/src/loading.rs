@@ -208,7 +208,7 @@ async fn create_entity(client: &mut Client, entity_type: &str, name: &str) -> Re
     let entity_type_name: String = row.get(0);
 
     let query = format!(
-        "INSERT INTO entity.\"{}\"(name) VALUES($1) ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id",
+        "INSERT INTO entity.\"{}\"(name) VALUES($1) ON CONFLICT(name) DO NOTHING RETURNING id",
         &entity_type_name
     );
 

@@ -6,9 +6,22 @@ use tokio_postgres::{config::SslMode, Config};
 use tokio_postgres::{Client, NoTls};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
+use serde::{Serialize, Deserialize};
+
 use super::error::{ConfigurationError, Error};
 
 static ENV_DB_CONN: &str = "MINERVA_DB_CONN";
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Node {
+    pub address: String,
+    pub port: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClusterConfig {
+    pub nodes: Vec<Node>,
+}
 
 pub fn get_db_config() -> Result<Config, Error> {
     let config = match env::var(ENV_DB_CONN) {
