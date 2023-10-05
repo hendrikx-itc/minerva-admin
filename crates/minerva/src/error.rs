@@ -62,6 +62,12 @@ impl RuntimeError {
     }
 }
 
+impl From<String> for RuntimeError {
+    fn from(msg: String) -> RuntimeError {
+        RuntimeError { msg }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     Database(DatabaseError),

@@ -3,8 +3,10 @@ use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_postgres::error::SqlState;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fmt;
+use std::iter::zip;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_postgres::types::ToSql;
@@ -33,6 +35,17 @@ trait SanityCheck {
 }
 
 #[async_trait]
+pub trait RawMeasurementStore {
+    async fn store_raw(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trends: &Vec<String>,
+        data_package: &Vec<(String, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
 pub trait MeasurementStore {
     async fn store(
         &self,
@@ -42,13 +55,6 @@ pub trait MeasurementStore {
         data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
     ) -> Result<(), Error>;
 
-    async fn store_raw(
-        &self,
-        client: &mut Client,
-        job_id: i64,
-        trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<String>)>,
-    ) -> Result<(), Error>;
 
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
@@ -616,6 +622,105 @@ fn copy_from_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> S
     query
 }
 
+struct ValueExtractor<'a> {
+    pub trend: &'a Trend,
+    pub value_index: usize,
+}
+
+impl<'a> ValueExtractor<'a> {
+    fn extract(&self, values: &Vec<String>) -> Result<MeasValue, Error> {
+        values
+            .get(self.value_index)
+            .map(|v| self.trend.meas_value_from_str(&v))
+            .ok_or(Error::Runtime(RuntimeError::from(format!("Could not find value at index {}", self.value_index))))?
+    }
+}
+
+struct SubPackageExtractor<'a> {
+    pub trend_store_part: &'a TrendStorePart,
+    pub value_extractors: Vec<ValueExtractor<'a>>,
+}
+
+impl<'a> SubPackageExtractor<'a> {
+    fn new(trend_store_part: &'a TrendStorePart) -> SubPackageExtractor<'a> {
+        SubPackageExtractor {
+            trend_store_part,
+            value_extractors: Vec::new(),
+        }
+    }
+
+    fn trend_names(&self) -> Vec<String> {
+        self.value_extractors.iter().map(|e| e.trend.name.clone()).collect()
+    }
+
+    fn extract_sub_package(&self, entity_ids: &Vec<i32>, data_package: &Vec<(String, DateTime<Utc>, Vec<String>)>) -> Result<Vec<(i32, DateTime<Utc>, Vec<MeasValue>)>, Error> {
+        let mut sub_package = Vec::new();
+
+        for (entity_id, (_entity, timestamp, values)) in zip(entity_ids, data_package) {
+            let meas_values: Result<Vec<MeasValue>, Error> = self.value_extractors
+                .iter()
+                .map(|value_extractor| value_extractor.extract(values))
+                .collect();
+
+            sub_package.push((*entity_id, timestamp.clone(), meas_values?));
+        }
+
+        Ok(sub_package)
+    }
+}
+
+#[async_trait]
+impl RawMeasurementStore for TrendStore {
+    async fn store_raw(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        trend_names: &Vec<String>,
+        records: &Vec<(String, DateTime<chrono::Utc>, Vec<String>)>,
+    ) -> Result<(), Error> {
+        let modified_timestamp = chrono::offset::Utc::now();
+
+        let entity_ids: Vec<i32> = names_to_entity_ids(
+            client,
+            &self.entity_type,
+            records.iter().map(|(entity_name, _timestamp, _values)| entity_name),
+        )
+        .await?;
+
+        let mut extractors: HashMap<&str, SubPackageExtractor> = HashMap::new();
+
+        for (value_index, trend_name) in trend_names.iter().enumerate() {
+            for trend_store_part in &self.parts {
+                for trend in &trend_store_part.trends {
+                    if trend.name == *trend_name {
+                        let extractor = extractors.entry(&trend_store_part.name).or_insert_with(|| SubPackageExtractor::new(trend_store_part));
+    
+                        extractor.value_extractors.push(ValueExtractor { trend, value_index });
+                    }
+                }
+            }
+        }
+
+        for extractor in extractors.values() {
+            let sub_data_package = extractor.extract_sub_package(&entity_ids, records)?;
+    
+            extractor.trend_store_part
+                .store(
+                    client,
+                    job_id,
+                    &extractor.trend_names(),
+                    &sub_data_package,
+                )
+                .await
+                .map_err(|e| Error::Runtime(RuntimeError::from(format!("Error storing data package: {e}"))))?;
+
+            extractor.trend_store_part.mark_modified(client, modified_timestamp).await?;
+        }
+
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl MeasurementStore for TrendStorePart {
     async fn store(
@@ -647,16 +752,6 @@ impl MeasurementStore for TrendStorePart {
         }
     }
 
-    async fn store_raw(
-        &self,
-        client: &mut Client,
-        job_id: i64,
-        trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<String>)>,
-    ) -> Result<(), Error> {
-        Ok(())
-    }
-
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
@@ -674,6 +769,67 @@ impl MeasurementStore for TrendStorePart {
             .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error marking timestamp as modified: {e}"))))?;
 
         Ok(())
+    }
+}
+
+async fn names_to_entity_ids<'a, I, J>(
+    client: &mut Client,
+    entity_type_table: &str,
+    names: I,
+) -> Result<Vec<i32>, Error>
+where
+    I: IntoIterator<Item = &'a J>,
+    J: AsRef<str> + 'a + ?Sized,
+{
+    let query = format!(
+        "WITH lookup_list AS (SELECT unnest($1::text[]) AS name) \
+        SELECT l.name, e.id FROM lookup_list l \
+        LEFT JOIN entity.{} e ON l.name = e.name ",
+        escape_identifier(entity_type_table)
+    );
+
+    let names_list: Vec<&str> = names.into_iter().map(AsRef::as_ref).collect();
+
+    let rows = client.query(&query, &[&names_list]).await?;
+
+    let mut entity_ids: HashMap<String, i32> = HashMap::new();
+
+    for row in rows {
+        let name: String = row.get(0);
+        let entity_id_value: Option<i32> = row.try_get(1)?;
+        let entity_id: i32 = match entity_id_value {
+            Some(entity_id) => entity_id,
+            None => create_entity(client, entity_type_table, &name).await?,
+        };
+
+        entity_ids.insert(name, entity_id);
+    }
+
+    names_list
+        .iter()
+        .map(|name| -> Result<i32, Error> {
+            entity_ids.get(&String::from(*name)).map(|v| *v).ok_or(Error::Runtime(RuntimeError::from(format!("Could not find Id for entity name"))))
+        })
+        .collect()
+}
+
+async fn create_entity(
+    client: &mut Client,
+    entity_type_table: &str,
+    name: &str,
+) -> Result<i32, Error> {
+    let query = format!(
+        "INSERT INTO entity.{}(name) VALUES($1) ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id",
+        escape_identifier(entity_type_table)
+    );
+
+    let rows = client.query(&query, &[&name]).await?;
+
+    match rows.first() {
+        Some(row) => row
+            .try_get(0)
+            .map_err(|e| Error::from(RuntimeError::from(format!("Could not create entity: {e}")))),
+        None => Err(Error::from(RuntimeError::from("Could not insert entity".to_string()))),
     }
 }
 
@@ -1338,7 +1494,7 @@ pub fn load_trend_store_from_file(path: &PathBuf) -> Result<TrendStore, Error> {
         Ok(trend_store)
     } else if path.extension() == Some(std::ffi::OsStr::new("json")) {
         let trend_store: TrendStore = serde_json::from_reader(f).map_err(|e| {
-            RuntimeError::from_msg(format!(
+            RuntimeError::from(format!(
                 "Could not read trend store definition from file '{}': {}",
                 path.display(),
                 e

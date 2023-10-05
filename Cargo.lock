@@ -1422,7 +1422,7 @@ dependencies = [
  "reqwest",
  "rust_decimal",
  "rust_decimal_macros",
- "rustls",
+ "rustls 0.20.9",
  "rustls-native-certs",
  "serde",
  "serde_json",
@@ -1430,7 +1430,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-postgres",
- "tokio-postgres-rustls",
+ "tokio-postgres-rustls 0.9.0",
 ]
 
 [[package]]
@@ -1590,14 +1590,15 @@ dependencies = [
  "postgres-types",
  "regex",
  "rust_decimal",
- "rustls",
+ "rustls 0.21.7",
  "rustls-native-certs",
  "serde",
  "serde_json",
  "serde_yaml",
+ "thiserror",
  "tokio",
  "tokio-postgres",
- "tokio-postgres-rustls",
+ "tokio-postgres-rustls 0.10.0",
 ]
 
 [[package]]
@@ -1624,7 +1625,7 @@ dependencies = [
  "postgres-types",
  "predicates",
  "regex",
- "rustls",
+ "rustls 0.20.9",
  "rustls-native-certs",
  "serde",
  "serde_json",
@@ -1633,7 +1634,7 @@ dependencies = [
  "term-table",
  "tokio",
  "tokio-postgres",
- "tokio-postgres-rustls",
+ "tokio-postgres-rustls 0.9.0",
 ]
 
 [[package]]
@@ -1657,7 +1658,7 @@ dependencies = [
  "minerva",
  "postgres-types",
  "regex",
- "rustls",
+ "rustls 0.20.9",
  "rustls-native-certs",
  "serde",
  "serde_json",
@@ -1666,7 +1667,7 @@ dependencies = [
  "term-table",
  "tokio",
  "tokio-postgres",
- "tokio-postgres-rustls",
+ "tokio-postgres-rustls 0.9.0",
  "tokio-stream",
  "utoipa",
  "utoipa-swagger-ui",
@@ -2326,6 +2327,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8d6c9f025a446bc4d18ad9632e69aec8f287aa84499ee335599fabd20c3fd8"
+dependencies = [
+ "log",
+ "ring",
+ "rustls-webpki",
+ "sct",
+]
+
+[[package]]
 name = "rustls-native-certs"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2344,6 +2357,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d3987094b1d07b653b7dfdc3f70ce9a1da9c51ac18c1b06b662e4f9a0e9f4b2"
 dependencies = [
  "base64",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.101.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c7d5dece342910d9ba34d259310cae3e0154b873b35408b787b59bce53d34fe"
+dependencies = [
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -2909,10 +2932,24 @@ checksum = "606f2b73660439474394432239c82249c0d45eb5f23d91f401be1e33590444a7"
 dependencies = [
  "futures",
  "ring",
- "rustls",
+ "rustls 0.20.9",
  "tokio",
  "tokio-postgres",
- "tokio-rustls",
+ "tokio-rustls 0.23.4",
+]
+
+[[package]]
+name = "tokio-postgres-rustls"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd5831152cb0d3f79ef5523b357319ba154795d64c7078b2daa95a803b54057f"
+dependencies = [
+ "futures",
+ "ring",
+ "rustls 0.21.7",
+ "tokio",
+ "tokio-postgres",
+ "tokio-rustls 0.24.1",
 ]
 
 [[package]]
@@ -2921,9 +2958,19 @@ version = "0.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c43ee83903113e03984cb9e5cebe6c04a5116269e900e3ddba8f068a62adda59"
 dependencies = [
- "rustls",
+ "rustls 0.20.9",
  "tokio",
  "webpki",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28327cf380ac148141087fbfb9de9d7bd4e84ab5d2c28fbc911d753de8a7081"
+dependencies = [
+ "rustls 0.21.7",
+ "tokio",
 ]
 
 [[package]]
