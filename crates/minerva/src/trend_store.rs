@@ -160,21 +160,21 @@ impl Trend {
                 if value.len() == 0 {
                     Ok(MeasValue::Integer(None))
                 } else {
-                    Ok(MeasValue::Integer(Some(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value: {e}") }))?)))
+                    Ok(MeasValue::Integer(Some(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value '{value}': {e}") }))?)))
                 }
             },
             "numeric" => {
                 if value.len() == 0 {
                     Ok(MeasValue::Numeric(None))
                 } else {
-                    Ok(MeasValue::Numeric(Some(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value: {e}") }))?)))
+                    Ok(MeasValue::Numeric(Some(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value '{value}': {e}") }))?)))
                 }
             },
             "bigint" => {
                 if value.len() == 0 {
                     Ok(MeasValue::Int8(None))
                 } else {
-                    Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value: {e}") }))?)))
+                    Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value '{value}': {e}") }))?)))
                 }
             },
             _ => Ok(MeasValue::Text("".to_string())),
