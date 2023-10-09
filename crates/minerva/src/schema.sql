@@ -86,6 +86,21 @@ SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias" GRAN
 SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias" GRANT USAGE,SELECT ON sequences TO "minerva_writer"; $$);
 
 
+CREATE SCHEMA IF NOT EXISTS "alias_def";
+GRANT USAGE,CREATE ON SCHEMA "alias_def" TO "minerva_writer";
+GRANT USAGE ON SCHEMA "alias_def" TO "minerva";
+ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT SELECT ON tables TO "minerva";
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT SELECT,UPDATE,DELETE ON tables TO "minerva_writer";
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT USAGE,SELECT ON sequences TO "minerva_writer";
+
+SELECT run_command_on_workers($$ CREATE SCHEMA "alias_def"; $$);
+SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer"; $$);
+SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT SELECT ON tables TO "minerva"; $$);
+SELECT run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT USAGE,SELECT ON sequences TO "minerva_writer"; $$);
+
+
 CREATE SCHEMA IF NOT EXISTS "alias_directory";
 GRANT USAGE,CREATE ON SCHEMA "alias_directory" TO "minerva_writer";
 GRANT USAGE ON SCHEMA "alias_directory" TO "minerva";
@@ -930,21 +945,14 @@ AS $$
 SELECT ARRAY[
     format(
         'CREATE TABLE %I.%I ('
-        '  id serial PRIMARY KEY,'
-        '  %I text UNIQUE NOT NULL,'
-        '  entity_id integer,'
-        '  entity_type_id integer'
+        '  entity_id serial PRIMARY KEY,'
+        '  alias text NOT NULL,'
         ');',
         alias_directory.alias_schema(),
         $1.name, $1.name
     ),
     format(
-        'CREATE INDEX ON %I.%I USING btree(entity_id);',
-        alias_directory.alias_schema(),
-        $1.name
-    ),
-    format(
-        'CREATE INDEX ON %I.%I USING btree(entity_type_id);',
+        'CREATE INDEX ON %I.%I USING btree(alias);',
         alias_directory.alias_schema(),
         $1.name
     )
@@ -956,6 +964,32 @@ CREATE FUNCTION "alias_directory"."initialize_alias_type"(alias_directory.alias_
     RETURNS alias_directory.alias_type
 AS $$
 SELECT public.action($1, alias_directory.initialize_alias_type_sql($1));
+$$ LANGUAGE sql VOLATILE;
+
+
+CREATE FUNCTION "alias_directory"."update_alias_sql"(alias_directory.alias_type)
+    RETURNS text[]
+AS $$
+SELECT ARRAY[
+    format(
+        'DELETE FROM %I.%I',
+        alias_directory.alias_schema(),
+        $1.name
+    ),
+    format(
+        'INSERT INTO %I.%I(entity_id, alias) SELECT entity_id, alias FROM alias_def.%I'
+        ');',
+        alias_directory.alias_schema(),
+        $1.name, $1.name
+    ),
+];
+$$ LANGUAGE sql STABLE;
+
+
+CREATE FUNCTION "alias_directory"."update_alias"(alias_directory.alias_type)
+    RETURNS bigint
+AS $$
+SELECT public.action($1, alias_directory.update_alias_sql($1));
 $$ LANGUAGE sql VOLATILE;
 
 
@@ -985,8 +1019,8 @@ DECLARE
     result text;
 BEGIN
     EXECUTE format(
-        'SELECT %I FROM alias.%I WHERE entity_id = %s',
-        $2, $2, $1
+        'SELECT alias FROM alias.%I WHERE entity_id = %s',
+        $2, $1
     ) INTO result;
     RETURN result;
 END;

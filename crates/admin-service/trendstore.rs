@@ -13,8 +13,9 @@ use utoipa::{IntoParams, ToSchema};
 
 use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
+use minerva::changes::trend_store::AddTrends;
 use minerva::trend_store::{
-    load_trend_store, AddTrendStore, AddTrendStorePart, AddTrends, GeneratedTrend, Trend,
+    load_trend_store, AddTrendStore, AddTrendStorePart, GeneratedTrend, Trend,
     TrendStore, TrendStorePart,
 };
 

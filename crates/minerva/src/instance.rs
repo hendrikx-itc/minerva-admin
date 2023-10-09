@@ -19,8 +19,9 @@ use super::trend_materialization::{
     TrendMaterialization,
 };
 use super::trend_store::{
-    load_trend_store_from_file, load_trend_stores, AddTrendStore, TrendStore,
+    load_trend_store_from_file, load_trend_stores, TrendStore,
 };
+use super::changes::trend_store::AddTrendStore;
 use super::trigger::{load_trigger_from_file, load_triggers, AddTrigger, Trigger};
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 

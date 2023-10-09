@@ -99,6 +99,28 @@ objects:
     - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias" GRANT USAGE,SELECT ON sequences TO "minerva_writer"; $$)      
 
 - schema:
+    name: alias_def
+    privileges:
+    - role: minerva_writer
+      privilege: USAGE,CREATE
+    - role: minerva
+      privilege: USAGE
+    default-privileges:
+    - role: minerva
+      objclass: tables
+      privilege: SELECT
+    - role: minerva_writer
+      objclass: tables
+      privilege: SELECT,UPDATE,DELETE
+    - role: minerva_writer
+      objclass: sequences
+      privilege: USAGE,SELECT
+    postqueries:
+    - query: run_command_on_workers($$ CREATE SCHEMA "alias_def"; $$)
+    - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT SELECT,INSERT,UPDATE,DELETE ON tables TO "minerva_writer"; $$)
+    - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT SELECT ON tables TO "minerva"; $$)
+    - query: run_command_on_workers($$ ALTER DEFAULT PRIVILEGES IN SCHEMA "alias_def" GRANT USAGE,SELECT ON sequences TO "minerva_writer"; $$)      
+- schema:
     name: alias_directory
     privileges:
     - role: minerva_writer
@@ -1496,21 +1518,14 @@ objects:
       SELECT ARRAY[
           format(
               'CREATE TABLE %I.%I ('
-              '  id serial PRIMARY KEY,'
-              '  %I text UNIQUE NOT NULL,'
-              '  entity_id integer,'
-              '  entity_type_id integer'
+              '  entity_id serial PRIMARY KEY,'
+              '  alias text NOT NULL,'
               ');',
               alias_directory.alias_schema(),
               $1.name, $1.name
           ),
           format(
-              'CREATE INDEX ON %I.%I USING btree(entity_id);',
-              alias_directory.alias_schema(),
-              $1.name
-          ),
-          format(
-              'CREATE INDEX ON %I.%I USING btree(entity_type_id);',
+              'CREATE INDEX ON %I.%I USING btree(alias);',
               alias_directory.alias_schema(),
               $1.name
           )
@@ -1528,6 +1543,44 @@ objects:
     - data_type: alias_directory.alias_type
     source: |-
       SELECT public.action($1, alias_directory.initialize_alias_type_sql($1));
+
+- function:
+    name: update_alias_sql
+    schema: alias_directory
+    return_type: text[]
+    language: sql
+    volatility: stable
+    strict: false
+    secdef: false
+    arguments:
+    - data_type: alias_directory.alias_type
+    source: |-
+      SELECT ARRAY[
+          format(
+              'DELETE FROM %I.%I',
+              alias_directory.alias_schema(),
+              $1.name
+          ),
+          format(
+              'INSERT INTO %I.%I(entity_id, alias) SELECT entity_id, alias FROM alias_def.%I'
+              ');',
+              alias_directory.alias_schema(),
+              $1.name, $1.name
+          ),
+      ];
+
+- function:
+    name: update_alias
+    schema: alias_directory
+    return_type: bigint
+    language: sql
+    volatility: volatile
+    strict: false
+    secdef: false
+    arguments:
+    - data_type: alias_directory.alias_type
+    source: |-
+      SELECT public.action($1, alias_directory.update_alias_sql($1));
 
 - function:
     name: drop_alias_type_sql
@@ -1576,8 +1629,8 @@ objects:
           result text;
       BEGIN
           EXECUTE format(
-              'SELECT %I FROM alias.%I WHERE entity_id = %s',
-              $2, $2, $1
+              'SELECT alias FROM alias.%I WHERE entity_id = %s',
+              $2, $1
           ) INTO result;
           RETURN result;
       END;
