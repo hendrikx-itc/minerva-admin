@@ -17,10 +17,10 @@ use term_table::{
 
 use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
+use minerva::changes::trend_store::AddTrendStore;
 use minerva::trend_store::{
     analyze_trend_store_part, create_partitions, create_partitions_for_timestamp,
     delete_trend_store, list_trend_stores, load_trend_store, load_trend_store_from_file,
-    AddTrendStore,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -222,26 +222,6 @@ impl Cmd for TrendStoreRenameTrend {
             }));
         }
 
-// Renaming is done automatically in a trigger
-//        let query = format!(
-//            "ALTER TABLE trend.{} RENAME COLUMN {} TO {}",
-//            escape_identifier(&self.trend_store_part),
-//            escape_identifier(&self.from),
-//            escape_identifier(&self.to),
-//        );
-//
-//        transaction
-//            .execute(&query, &[])
-//            .await
-//            .map_err(|e| {
-//                Error::Runtime(RuntimeError {
-//                    msg: format!(
-//                        "Error renaming trend '{}' of trend store part '{}': {e}",
-//                        &self.from, &self.trend_store_part
-//                    )
-//                })
-//            })?;
-
         transaction.commit().await?;
 
         println!("Renamed {}.{} -> {}.{}", self.trend_store_part, self.from, self.trend_store_part, self.to);
@@ -334,6 +314,37 @@ impl Cmd for TrendStoreList {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TrendStoreDeleteTimestamp {
+    #[structopt(
+        help="granularity for which to delete all data",
+        long="--granularity",
+    )]
+    granularity: String,
+    #[structopt(
+        help="timestamp for which to delete all data",
+        parse(try_from_str = DateTime::parse_from_rfc3339)
+    )]
+    timestamp: DateTime<FixedOffset>,
+}
+
+#[async_trait]
+impl Cmd for TrendStoreDeleteTimestamp {
+    async fn run(&self) -> CmdResult {
+        let client = connect_db().await?;
+
+        for row in client.query("SELECT name FROM trend_directory.trend_store_part tsp JOIN trend_directory.trend_store ts ON ts.id = tsp.trend_store_id WHERE ts.granularity = $1::text::interval", &[&self.granularity]).await? {
+            let table_name: &str = row.get(0);
+            let query = format!("DELETE FROM trend.\"{}\" WHERE timestamp = $1", table_name);
+            client.query(&query, &[&self.timestamp]).await?;
+
+            println!("Delete data in: '{}'", table_name);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TrendStoreOpt {
     #[structopt(about = "list existing trend stores")]
     List(TrendStoreList),
@@ -353,6 +364,8 @@ pub enum TrendStoreOpt {
     Part(TrendStorePartOpt),
     #[structopt(about = "rename a trend")]
     RenameTrend(TrendStoreRenameTrend),
+    #[structopt(about = "delete all data for a specific timestamp")]
+    DeleteTimestamp(TrendStoreDeleteTimestamp),
 }
 
 impl TrendStoreOpt {
@@ -373,6 +386,7 @@ impl TrendStoreOpt {
                 TrendStorePartOpt::Analyze(analyze) => analyze.run().await,
             },
             TrendStoreOpt::RenameTrend(rename_trend) => rename_trend.run().await,
+            TrendStoreOpt::DeleteTimestamp(delete_timestamp) => delete_timestamp.run().await,
         }
     }
 }

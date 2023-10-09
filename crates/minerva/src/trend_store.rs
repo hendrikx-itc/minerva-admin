@@ -1,5 +1,5 @@
 use futures_util::pin_mut;
-use postgres_types::Type;
+use postgres_types::{Type, to_sql_checked};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_postgres::error::SqlState;
@@ -10,7 +10,7 @@ use std::iter::zip;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::sync::RwLock;
-use tokio_postgres::types::ToSql;
+use tokio_postgres::types::{ToSql};
 use tokio_postgres::{binary_copy::BinaryCopyInWriter, Client, GenericClient, Row};
 use postgres_protocol::escape::escape_identifier;
 use humantime::format_duration;
@@ -157,7 +157,7 @@ impl Trend {
     }
 
     pub fn meas_value_from_str(&self, value: &str, null_value: &str) -> Result<MeasValue, Error> {
-        match self.data_type.as_str() {
+        match self.data_type {
             DataType::Integer => {
                 if value == null_value {
                     Ok(MeasValue::Integer(None))
@@ -216,26 +216,49 @@ fn default_generated_trends() -> Vec<GeneratedTrend> {
     Vec::new()
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, ToSql)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum DataType {
-    #[postgres(name = "integer")]
     #[serde(rename = "integer")]
     Integer,
-    #[postgres(name = "bigint")]
     #[serde(rename = "bigint")]
     Int8,
-    #[postgres(name = "real")]
     #[serde(rename = "real")]
     Real,
-    #[postgres(name = "text")]
     #[serde(rename = "text")]
     Text,
-    #[postgres(name = "timestamptz")]
     #[serde(rename = "timestamp")]
     Timestamp,
-    #[postgres(name = "numeric")]
     #[serde(rename = "numeric")]
     Numeric,
+}
+
+impl ToSql for DataType {
+    fn to_sql(
+        &self,
+        ty: &Type,
+        out: &mut bytes::BytesMut,
+    ) -> Result<postgres_types::IsNull, Box<dyn std::error::Error + Sync + Send>>
+    where
+        Self: Sized,
+    {
+        match self {
+            DataType::Integer => "integer".to_sql(ty, out),
+            DataType::Int8 => "bigint".to_sql(ty, out),
+            DataType::Real => "real".to_sql(ty, out),
+            DataType::Text => "text".to_sql(ty, out),
+            DataType::Timestamp => "timestamptz".to_sql(ty, out),
+            DataType::Numeric => "numeric".to_sql(ty, out),
+        }
+    }
+
+    fn accepts(ty: &Type) -> bool
+        where
+            Self: Sized {
+
+        ty == &Type::TEXT
+    }
+
+    to_sql_checked!();
 }
 
 impl fmt::Display for DataType {
@@ -296,6 +319,9 @@ impl MeasValue {
                     DataType::Integer => {
                         MeasValue::Integer(v.map(|x| x as i32))
                     },
+                    DataType::Int8 => {
+                        MeasValue::Int8(*v)
+                    },
                     DataType::Numeric => {
                         MeasValue::Numeric(v.map(|x| Decimal::from_i64(x)).flatten())
                     },
@@ -309,6 +335,9 @@ impl MeasValue {
                     DataType::Numeric => {
                         MeasValue::Numeric(v.map(|x| Decimal::from_f64(x)).flatten())
                     },
+                    DataType::Real => {
+                        MeasValue::Real(*v)
+                    },
                     _ => {
                         MeasValue::Text("".to_string())
                     }
@@ -316,6 +345,9 @@ impl MeasValue {
             },
             MeasValue::Text(v) => {
                 match data_type {
+                    DataType::Text => {
+                        MeasValue::Text(v.to_string())
+                    },
                     _ => {
                         MeasValue::Text("".to_string())
                     }
@@ -323,6 +355,9 @@ impl MeasValue {
             },
             MeasValue::Timestamp(v) => {
                 match data_type {
+                    DataType::Timestamp => {
+                        MeasValue::Timestamp(v.clone())
+                    },
                     _ => {
                         MeasValue::Text("".to_string())
                     }
@@ -330,6 +365,15 @@ impl MeasValue {
             },
             MeasValue::Numeric(v) => {
                 match data_type {
+                    DataType::Integer => {
+                        MeasValue::Integer(v.map(|x| x.to_i32()).flatten())
+                    },
+                    DataType::Int8 => {
+                        MeasValue::Int8(v.map(|x| x.to_i64()).flatten())
+                    },
+                    DataType::Real => {
+                        MeasValue::Real(v.map(|x| x.to_f64()).flatten())
+                    },
                     _ => {
                         MeasValue::Text("".to_string())
                     }

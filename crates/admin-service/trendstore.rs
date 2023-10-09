@@ -13,9 +13,9 @@ use utoipa::{IntoParams, ToSchema};
 
 use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
-use minerva::changes::trend_store::AddTrends;
+use minerva::changes::trend_store::{AddTrends, AddTrendStore, AddTrendStorePart};
 use minerva::trend_store::{
-    load_trend_store, AddTrendStore, AddTrendStorePart, GeneratedTrend, Trend,
+    load_trend_store, GeneratedTrend, Trend,
     TrendStore, TrendStorePart,
 };
 
@@ -73,7 +73,7 @@ impl TrendData {
     fn as_minerva(&self) -> Trend {
         Trend {
             name: self.name.clone(),
-            data_type: self.data_type.clone(),
+            data_type: serde_json::from_str(&self.data_type).unwrap(),
             description: self.description.clone(),
             time_aggregation: self.time_aggregation.clone(),
             entity_aggregation: self.entity_aggregation.clone(),
