@@ -34,6 +34,7 @@ pub struct ParserConfig {
     pub granularity: String,
     pub trends: TrendsFrom,
     pub extra: Option<Value>,
+    pub null_value: String,
 }
 
 pub async fn load_data<P: AsRef<Path>>(
@@ -116,7 +117,7 @@ pub async fn load_data<P: AsRef<Path>>(
     }
 
     trend_store
-        .store_raw(client, job_id, &trends, &raw_data_package)
+        .store_raw(client, job_id, &trends, &raw_data_package, parser_config.null_value.clone())
         .await?;
 
     println!("Job ID: {job_id}");

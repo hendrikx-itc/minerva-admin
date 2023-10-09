@@ -44,6 +44,7 @@ pub trait RawMeasurementStore {
         job_id: i64,
         trends: &Vec<String>,
         data_package: &Vec<(String, DateTime<chrono::Utc>, Vec<String>)>,
+        null_value: String,
     ) -> Result<(), Error>;
 }
 
@@ -155,24 +156,24 @@ impl Trend {
         }
     }
 
-    pub fn meas_value_from_str(&self, value: &str) -> Result<MeasValue, Error> {
-        match self.data_type {
+    pub fn meas_value_from_str(&self, value: &str, null_value: &str) -> Result<MeasValue, Error> {
+        match self.data_type.as_str() {
             DataType::Integer => {
-                if value.len() == 0 {
+                if value == null_value {
                     Ok(MeasValue::Integer(None))
                 } else {
                     Ok(MeasValue::Integer(Some(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value '{value}': {e}") }))?)))
                 }
             },
             DataType::Numeric => {
-                if value.len() == 0 {
+                if value == null_value {
                     Ok(MeasValue::Numeric(None))
                 } else {
                     Ok(MeasValue::Numeric(Some(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value '{value}': {e}") }))?)))
                 }
             },
             DataType::Int8 => {
-                if value.len() == 0 {
+                if value == null_value {
                     Ok(MeasValue::Int8(None))
                 } else {
                     Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value '{value}': {e}") }))?)))
@@ -454,23 +455,25 @@ struct ValueExtractor<'a> {
 }
 
 impl<'a> ValueExtractor<'a> {
-    fn parse_extract(&self, values: &Vec<String>) -> Result<MeasValue, Error> {
+    fn extract(&self, values: &Vec<String>, null_value: &str) -> Result<MeasValue, Error> {
         values
             .get(self.value_index)
-            .map(|v| self.trend.meas_value_from_str(&v))
+            .map(|v| self.trend.meas_value_from_str(&v, null_value))
             .ok_or(Error::Runtime(RuntimeError::from(format!("Could not find value at index {}", self.value_index))))?
     }
 }
 
 struct SubPackageExtractor<'a> {
     pub trend_store_part: &'a TrendStorePart,
+    pub null_value: String,
     pub value_extractors: Vec<ValueExtractor<'a>>,
 }
 
 impl<'a> SubPackageExtractor<'a> {
-    fn new(trend_store_part: &'a TrendStorePart) -> SubPackageExtractor<'a> {
+    fn new(trend_store_part: &'a TrendStorePart, null_value: String) -> SubPackageExtractor<'a> {
         SubPackageExtractor {
             trend_store_part,
+            null_value,
             value_extractors: Vec::new(),
         }
     }
@@ -485,7 +488,7 @@ impl<'a> SubPackageExtractor<'a> {
         for (entity_id, (_entity, timestamp, values)) in zip(entity_ids, data_package) {
             let meas_values: Result<Vec<MeasValue>, Error> = self.value_extractors
                 .iter()
-                .map(|value_extractor| value_extractor.parse_extract(values))
+                .map(|value_extractor| value_extractor.extract(values, &self.null_value))
                 .collect();
 
             sub_package.push((*entity_id, timestamp.clone(), meas_values?));
@@ -503,6 +506,7 @@ impl RawMeasurementStore for TrendStore {
         job_id: i64,
         trend_names: &Vec<String>,
         records: &Vec<(String, DateTime<chrono::Utc>, Vec<String>)>,
+        null_value: String,
     ) -> Result<(), Error> {
         let modified_timestamp = chrono::offset::Utc::now();
 
@@ -519,7 +523,7 @@ impl RawMeasurementStore for TrendStore {
             for trend_store_part in &self.parts {
                 for trend in &trend_store_part.trends {
                     if trend.name == *trend_name {
-                        let extractor = extractors.entry(&trend_store_part.name).or_insert_with(|| SubPackageExtractor::new(trend_store_part));
+                        let extractor = extractors.entry(&trend_store_part.name).or_insert_with(|| SubPackageExtractor::new(trend_store_part, null_value.clone()));
     
                         extractor.value_extractors.push(ValueExtractor { trend, value_index });
                     }
