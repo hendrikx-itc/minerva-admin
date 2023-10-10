@@ -143,6 +143,8 @@ impl Trend {
             DataType::Integer => Type::INT4,
             DataType::Int8 => Type::INT8,
             DataType::Numeric => Type::NUMERIC,
+            DataType::Real => Type::FLOAT8,
+            DataType::Timestamp => Type::TIMESTAMPTZ,
             _ => Type::TEXT,
         }
     }
@@ -152,6 +154,8 @@ impl Trend {
             DataType::Integer => MeasValue::Integer(None),
             DataType::Numeric => MeasValue::Numeric(None),
             DataType::Int8 => MeasValue::Int8(None),
+            DataType::Real => MeasValue::Real(None),
+            DataType::Timestamp => MeasValue::Timestamp(DateTime::default()),
             _ => MeasValue::Text("".to_string()),
         }
     }
@@ -179,6 +183,13 @@ impl Trend {
                     Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value '{value}': {e}") }))?)))
                 }
             },
+            DataType::Real => {
+                if value == null_value {
+                    Ok(MeasValue::Real(None))
+                } else {
+                    Ok(MeasValue::Real(Some(f64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
+                }
+            }
             _ => Ok(MeasValue::Text("".to_string())),
         }
     }
@@ -309,6 +320,9 @@ impl MeasValue {
                     DataType::Int8 => {
                         MeasValue::Int8(v.map(|x| x as i64))
                     },
+                    DataType::Numeric => {
+                        MeasValue::Numeric(v.map(|x| Decimal::from_i32(x)).flatten())
+                    },
                     _ => {
                         MeasValue::Text("".to_string())
                     }
@@ -373,6 +387,9 @@ impl MeasValue {
                     },
                     DataType::Real => {
                         MeasValue::Real(v.map(|x| x.to_f64()).flatten())
+                    },
+                    DataType::Numeric => {
+                        MeasValue::Numeric(*v)
                     },
                     _ => {
                         MeasValue::Text("".to_string())
