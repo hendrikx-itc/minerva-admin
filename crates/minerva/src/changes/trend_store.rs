@@ -3,7 +3,8 @@ use tokio_postgres::{Client, GenericClient};
 
 use async_trait::async_trait;
 
-use crate::trend_store::{TrendStore, TrendStorePart, Trend, DataType};
+use crate::meas_value::DataType;
+use crate::trend_store::{TrendStore, TrendStorePart, Trend};
 use crate::change::{Change, ChangeResult, GenericChange};
 use crate::error::DatabaseError;
 

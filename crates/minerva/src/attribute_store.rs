@@ -9,6 +9,7 @@ use async_trait::async_trait;
 
 type PostgresName = String;
 
+use crate::meas_value::DataType;
 use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 
@@ -16,7 +17,7 @@ use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
 #[postgres(name = "attribute_descr")]
 pub struct Attribute {
     pub name: PostgresName,
-    pub data_type: String,
+    pub data_type: DataType,
     #[serde(default = "default_empty_string")]
     pub description: String,
 }
@@ -324,7 +325,7 @@ async fn load_attributes(conn: &mut Client, attribute_store_id: i32) -> Vec<Attr
 
         attributes.push(Attribute {
             name: String::from(attribute_name),
-            data_type: String::from(attribute_data_type),
+            data_type: DataType::from(attribute_data_type),
             description: attribute_description.unwrap_or(String::from("")),
         });
     }
