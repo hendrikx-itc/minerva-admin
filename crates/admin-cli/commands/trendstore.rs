@@ -5,6 +5,7 @@ use chrono::DateTime;
 use chrono::FixedOffset;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use structopt::StructOpt;
 
 use comfy_table;
@@ -169,9 +170,66 @@ pub struct TrendStorePartitionCreate {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TrendStorePartitionRemove {
+    #[structopt(
+        help="do not really remove the partitions", short, long
+    )]
+    pretend: bool,
+}
+
+#[async_trait]
+impl Cmd for TrendStorePartitionRemove {
+    async fn run(&self) -> CmdResult {
+        let client = connect_db().await?;
+
+        let total_partition_count_query = "SELECT count(*) FROM trend_directory.partition";
+
+        let row = client.query_one(total_partition_count_query, &[]).await?;
+
+        let total_partition_count: i64 = row.try_get(0)?;
+
+        let old_partitions_query = concat!(
+            "SELECT p.id, p.name, p.from, p.to ",
+            "FROM trend_directory.partition p ",
+            "JOIN trend_directory.trend_store_part tsp ON tsp.id = p.trend_store_part_id ",
+            "JOIN trend_directory.trend_store ts ON ts.id = tsp.trend_store_id ",
+            "WHERE p.from < (now() - retention_period - partition_size - partition_size) ",
+            "ORDER BY p.name"
+        );
+
+        let rows = client.query(old_partitions_query, &[]).await?;
+
+        println!("Found {} of {} partitions to be removed", rows.len(), total_partition_count);
+
+        for row in rows {
+            let partition_id: i32 = row.try_get(0)?;
+            let partition_name: &str = row.try_get(1)?;
+            let data_from: DateTime<Utc> = row.try_get(2)?;
+            let data_to: DateTime<Utc> = row.try_get(3)?;
+
+            if self.pretend {
+                println!("Would have removed partition '{}' ({} - {})", partition_name, data_from, data_to);
+            } else {
+                let drop_query = format!("DROP TABLE trend_partition.\"{}\"", partition_name);
+                client.execute(&drop_query, &[]).await?;
+
+                let remove_entry_query = "DELETE FROM trend_directory.partition WHERE id = $1";
+                client.execute(remove_entry_query, &[&partition_id]).await?;
+                
+                println!("Removed partition '{}' ({} - {})", partition_name, data_from, data_to);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TrendStorePartition {
     #[structopt(about = "create partitions")]
     Create(TrendStorePartitionCreate),
+    #[structopt(about = "remove partitions")]
+    Remove(TrendStorePartitionRemove),
 }
 
 #[derive(Debug, StructOpt)]
@@ -379,7 +437,8 @@ impl TrendStoreOpt {
             TrendStoreOpt::Partition(partition) => match partition {
                 TrendStorePartition::Create(create) => {
                     run_trend_store_partition_create_cmd(create).await
-                }
+                },
+                TrendStorePartition::Remove(remove) => remove.run().await,
             },
             TrendStoreOpt::Check(check) => run_trend_store_check_cmd(check),
             TrendStoreOpt::Part(part) => match part {
