@@ -3,7 +3,7 @@ use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_postgres::error::SqlState;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::From;
 use std::fmt;
 use std::iter::zip;
@@ -63,7 +63,7 @@ pub trait MeasurementStore {
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
-        timestamp: DateTime<chrono::Utc>,
+        timestamp: &DateTime<chrono::Utc>,
     ) -> Result<(), Error>;
 }
 
@@ -292,6 +292,8 @@ struct SubPackageExtractor<'a> {
     pub value_extractors: Vec<ValueExtractor<'a>>,
 }
 
+type DataRow = (i32, DateTime<Utc>, Vec<MeasValue>);
+
 impl<'a> SubPackageExtractor<'a> {
     fn new(trend_store_part: &'a TrendStorePart, null_value: String) -> SubPackageExtractor<'a> {
         SubPackageExtractor {
@@ -305,8 +307,9 @@ impl<'a> SubPackageExtractor<'a> {
         self.value_extractors.iter().map(|e| e.trend.name.clone()).collect()
     }
 
-    fn extract_sub_package(&self, entity_ids: &Vec<i32>, data_package: &Vec<(String, DateTime<Utc>, Vec<String>)>) -> Result<Vec<(i32, DateTime<Utc>, Vec<MeasValue>)>, Error> {
+    fn extract_sub_package<'b>(&self, entity_ids: &Vec<i32>, data_package: &'b Vec<(String, DateTime<Utc>, Vec<String>)>) -> Result<(Vec<DataRow>, Vec<&'b DateTime<Utc>>), Error> {
         let mut sub_package = Vec::new();
+        let mut timestamps: HashSet<&DateTime<Utc>> = HashSet::new();
 
         for (entity_id, (_entity, timestamp, values)) in zip(entity_ids, data_package) {
             let meas_values: Result<Vec<MeasValue>, Error> = self.value_extractors
@@ -314,10 +317,12 @@ impl<'a> SubPackageExtractor<'a> {
                 .map(|value_extractor| value_extractor.extract(values, &self.null_value))
                 .collect();
 
+            timestamps.insert(timestamp);
+
             sub_package.push((*entity_id, timestamp.clone(), meas_values?));
         }
 
-        Ok(sub_package)
+        Ok((sub_package, timestamps.into_iter().collect()))
     }
 }
 
@@ -331,8 +336,6 @@ impl RawMeasurementStore for TrendStore {
         records: &Vec<(String, DateTime<chrono::Utc>, Vec<String>)>,
         null_value: String,
     ) -> Result<(), Error> {
-        let modified_timestamp = chrono::offset::Utc::now();
-
         let entity_ids: Vec<i32> = names_to_entity_ids(
             client,
             &self.entity_type,
@@ -355,19 +358,21 @@ impl RawMeasurementStore for TrendStore {
         }
 
         for extractor in extractors.values() {
-            let sub_data_package = extractor.extract_sub_package(&entity_ids, records)?;
+            let (sub_data_package, timestamps) = extractor.extract_sub_package(&entity_ids, records)?;
     
             extractor.trend_store_part
                 .store(
                     client,
                     job_id,
                     &extractor.trend_names(),
-                    &sub_data_package,
+                    &sub_data_package
                 )
                 .await
                 .map_err(|e| Error::Runtime(RuntimeError::from(format!("Error storing data package: {e}"))))?;
 
-            extractor.trend_store_part.mark_modified(client, modified_timestamp).await?;
+            for timestamp in timestamps { 
+                extractor.trend_store_part.mark_modified(client, timestamp).await?;
+            }
         }
 
         Ok(())
@@ -408,7 +413,7 @@ impl MeasurementStore for TrendStorePart {
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
-        timestamp: DateTime<chrono::Utc>,
+        timestamp: &DateTime<chrono::Utc>,
     ) -> Result<(), Error> {
         let query = concat!(
             "SELECT trend_directory.mark_modified(id, $2) ",
