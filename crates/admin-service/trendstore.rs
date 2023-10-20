@@ -82,23 +82,6 @@ impl TrendData {
     }
 }
 
-impl TrendFull {
-    fn data(&self) -> TrendData {
-        TrendData {
-            name: self.name.clone(),
-            data_type: self.data_type.clone(),
-            time_aggregation: self.time_aggregation.clone(),
-            entity_aggregation: self.entity_aggregation.clone(),
-            extra_data: self.extra_data.clone(),
-            description: self.description.clone(),
-        }
-    }
-
-    fn as_minerva(&self) -> Trend {
-        self.data().as_minerva()
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct GeneratedTrendFull {
     pub id: i32,
@@ -128,22 +111,6 @@ impl GeneratedTrendData {
             expression: self.expression.clone(),
             extra_data: self.extra_data.clone(),
         }
-    }
-}
-
-impl GeneratedTrendFull {
-    fn data(&self) -> GeneratedTrendData {
-        GeneratedTrendData {
-            name: self.name.clone(),
-            data_type: self.data_type.clone(),
-            expression: self.expression.clone(),
-            extra_data: self.extra_data.clone(),
-            description: self.description.clone(),
-        }
-    }
-
-    fn as_minerva(&self) -> GeneratedTrend {
-        self.data().as_minerva()
     }
 }
 
@@ -191,28 +158,6 @@ impl TrendStorePartData {
             trends,
             generated_trends,
         }
-    }
-}
-
-impl TrendStorePartFull {
-    fn data(&self) -> TrendStorePartData {
-        let trends: Vec<TrendData> = self.trends.iter().map(|trend| trend.data()).collect();
-
-        let generated_trends: Vec<GeneratedTrendData> = self
-            .generated_trends
-            .iter()
-            .map(|generated_trend| generated_trend.data())
-            .collect();
-
-        TrendStorePartData {
-            name: self.name.clone(),
-            trends,
-            generated_trends,
-        }
-    }
-
-    fn as_minerva(&self) -> TrendStorePart {
-        self.data().as_minerva()
     }
 }
 
