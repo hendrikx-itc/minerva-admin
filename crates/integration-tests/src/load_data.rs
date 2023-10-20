@@ -13,7 +13,8 @@ mod tests {
     use minerva::database::{connect_to_db, create_database, drop_database, get_db_config};
 
     use minerva::schema::create_schema;
-    use minerva::trend_store::{create_partitions_for_timestamp, AddTrendStore, TrendStore};
+    use minerva::changes::trend_store::AddTrendStore;
+    use minerva::trend_store::{create_partitions_for_timestamp, TrendStore};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
