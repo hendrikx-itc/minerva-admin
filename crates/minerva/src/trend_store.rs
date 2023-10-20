@@ -10,6 +10,7 @@ use std::iter::zip;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::sync::RwLock;
+use std::cell::RefCell;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{binary_copy::BinaryCopyInWriter, Client, GenericClient, Row};
 use postgres_protocol::escape::escape_identifier;
@@ -339,7 +340,7 @@ impl RawMeasurementStore for TrendStore {
         let entity_ids: Vec<i32> = names_to_entity_ids(
             client,
             &self.entity_type,
-            records.iter().map(|(entity_name, _timestamp, _values)| entity_name),
+            records.iter().map(|(entity_name, _timestamp, _values)| entity_name.clone()).collect(),
         )
         .await?;
 
@@ -435,15 +436,18 @@ lazy_static!{
     static ref ENTITY_CACHE: RwLock<Data> = RwLock::new(HashMap::new());
 }
 
-pub async fn names_to_entity_ids<'a, I, J>(
+std::thread_local! {
+  static ENTITY_MAPPING_CACHE: RefCell<HashMap<(String, String), i32>> = RefCell::new(HashMap::new());
+}
+
+pub async fn names_to_entity_ids(
     client: &mut Client,
     entity_type_table: &str,
-    names: I,
+    names: Vec<String>,
 ) -> Result<Vec<i32>, Error>
-where
-    I: IntoIterator<Item = &'a J>,
-    J: AsRef<str> + 'a + ?Sized,
 {
+    let mut entity_ids: HashMap<String, i32> = HashMap::new();
+
     let query = format!(
         "WITH lookup_list AS (SELECT unnest($1::text[]) AS name) \
         SELECT l.name, e.id FROM lookup_list l \
@@ -451,27 +455,46 @@ where
         escape_identifier(entity_type_table)
     );
 
-    let names_list: Vec<&str> = names.into_iter().map(AsRef::as_ref).collect();
+    let mut names_list: Vec<&str> = Vec::new();
 
-    let rows = client.query(&query, &[&names_list]).await?;
+    ENTITY_MAPPING_CACHE.with(|m| {
+        let mapping = m.borrow();
 
-    let mut entity_ids: HashMap<String, i32> = HashMap::new();
+        for name in &names {
+            if let Some(entity_id) = mapping.get(&(entity_type_table.to_string(), String::from(name))) {
+                entity_ids.insert(name.clone(), *entity_id);
+            } else {
+                names_list.push(name.as_ref());
+            }
+        }
+    });
 
-    for row in rows {
-        let name: String = row.get(0);
-        let entity_id_value: Option<i32> = row.try_get(1)?;
-        let entity_id: i32 = match entity_id_value {
-            Some(entity_id) => entity_id,
-            None => create_entity(client, entity_type_table, &name).await?,
-        };
+    // Only lookup in the database if there is anything left to lookup
+    if names_list.len() > 0 {
+        let rows = client.query(&query, &[&names_list]).await?;
 
-        entity_ids.insert(name, entity_id);
+        for row in rows {
+            let name: String = row.get(0);
+            let entity_id_value: Option<i32> = row.try_get(1)?;
+            let entity_id: i32 = match entity_id_value {
+                Some(entity_id) => entity_id,
+                None => create_entity(client, entity_type_table, &name).await?,
+            };
+
+            ENTITY_MAPPING_CACHE.with(|m| {
+                let mut mapping = m.borrow_mut();
+
+                mapping.insert((entity_type_table.to_string(), name.clone()), entity_id)
+            });
+
+            entity_ids.insert(name, entity_id);
+        }
     }
 
-    names_list
-        .iter()
+    names
+        .into_iter()
         .map(|name| -> Result<i32, Error> {
-            entity_ids.get(&String::from(*name)).map(|v| *v).ok_or(Error::Runtime(RuntimeError::from(format!("Could not find Id for entity name"))))
+            entity_ids.get(&name).map(|v| *v).ok_or(Error::Runtime(RuntimeError::from(format!("Could not find Id for entity name"))))
         })
         .collect()
 }
