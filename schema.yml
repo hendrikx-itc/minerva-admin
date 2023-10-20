@@ -3195,6 +3195,11 @@ objects:
       columns:
       - materialization_id
       - trend_store_part_id
+    privileges:
+    - role: minerva
+      privilege: SELECT
+    - role: minerva_writer
+      privilege: INSERT,UPDATE,DELETE
 
 - function:
     name: completeness

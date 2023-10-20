@@ -1827,6 +1827,10 @@ COMMENT ON COLUMN "trend_directory"."materialization_trend_store_link"."trend_st
 COMMENT ON COLUMN "trend_directory"."materialization_trend_store_link"."timestamp_mapping_func" IS 'The function that maps timestamps in the source table to timestamps in the materialized data. For example, for a view for an hour aggregation from 15 minute granularity data will need to map 4 timestamps in the source to 1 timestamp in the resulting data.
 ';
 
+GRANT SELECT ON TABLE "trend_directory"."materialization_trend_store_link" TO minerva;
+
+GRANT INSERT,UPDATE,DELETE ON TABLE "trend_directory"."materialization_trend_store_link" TO minerva_writer;
+
 
 
 CREATE FUNCTION "trend_directory"."completeness"(name, "start" timestamp with time zone, "end" timestamp with time zone)
