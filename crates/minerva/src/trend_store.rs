@@ -569,11 +569,15 @@ impl TrendStorePart {
         let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
         pin_mut!(binary_copy_writer);
 
+        // We cannot use the database now() function for COPY FROM queries, so the 'created'
+        // timestamp for the trend data records is generated here.
+        let created_timestamp = Utc::now();
+
         for (entity_id, timestamp, vals) in data_package {
             let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
             values.push(entity_id);
             values.push(timestamp);
-            values.push(timestamp);
+            values.push(&created_timestamp);
             values.push(&job_id);
 
             for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
