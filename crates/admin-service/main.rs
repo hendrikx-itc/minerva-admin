@@ -46,7 +46,10 @@ mod trigger;
 use trigger::{get_triggers, change_thresholds, TriggerData, TriggerBasicData};
 
 mod entityset;
-use entityset::get_entity_sets;
+use entityset::{get_entity_sets, change_entity_set, create_entity_set, EntitySetData};
+
+mod header;
+use header::get_header;
 
 mod error;
 mod serviceerror;
@@ -92,7 +95,10 @@ async fn main() -> std::io::Result<()> {
             kpi::delete_kpi,
             trigger::get_triggers,
             trigger::change_thresholds,
-            entityset::get_entity_sets
+            entityset::get_entity_sets,
+            entityset::change_entity_set,
+            entityset::create_entity_set,
+            header::get_header
         ),
         components(
             schemas(
@@ -101,7 +107,7 @@ async fn main() -> std::io::Result<()> {
                 TrendViewMaterializationData, TrendFunctionMaterializationData,
                 TrendFull, GeneratedTrendFull, TrendStorePartFull, TrendStoreFull,
                 DataSource, EntityType, KpiRawData, KpiImplementedData,
-                TriggerData, TriggerBasicData,
+                TriggerData, TriggerBasicData, EntitySetData,
             )
         ),
         tags(
@@ -168,6 +174,9 @@ async fn main() -> std::io::Result<()> {
             .service(get_triggers)
             .service(change_thresholds)
             .service(get_entity_sets)
+            .service(change_entity_set)
+            .service(create_entity_set)
+            .service(get_header)
     })
     .bind((service_address, service_port))?
     .run()
