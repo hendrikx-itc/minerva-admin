@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.28", features = ["full"] }
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
-tokio-postgres-rustls = "0.9"
+tokio-postgres-rustls = "0.10"
 futures-util = "0.3"
 postgres-types = { version = "0.2", features = ["derive"] }
 postgres-protocol = "0.6"
@@ -24,5 +24,7 @@ csv = "1.2"
 anyhow = "1.0"
 bytes = "1.0"
 rust_decimal = { version = "1.31", features = ["db-postgres"] }
-rustls = "0.20"
+rustls = "0.21"
 rustls-native-certs = "0.6"
+lazy_static = "1.4"
+thiserror = "1.0"

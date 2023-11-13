@@ -13,8 +13,9 @@ use utoipa::{IntoParams, ToSchema};
 
 use minerva::change::GenericChange;
 use minerva::interval::parse_interval;
+use minerva::changes::trend_store::{AddTrends, AddTrendStore, AddTrendStorePart};
 use minerva::trend_store::{
-    load_trend_store, AddTrendStore, AddTrendStorePart, AddTrends, GeneratedTrend, Trend,
+    load_trend_store, GeneratedTrend, Trend,
     TrendStore, TrendStorePart,
 };
 
@@ -72,29 +73,12 @@ impl TrendData {
     fn as_minerva(&self) -> Trend {
         Trend {
             name: self.name.clone(),
-            data_type: self.data_type.clone(),
+            data_type: serde_json::from_str(&self.data_type).unwrap(),
             description: self.description.clone(),
             time_aggregation: self.time_aggregation.clone(),
             entity_aggregation: self.entity_aggregation.clone(),
             extra_data: self.extra_data.clone(),
         }
-    }
-}
-
-impl TrendFull {
-    fn data(&self) -> TrendData {
-        TrendData {
-            name: self.name.clone(),
-            data_type: self.data_type.clone(),
-            time_aggregation: self.time_aggregation.clone(),
-            entity_aggregation: self.entity_aggregation.clone(),
-            extra_data: self.extra_data.clone(),
-            description: self.description.clone(),
-        }
-    }
-
-    fn as_minerva(&self) -> Trend {
-        self.data().as_minerva()
     }
 }
 
@@ -127,22 +111,6 @@ impl GeneratedTrendData {
             expression: self.expression.clone(),
             extra_data: self.extra_data.clone(),
         }
-    }
-}
-
-impl GeneratedTrendFull {
-    fn data(&self) -> GeneratedTrendData {
-        GeneratedTrendData {
-            name: self.name.clone(),
-            data_type: self.data_type.clone(),
-            expression: self.expression.clone(),
-            extra_data: self.extra_data.clone(),
-            description: self.description.clone(),
-        }
-    }
-
-    fn as_minerva(&self) -> GeneratedTrend {
-        self.data().as_minerva()
     }
 }
 
@@ -190,28 +158,6 @@ impl TrendStorePartData {
             trends,
             generated_trends,
         }
-    }
-}
-
-impl TrendStorePartFull {
-    fn data(&self) -> TrendStorePartData {
-        let trends: Vec<TrendData> = self.trends.iter().map(|trend| trend.data()).collect();
-
-        let generated_trends: Vec<GeneratedTrendData> = self
-            .generated_trends
-            .iter()
-            .map(|generated_trend| generated_trend.data())
-            .collect();
-
-        TrendStorePartData {
-            name: self.name.clone(),
-            trends,
-            generated_trends,
-        }
-    }
-
-    fn as_minerva(&self) -> TrendStorePart {
-        self.data().as_minerva()
     }
 }
 

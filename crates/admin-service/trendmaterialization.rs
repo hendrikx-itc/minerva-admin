@@ -16,7 +16,7 @@ use minerva::trend_materialization::{
     TrendMaterializationFunction, TrendMaterializationSource, TrendViewMaterialization,
     UpdateTrendMaterialization,
 };
-use tokio_postgres::{Client, GenericClient};
+use tokio_postgres::GenericClient;
 
 use log::error;
 
@@ -46,10 +46,6 @@ fn as_minerva(sources: &Vec<TrendMaterializationSourceData>) -> Vec<TrendMateria
     result
 }
 
-fn as_client(client: Client) -> Client {
-    client
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TrendMaterializationFunctionFull {
     pub name: String,
@@ -72,19 +68,6 @@ impl TrendMaterializationFunctionData {
             src: self.src.to_string(),
             language: self.language.to_string(),
         }
-    }
-}
-
-impl TrendMaterializationFunctionFull {
-    fn data(&self) -> TrendMaterializationFunctionData {
-        TrendMaterializationFunctionData {
-            return_type: self.return_type.to_string(),
-            src: self.src.to_string(),
-            language: self.language.to_string(),
-        }
-    }
-    fn as_minerva(&self) -> TrendMaterializationFunction {
-        self.data().as_minerva()
     }
 }
 
@@ -257,70 +240,6 @@ impl TrendViewMaterializationData {
 
         Ok(materialization)
     }
-
-    pub async fn update<T: GenericClient + Send + Sync>(
-        &self,
-        client: &mut T,
-    ) -> Result<Success, Error> {
-        client
-            .query_one(
-                concat!(
-                    "SELECT vm.id, m.id ",
-                    "FROM trend_directory.view_materialization vm ",
-                    "JOIN trend_directory.materialization m ON fm.materialization_id = m.id ",
-                    "JOIN trend_directory.trend_store_part tsp ON dst_trend_store_part_id = tsp.id ",
-                    "WHERE tsp.name=$1"
-                ),
-                &[&self.target_trend_store_part],
-            )
-            .await
-            .map_err(|e|Error {
-                code: 404,
-                message: format!(
-                    "No view materialization targetting {} found: {}",
-                    self.target_trend_store_part,
-                    e
-                ),
-            })?;
-
-        let action = UpdateTrendMaterialization {
-            trend_materialization: self.as_minerva(),
-        };
-
-        action
-            .generic_apply(client)
-            .await
-            .map_err(|e| Error {
-                code: 500,
-                message: format!("Update of materialization failed: {e}"),
-            })
-            .map(|_| {
-                Ok(Success {
-                    code: 200,
-                    message: "Update of materialization succeeded.".to_string(),
-                })
-            })?
-    }
-}
-
-impl TrendViewMaterializationFull {
-    fn data(&self) -> TrendViewMaterializationData {
-        TrendViewMaterializationData {
-            target_trend_store_part: self.target_trend_store_part.clone(),
-            enabled: self.enabled,
-            processing_delay: self.processing_delay,
-            stability_delay: self.stability_delay,
-            reprocessing_period: self.reprocessing_period,
-            sources: self.sources.to_vec(),
-            view: self.view.to_string(),
-            description: self.description.clone(),
-            fingerprint_function: self.fingerprint_function.to_string(),
-        }
-    }
-
-    fn as_minerva(&self) -> TrendMaterialization {
-        self.data().as_minerva()
-    }
 }
 
 impl TrendFunctionMaterializationData {
@@ -471,35 +390,6 @@ impl TrendFunctionMaterializationData {
         client: &mut T,
     ) -> Result<Success, Error> {
         self.update(client).await
-    }
-}
-
-impl TrendFunctionMaterializationFull {
-    fn data(&self) -> TrendFunctionMaterializationData {
-        TrendFunctionMaterializationData {
-            target_trend_store_part: self.target_trend_store_part.clone(),
-            enabled: self.enabled,
-            processing_delay: self.processing_delay,
-            stability_delay: self.stability_delay,
-            reprocessing_period: self.reprocessing_period,
-            sources: self.sources.to_vec(),
-            function: self.function.data(),
-            description: self.description.clone(),
-            fingerprint_function: self.fingerprint_function.to_string(),
-        }
-    }
-
-    fn as_minerva(&self) -> TrendMaterialization {
-        self.data().as_minerva()
-    }
-}
-
-impl TrendMaterializationDef {
-    fn as_minerva(&self) -> TrendMaterialization {
-        match self {
-            TrendMaterializationDef::View(view) => view.as_minerva(),
-            TrendMaterializationDef::Function(function) => function.as_minerva(),
-        }
     }
 }
 

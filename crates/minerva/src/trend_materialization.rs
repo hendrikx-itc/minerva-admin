@@ -183,11 +183,70 @@ impl TrendViewMaterialization {
     async fn update<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.drop_fingerprint_function(client).await?;
         self.drop_view(client).await?;
+        self.drop_sources(client).await?;
 
         self.create_view(client).await?;
         self.create_fingerprint_function(client).await?;
+        self.connect_sources(client).await?;
 
         self.update_attributes(client).await?;
+
+        Ok(())
+    }
+
+    async fn drop_sources<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
+        let query = format!(
+            concat!(
+        "DELETE FROM trend_directory.materialization_trend_store_link tsl ",
+        "USING trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+        "ON m.dst_trend_store_part_id = dstp.id ",
+        "WHERE dstp.name = '{}' AND tsl.materialization_id = m.id"
+        ),
+            &self.target_trend_store_part
+        );
+        match client.query(&query, &[]).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
+                "Error removing old sources: {e}"
+            )))),
+        }
+    }
+
+    async fn connect_sources<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
+        let query = concat!(
+            "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
+            "SELECT m.id, ",
+            "stsp.id, ",
+            "$1::regprocedure ",
+            "FROM trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id, ",
+            "trend_directory.trend_store_part stsp ",
+            "WHERE dstp.name = $2 AND stsp.name = $3"
+        );
+
+        let statement = client
+            .prepare_typed(query, &[Type::TEXT, Type::TEXT, Type::TEXT])
+            .await?;
+
+        for source in &self.sources {
+            let mapping_function = format!("{}(timestamptz)", &source.mapping_function);
+
+            client
+                .query(
+                    &statement,
+                    &[
+                        &mapping_function,
+                        &self.target_trend_store_part,
+                        &source.trend_store_part,
+                    ],
+                )
+                .await
+                .map_err(|e| {
+                    Error::Database(DatabaseError::from_msg(format!(
+                        "Error connecting sources: {e}"
+                    )))
+                })?;
+        }
 
         Ok(())
     }

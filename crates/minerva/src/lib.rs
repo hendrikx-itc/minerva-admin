@@ -14,3 +14,6 @@ pub mod trend_store;
 pub mod trigger;
 pub mod virtual_entity;
 pub mod entity_set;
+pub mod changes;
+pub mod meas_value;
+

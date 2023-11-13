@@ -5,6 +5,7 @@ use chrono::DateTime;
 use chrono::FixedOffset;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use structopt::StructOpt;
 
 use comfy_table;
@@ -17,10 +18,10 @@ use term_table::{
 
 use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
+use minerva::changes::trend_store::AddTrendStore;
 use minerva::trend_store::{
     analyze_trend_store_part, create_partitions, create_partitions_for_timestamp,
     delete_trend_store, list_trend_stores, load_trend_store, load_trend_store_from_file,
-    AddTrendStore,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -169,9 +170,66 @@ pub struct TrendStorePartitionCreate {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TrendStorePartitionRemove {
+    #[structopt(
+        help="do not really remove the partitions", short, long
+    )]
+    pretend: bool,
+}
+
+#[async_trait]
+impl Cmd for TrendStorePartitionRemove {
+    async fn run(&self) -> CmdResult {
+        let client = connect_db().await?;
+
+        let total_partition_count_query = "SELECT count(*) FROM trend_directory.partition";
+
+        let row = client.query_one(total_partition_count_query, &[]).await?;
+
+        let total_partition_count: i64 = row.try_get(0)?;
+
+        let old_partitions_query = concat!(
+            "SELECT p.id, p.name, p.from, p.to ",
+            "FROM trend_directory.partition p ",
+            "JOIN trend_directory.trend_store_part tsp ON tsp.id = p.trend_store_part_id ",
+            "JOIN trend_directory.trend_store ts ON ts.id = tsp.trend_store_id ",
+            "WHERE p.from < (now() - retention_period - partition_size - partition_size) ",
+            "ORDER BY p.name"
+        );
+
+        let rows = client.query(old_partitions_query, &[]).await?;
+
+        println!("Found {} of {} partitions to be removed", rows.len(), total_partition_count);
+
+        for row in rows {
+            let partition_id: i32 = row.try_get(0)?;
+            let partition_name: &str = row.try_get(1)?;
+            let data_from: DateTime<Utc> = row.try_get(2)?;
+            let data_to: DateTime<Utc> = row.try_get(3)?;
+
+            if self.pretend {
+                println!("Would have removed partition '{}' ({} - {})", partition_name, data_from, data_to);
+            } else {
+                let drop_query = format!("DROP TABLE trend_partition.\"{}\"", partition_name);
+                client.execute(&drop_query, &[]).await?;
+
+                let remove_entry_query = "DELETE FROM trend_directory.partition WHERE id = $1";
+                client.execute(remove_entry_query, &[&partition_id]).await?;
+                
+                println!("Removed partition '{}' ({} - {})", partition_name, data_from, data_to);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TrendStorePartition {
     #[structopt(about = "create partitions")]
     Create(TrendStorePartitionCreate),
+    #[structopt(about = "remove partitions")]
+    Remove(TrendStorePartitionRemove),
 }
 
 #[derive(Debug, StructOpt)]
@@ -221,26 +279,6 @@ impl Cmd for TrendStoreRenameTrend {
                 msg: format!("No trend found matching trend store part name '{}' and name '{}'", &self.trend_store_part, &self.from)
             }));
         }
-
-// Renaming is done automatically in a trigger
-//        let query = format!(
-//            "ALTER TABLE trend.{} RENAME COLUMN {} TO {}",
-//            escape_identifier(&self.trend_store_part),
-//            escape_identifier(&self.from),
-//            escape_identifier(&self.to),
-//        );
-//
-//        transaction
-//            .execute(&query, &[])
-//            .await
-//            .map_err(|e| {
-//                Error::Runtime(RuntimeError {
-//                    msg: format!(
-//                        "Error renaming trend '{}' of trend store part '{}': {e}",
-//                        &self.from, &self.trend_store_part
-//                    )
-//                })
-//            })?;
 
         transaction.commit().await?;
 
@@ -334,6 +372,37 @@ impl Cmd for TrendStoreList {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct TrendStoreDeleteTimestamp {
+    #[structopt(
+        help="granularity for which to delete all data",
+        long="--granularity",
+    )]
+    granularity: String,
+    #[structopt(
+        help="timestamp for which to delete all data",
+        parse(try_from_str = DateTime::parse_from_rfc3339)
+    )]
+    timestamp: DateTime<FixedOffset>,
+}
+
+#[async_trait]
+impl Cmd for TrendStoreDeleteTimestamp {
+    async fn run(&self) -> CmdResult {
+        let client = connect_db().await?;
+
+        for row in client.query("SELECT name FROM trend_directory.trend_store_part tsp JOIN trend_directory.trend_store ts ON ts.id = tsp.trend_store_id WHERE ts.granularity = $1::text::interval", &[&self.granularity]).await? {
+            let table_name: &str = row.get(0);
+            let query = format!("DELETE FROM trend.\"{}\" WHERE timestamp = $1", table_name);
+            client.query(&query, &[&self.timestamp]).await?;
+
+            println!("Delete data in: '{}'", table_name);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum TrendStoreOpt {
     #[structopt(about = "list existing trend stores")]
     List(TrendStoreList),
@@ -353,6 +422,8 @@ pub enum TrendStoreOpt {
     Part(TrendStorePartOpt),
     #[structopt(about = "rename a trend")]
     RenameTrend(TrendStoreRenameTrend),
+    #[structopt(about = "delete all data for a specific timestamp")]
+    DeleteTimestamp(TrendStoreDeleteTimestamp),
 }
 
 impl TrendStoreOpt {
@@ -366,13 +437,15 @@ impl TrendStoreOpt {
             TrendStoreOpt::Partition(partition) => match partition {
                 TrendStorePartition::Create(create) => {
                     run_trend_store_partition_create_cmd(create).await
-                }
+                },
+                TrendStorePartition::Remove(remove) => remove.run().await,
             },
             TrendStoreOpt::Check(check) => run_trend_store_check_cmd(check),
             TrendStoreOpt::Part(part) => match part {
                 TrendStorePartOpt::Analyze(analyze) => analyze.run().await,
             },
             TrendStoreOpt::RenameTrend(rename_trend) => rename_trend.run().await,
+            TrendStoreOpt::DeleteTimestamp(delete_timestamp) => delete_timestamp.run().await,
         }
     }
 }

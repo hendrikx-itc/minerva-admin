@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.66.0
+    RUST_VERSION=1.72.1
 
 ENV DEBIAN_FRONTEND noninteractive
 

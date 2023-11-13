@@ -7,6 +7,8 @@ use minerva::loading::{load_data, ParserConfig, TrendsFrom, TrendsFromHeader};
 
 use super::common::{connect_db, Cmd, CmdResult};
 
+static NULL_VALUE: &str = "";
+
 #[derive(Debug, StructOpt)]
 pub struct LoadDataOpt {
     #[structopt(long, help = "Data source of data")]
@@ -31,8 +33,9 @@ impl Cmd for LoadDataOpt {
                 trends: TrendsFrom::Header(TrendsFromHeader {
                     entity_column: String::from("node"),
                     timestamp_column: String::from("timestamp")
-                }), 
+                }),
                 extra: None,
+                null_value: NULL_VALUE.to_string(), 
             },
             Some(path) => {
                 let config_file = std::fs::File::open(path)

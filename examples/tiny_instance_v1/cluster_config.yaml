@@ -1,0 +1,9 @@
+nodes:
+  - address: alfred-node-1
+    port: 5432
+  - address: alfred-node-2 
+    port: 5432
+  - address: alfred-node-3
+    port: 5432
+  - address: alfred-node-4
+    port: 5432

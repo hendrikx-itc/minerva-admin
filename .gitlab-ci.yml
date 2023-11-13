@@ -2,7 +2,7 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
 
-image: "harbor.hendrikx-itc.nl/1optic/rust-ci:1.69.0-buster"
+image: "harbor.hendrikx-itc.nl/1optic/rust-ci:1.72.1-buster"
 
 default:
   cache:
@@ -30,13 +30,13 @@ test-minerva-admin:cargo:
 integration-test:cargo:
   stage: test
   services:
-    - name: postgres:13
+    - name: citusdata/citus:12.0.0
       alias: database
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo build --package minerva-admin
     - cargo build --package minerva-service
-    - PGHOST=database PGUSER=postgres cargo test --package integration-tests --verbose -- --format=json  -Z unstable-options --report-time --test-threads=1 --nocapture | cargo2junit > results.xml
+    - PGHOST=database PGUSER=postgres PGSSLMODE=disable cargo test --package integration-tests --verbose -- --format=json  -Z unstable-options --report-time --test-threads=1 --nocapture | cargo2junit > results.xml
   artifacts:
     when: always
     reports:
