@@ -42,6 +42,22 @@ integration-test:cargo:
     reports:
       junit: results.xml
 
+publish-minerva-admin-deb:
+  stage: build
+  before_script:
+    - echo "$CACERT" > /ca.crt
+  script:
+    - cargo deb -p minerva-admin --target=x86_64-unknown-linux-musl
+    - |
+      curl \
+      --cacert "ca.crt" \
+      -u "${REPO_USERNAME}:${REPO_PASSWORD}" \
+      -H "Content-Type: multipart/form-data" \
+      --data-binary "@./target/x86_64-unknown-linux-musl/debian/minerva-admin/minerva-admin_${CI_COMMIT_TAG}_amd64.deb" \
+      "$REPO_URL"
+  rules:
+    - if: $CI_COMMIT_TAG
+
 build-minerva-service:
   stage: build
   before_script:
