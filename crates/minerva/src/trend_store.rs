@@ -530,14 +530,51 @@ async fn create_entity(
     }
 }
 
+
+struct ValueMapper<'a> {
+    index: Option<usize>,
+    target_trend: &'a Trend
+}
+
+impl<'a> ValueMapper<'a> {
+    fn map_value_from(&self, values: &'a Vec<MeasValue>) -> &'a MeasValue {
+        match self.index {
+            Some(index) => {
+                match values.get(index) {
+                    Some(v) => {
+                        v
+                    },
+                    None => {
+                        // This should not be possible
+                        match self.target_trend.data_type {
+                            DataType::Integer => &(*INTEGER_NONE_VALUE),
+                            DataType::Int8 => &(*INT8_NONE_VALUE),
+                            DataType::Numeric => &(*NUMERIC_NONE_VALUE),
+                            _ => &(*TEXT_NONE_VALUE),
+                        }
+                    },
+                }
+            },
+            None => {
+                match self.target_trend.data_type {
+                    DataType::Integer => &(*INTEGER_NONE_VALUE),
+                    DataType::Int8 => &(*INT8_NONE_VALUE),
+                    DataType::Numeric => &(*NUMERIC_NONE_VALUE),
+                    _ => &(*TEXT_NONE_VALUE),
+                }
+            }
+        }
+    }
+}
+
 impl TrendStorePart {
-    pub async fn store_copy_from(
+    pub async fn store_copy_from<'a, I>(
         &self,
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
-    ) -> Result<(), Error> {
+        data_rows: I,
+    ) -> Result<(), Error> where I: IntoIterator<Item=&'a(i32, DateTime<chrono::Utc>, Vec<MeasValue>)> {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
 
@@ -564,6 +601,12 @@ impl TrendStorePart {
             }
         }
 
+        let index_trend_map: Vec<ValueMapper> = matched_trend_indexes
+            .iter()
+            .zip(matched_trends.iter())
+            .map(|(index, trend)| ValueMapper {index: *index, target_trend: trend})
+            .collect();
+
         let tx = client.transaction().await?;
 
         if matched_trends.len() == 0 {
@@ -584,34 +627,15 @@ impl TrendStorePart {
         // timestamp for the trend data records is generated here.
         let created_timestamp = Utc::now();
 
-        for (entity_id, timestamp, vals) in data_package {
+        for (entity_id, timestamp, vals) in data_rows {
             let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
             values.push(entity_id);
             values.push(timestamp);
             values.push(&created_timestamp);
             values.push(&job_id);
 
-            for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
-                match i {
-                    Some(index) => {
-                        match vals.get(*index) {
-                            Some(v) => {
-                                values.push(v)
-                            },
-                            None => {
-                                // This should not be possible
-                            },
-                        };
-                    },
-                    None => {
-                        match t.data_type {
-                            DataType::Integer => values.push(&(*INTEGER_NONE_VALUE)),
-                            DataType::Int8 => values.push(&(*INT8_NONE_VALUE)),
-                            DataType::Numeric => values.push(&(*NUMERIC_NONE_VALUE)),
-                            _ => values.push(&(*TEXT_NONE_VALUE)),
-                        }
-                    }
-                }
+            for value_mapper in index_trend_map.iter() {
+                values.push(value_mapper.map_value_from(vals));
             }
 
             binary_copy_writer
