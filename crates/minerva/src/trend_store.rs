@@ -189,9 +189,16 @@ impl Trend {
                 if value == null_value {
                     Ok(MeasValue::Real(None))
                 } else {
-                    Ok(MeasValue::Real(Some(f64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
+                    Ok(MeasValue::Real(Some(f32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
                 }
-            }
+            },
+            DataType::Double => {
+                if value == null_value {
+                    Ok(MeasValue::Double(None))
+                } else {
+                    Ok(MeasValue::Double(Some(f64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
+                }
+            },
             _ => Ok(MeasValue::Text("".to_string())),
         }
     }

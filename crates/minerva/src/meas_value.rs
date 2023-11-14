@@ -17,6 +17,8 @@ pub enum DataType {
     Int8,
     #[serde(rename = "real")]
     Real,
+    #[serde(rename = "double precision")]
+    Double,
     #[serde(rename = "text")]
     Text,
     #[serde(rename = "text[]")]
@@ -41,6 +43,7 @@ impl ToSql for DataType {
             DataType::Integer => "integer".to_sql(ty, out),
             DataType::Int8 => "bigint".to_sql(ty, out),
             DataType::Real => "real".to_sql(ty, out),
+            DataType::Double => "double precision".to_sql(ty, out),
             DataType::Text => "text".to_sql(ty, out),
             DataType::TextArray => "text[]".to_sql(ty, out),
             DataType::Timestamp => "timestamptz".to_sql(ty, out),
@@ -65,6 +68,7 @@ impl fmt::Display for DataType {
             DataType::Integer => write!(f, "integer"),
             DataType::Int8 => write!(f, "bigint"),
             DataType::Real => write!(f, "real"),
+            DataType::Double => write!(f, "double precision"),
             DataType::Text => write!(f, "text"),
             DataType::TextArray => write!(f, "text[]"),
             DataType::Timestamp => write!(f, "timestamp"),
@@ -81,6 +85,7 @@ impl From<&str> for DataType {
             "bigint" => DataType::Int8,
             "numeric" => DataType::Numeric,
             "real" => DataType::Real,
+            "double precision" => DataType::Double,
             "text" => DataType::Text,
             "text[]" => DataType::TextArray,
             "timestamptz" => DataType::Timestamp,
@@ -94,7 +99,8 @@ pub enum MeasValue {
     Int2(Option<i16>),
     Integer(Option<i32>),
     Int8(Option<i64>),
-    Real(Option<f64>),
+    Real(Option<f32>),
+    Double(Option<f64>),
     Text(String),
     TextArray(Vec<String>),
     Timestamp(chrono::DateTime<chrono::Utc>),
@@ -158,10 +164,23 @@ impl MeasValue {
             MeasValue::Real(v) => {
                 match data_type {
                     DataType::Numeric => {
-                        MeasValue::Numeric(v.map(|x| Decimal::from_f64(x)).flatten())
+                        MeasValue::Numeric(v.map(|x| Decimal::from_f32(x)).flatten())
                     },
                     DataType::Real => {
                         MeasValue::Real(*v)
+                    },
+                    _ => {
+                        MeasValue::Text("".to_string())
+                    }
+                }
+            },
+            MeasValue::Double(v) => {
+                match data_type {
+                    DataType::Numeric => {
+                        MeasValue::Numeric(v.map(|x| Decimal::from_f64(x)).flatten())
+                    },
+                    DataType::Double => {
+                        MeasValue::Double(*v)
                     },
                     _ => {
                         MeasValue::Text("".to_string())
@@ -207,7 +226,10 @@ impl MeasValue {
                         MeasValue::Int8(v.map(|x| x.to_i64()).flatten())
                     },
                     DataType::Real => {
-                        MeasValue::Real(v.map(|x| x.to_f64()).flatten())
+                        MeasValue::Real(v.map(|x| x.to_f32()).flatten())
+                    },
+                    DataType::Double => {
+                        MeasValue::Double(v.map(|x| x.to_f64()).flatten())
                     },
                     DataType::Numeric => {
                         MeasValue::Numeric(*v)
@@ -232,6 +254,7 @@ impl ToType for MeasValue {
             MeasValue::Integer(_) => &Type::INT4,
             MeasValue::Int8(_) => &Type::INT8,
             MeasValue::Real(_) => &Type::NUMERIC,
+            MeasValue::Double(_) => &Type::NUMERIC,
             MeasValue::Text(_) => &Type::TEXT,
             MeasValue::TextArray(_) => &Type::TEXT_ARRAY,
             MeasValue::Timestamp(_) => &Type::TIMESTAMPTZ,
@@ -254,6 +277,7 @@ impl ToSql for MeasValue {
             MeasValue::Integer(x) => x.to_sql(ty, out),
             MeasValue::Int8(x) => x.to_sql(ty, out),
             MeasValue::Real(x) => x.to_sql(ty, out),
+            MeasValue::Double(x) => x.to_sql(ty, out),
             MeasValue::Text(x) => x.to_sql(ty, out),
             MeasValue::TextArray(x) => x.to_sql(ty, out),
             MeasValue::Timestamp(x) => x.to_sql(ty, out),
@@ -278,6 +302,7 @@ impl ToSql for MeasValue {
             MeasValue::Integer(x) => x.to_sql_checked(ty, out),
             MeasValue::Int8(x) => x.to_sql_checked(ty, out),
             MeasValue::Real(x) => x.to_sql_checked(ty, out),
+            MeasValue::Double(x) => x.to_sql_checked(ty, out),
             MeasValue::Text(x) => x.to_sql_checked(ty, out),
             MeasValue::TextArray(x) => x.to_sql_checked(ty, out),
             MeasValue::Timestamp(x) => x.to_sql_checked(ty, out),
