@@ -142,10 +142,12 @@ impl fmt::Display for Trend {
 impl Trend {
     pub fn sql_type(&self) -> Type {
         match self.data_type {
+            DataType::Int2 => Type::INT2,
             DataType::Integer => Type::INT4,
             DataType::Int8 => Type::INT8,
             DataType::Numeric => Type::NUMERIC,
-            DataType::Real => Type::FLOAT8,
+            DataType::Real => Type::FLOAT4,
+            DataType::Double => Type::FLOAT8,
             DataType::Timestamp => Type::TIMESTAMPTZ,
             _ => Type::TEXT,
         }
@@ -153,10 +155,12 @@ impl Trend {
 
     pub fn none_value(&self) -> MeasValue {
         match self.data_type {
+            DataType::Int2 => MeasValue::Int2(None),
             DataType::Integer => MeasValue::Integer(None),
             DataType::Numeric => MeasValue::Numeric(None),
             DataType::Int8 => MeasValue::Int8(None),
             DataType::Real => MeasValue::Real(None),
+            DataType::Double => MeasValue::Double(None),
             DataType::Timestamp => MeasValue::Timestamp(DateTime::default()),
             _ => MeasValue::Text("".to_string()),
         }
