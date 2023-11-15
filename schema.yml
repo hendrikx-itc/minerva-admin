@@ -9263,9 +9263,9 @@ objects:
           view_name name := attribute_directory.curr_ptr_view_name($1);
           row_count integer;
       BEGIN
-          IF attribute_directory.requires_compacting($1) THEN
-              PERFORM attribute_directory.compact($1);
-          END IF;
+          --IF attribute_directory.requires_compacting($1) THEN
+          --    PERFORM attribute_directory.compact($1);
+          --END IF;
 
           EXECUTE format('TRUNCATE attribute_history.%I', table_name);
           EXECUTE format(
