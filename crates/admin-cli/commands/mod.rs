@@ -8,3 +8,4 @@ pub mod trendmaterialization;
 pub mod trendstore;
 pub mod trigger;
 pub mod update;
+pub mod schema;

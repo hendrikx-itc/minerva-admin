@@ -5,6 +5,7 @@ pub mod commands;
 use crate::commands::attributestore::AttributeStoreOpt;
 use crate::commands::common::Cmd;
 use crate::commands::diff::DiffOpt;
+use crate::commands::schema::SchemaOpt;
 use crate::commands::dump::DumpOpt;
 use crate::commands::initialize::InitializeOpt;
 use crate::commands::loaddata::LoadDataOpt;
@@ -15,6 +16,8 @@ use crate::commands::update::UpdateOpt;
 
 #[derive(Debug, StructOpt)]
 enum Opt {
+    #[structopt(about = "Show the definition used for initializing a new Minerva database")]
+    Schema(SchemaOpt),
     #[structopt(about = "Complete dump of a Minerva instance")]
     Dump(DumpOpt),
     #[structopt(about = "Create a diff between Minerva instance definitions")]
@@ -29,7 +32,7 @@ enum Opt {
     Trigger(TriggerOpt),
     #[structopt(about = "Manage attribute stores")]
     AttributeStore(AttributeStoreOpt),
-    #[structopt(about = "Manage trend materializations")]
+    #[structopt(about = "Manage trend materrializations")]
     TrendMaterialization(TrendMaterializationOpt),
     #[structopt(about = "Load data into Minerva database")]
     LoadData(LoadDataOpt),
@@ -40,6 +43,7 @@ async fn main() {
     let opt = Opt::from_args();
 
     let result = match opt {
+        Opt::Schema(schema) => schema.run().await,
         Opt::Dump(dump) => dump.run().await,
         Opt::Diff(diff) => diff.run().await,
         Opt::Update(update) => update.run().await,
