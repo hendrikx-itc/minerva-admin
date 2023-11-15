@@ -8,7 +8,6 @@ pub enum DatabaseErrorKind {
     UniqueViolation,
 }
 
-
 #[derive(Debug)]
 pub struct DatabaseError {
     pub msg: String,
@@ -18,7 +17,7 @@ pub struct DatabaseError {
 fn map_error_kind(sql_state: &SqlState) -> DatabaseErrorKind {
     match sql_state {
         &SqlState::UNIQUE_VIOLATION => DatabaseErrorKind::UniqueViolation,
-        _ => DatabaseErrorKind::Default
+        _ => DatabaseErrorKind::Default,
     }
 }
 
@@ -26,7 +25,7 @@ impl DatabaseError {
     pub fn from_msg(msg: String) -> DatabaseError {
         DatabaseError {
             msg,
-            kind: DatabaseErrorKind::Default
+            kind: DatabaseErrorKind::Default,
         }
     }
 }
@@ -35,7 +34,9 @@ impl From<tokio_postgres::Error> for DatabaseError {
     fn from(err: tokio_postgres::Error) -> DatabaseError {
         DatabaseError {
             msg: format!("{err}"),
-            kind: err.code().map_or(DatabaseErrorKind::Default, |c| map_error_kind(c)),
+            kind: err
+                .code()
+                .map_or(DatabaseErrorKind::Default, |c| map_error_kind(c)),
         }
     }
 }
@@ -53,7 +54,7 @@ impl ConfigurationError {
 
 #[derive(Debug)]
 pub struct RuntimeError {
-   pub msg: String,
+    pub msg: String,
 }
 
 impl RuntimeError {
@@ -134,4 +135,3 @@ impl From<String> for Error {
         })
     }
 }
-

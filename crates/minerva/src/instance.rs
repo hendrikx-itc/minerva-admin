@@ -9,6 +9,7 @@ use tokio_postgres::Client;
 
 use super::attribute_store::{load_attribute_stores, AddAttributeStore, AttributeStore};
 use super::change::Change;
+use super::changes::trend_store::AddTrendStore;
 use super::error::Error;
 use super::notification_store::{
     load_notification_stores, AddNotificationStore, NotificationStore,
@@ -18,10 +19,7 @@ use super::trend_materialization::{
     load_materializations, load_materializations_from, AddTrendMaterialization,
     TrendMaterialization,
 };
-use super::trend_store::{
-    load_trend_store_from_file, load_trend_stores, TrendStore,
-};
-use super::changes::trend_store::AddTrendStore;
+use super::trend_store::{load_trend_store_from_file, load_trend_stores, TrendStore};
 use super::trigger::{load_trigger_from_file, load_triggers, AddTrigger, Trigger};
 use super::virtual_entity::{load_virtual_entity_from_file, AddVirtualEntity, VirtualEntity};
 

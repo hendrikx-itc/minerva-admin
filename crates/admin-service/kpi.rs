@@ -840,26 +840,27 @@ pub(super) async fn delete_kpi(
                 })?;
         };
 
-        transaction.query(
-            "DELETE FROM trend_directory.trend_store_part WHERE NAME = $1",
-            &[&("kpi-".to_string() + tsp_name + "_" + entitytype + "_" + granularity)],
-        )
-        .await
-        .map_err(|e| Error {
-            code: 500,
-            message: e.to_string(),
-        })?;
+        transaction
+            .query(
+                "DELETE FROM trend_directory.trend_store_part WHERE NAME = $1",
+                &[&("kpi-".to_string() + tsp_name + "_" + entitytype + "_" + granularity)],
+            )
+            .await
+            .map_err(|e| Error {
+                code: 500,
+                message: e.to_string(),
+            })?;
 
-        transaction.query(
-            &format!("DROP TABLE trend.\"kpi-{tsp_name}_{entitytype}_{granularity}_staging\""),
-            &[],
-        )
-        .await
-        .map_err(|e| Error {
-            code: 500,
-            message: e.to_string(),
-        })?;
-    
+        transaction
+            .query(
+                &format!("DROP TABLE trend.\"kpi-{tsp_name}_{entitytype}_{granularity}_staging\""),
+                &[],
+            )
+            .await
+            .map_err(|e| Error {
+                code: 500,
+                message: e.to_string(),
+            })?;
     }
 
     transaction.commit().await.map_err(|e| Error {

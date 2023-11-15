@@ -6,7 +6,7 @@ use tokio_postgres::{config::SslMode, Config};
 use tokio_postgres::{Client, NoTls};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use super::error::{ConfigurationError, Error};
 

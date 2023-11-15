@@ -32,10 +32,10 @@ impl Cmd for LoadDataOpt {
                 granularity: "15m".into(),
                 trends: TrendsFrom::Header(TrendsFromHeader {
                     entity_column: String::from("node"),
-                    timestamp_column: String::from("timestamp")
+                    timestamp_column: String::from("timestamp"),
                 }),
                 extra: None,
-                null_value: NULL_VALUE.to_string(), 
+                null_value: NULL_VALUE.to_string(),
             },
             Some(path) => {
                 let config_file = std::fs::File::open(path)

@@ -1,12 +1,12 @@
 use std::env;
+use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::fs::File;
 
 use async_trait::async_trait;
 use structopt::StructOpt;
 
-use minerva::database::{ClusterConfig, create_database};
+use minerva::database::{create_database, ClusterConfig};
 use minerva::error::{ConfigurationError, Error};
 use minerva::instance::MinervaInstance;
 use minerva::schema::create_schema;
@@ -51,7 +51,8 @@ impl Cmd for InitializeOpt {
                 .await
                 .map_err(|e| {
                     Error::Database(minerva::error::DatabaseError::from_msg(format!(
-                        "Could not create database '{}': {e}", &database_name
+                        "Could not create database '{}': {e}",
+                        &database_name
                     )))
                 })?;
 
@@ -80,9 +81,12 @@ impl Cmd for InitializeOpt {
                 let cluster_config: ClusterConfig = serde_yaml::from_reader(reader).unwrap();
 
                 Some(cluster_config)
-            },
+            }
             Err(e) => {
-                println!("Could not open cluster config file'{}': {e}", cluster_config_path.display());
+                println!(
+                    "Could not open cluster config file'{}': {e}",
+                    cluster_config_path.display()
+                );
                 None
             }
         };

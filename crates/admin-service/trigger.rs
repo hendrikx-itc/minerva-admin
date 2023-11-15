@@ -4,9 +4,11 @@ use std::ops::DerefMut;
 use actix_web::{get, put, web::Data, HttpResponse};
 
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema};
+use utoipa::ToSchema;
 
-use minerva::trigger::{list_triggers, load_trigger, load_thresholds_with_client, set_thresholds, Threshold};
+use minerva::trigger::{
+    list_triggers, load_thresholds_with_client, load_trigger, set_thresholds, Threshold,
+};
 
 use super::serviceerror::{ServiceError, ServiceErrorKind};
 use crate::error::{Error, Success};
@@ -16,13 +18,13 @@ pub struct TriggerData {
     name: String,
     enabled: bool,
     description: String,
-    thresholds: Vec<Threshold>
+    thresholds: Vec<Threshold>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct TriggerBasicData {
     name: String,
-    thresholds: Vec<Threshold>
+    thresholds: Vec<Threshold>,
 }
 
 #[utoipa::path(
@@ -42,20 +44,26 @@ pub(super) async fn get_triggers(pool: Data<Pool>) -> Result<HttpResponse, Servi
 
     let mut client: &mut tokio_postgres::Client = manager.deref_mut().deref_mut();
 
-    let triggerdata = list_triggers(&mut client).await.map_err(|e| Error { code: 500, message: e.to_string() } )?;
+    let triggerdata = list_triggers(&mut client).await.map_err(|e| Error {
+        code: 500,
+        message: e.to_string(),
+    })?;
 
     let mut result: Vec<TriggerData> = [].to_vec();
 
     for trigger in triggerdata.iter() {
-        let thresholds = load_thresholds_with_client(&mut client, &trigger.0).await.map_err(|e| Error { code: 500, message: e.to_string() })?;
-        result.push(
-            TriggerData {
-                name: trigger.0.clone(),
-                enabled: trigger.5,
-                description: trigger.4.clone(),
-                thresholds: thresholds
-            }
-        )
+        let thresholds = load_thresholds_with_client(&mut client, &trigger.0)
+            .await
+            .map_err(|e| Error {
+                code: 500,
+                message: e.to_string(),
+            })?;
+        result.push(TriggerData {
+            name: trigger.0.clone(),
+            enabled: trigger.5,
+            description: trigger.4.clone(),
+            thresholds: thresholds,
+        })
     }
 
     Ok(HttpResponse::Ok().json(result))
@@ -95,18 +103,25 @@ pub(super) async fn change_thresholds(
         message: e.to_string(),
     })?;
 
-    let mut trigger = load_trigger(&mut transaction, &data.name).await.map_err(|e| Error { 
-        code: 404, message: e.to_string()
-    })?;
+    let mut trigger = load_trigger(&mut transaction, &data.name)
+        .await
+        .map_err(|e| Error {
+            code: 404,
+            message: e.to_string(),
+        })?;
 
     trigger.thresholds = data.thresholds;
 
-    set_thresholds(&trigger, &mut transaction).await.map_err(|e| Error {
-        code: 409, message: e.to_string()
-    })?;
+    set_thresholds(&trigger, &mut transaction)
+        .await
+        .map_err(|e| Error {
+            code: 409,
+            message: e.to_string(),
+        })?;
 
     transaction.commit().await.map_err(|e| Error {
-        code: 409, message: e.to_string()
+        code: 409,
+        message: e.to_string(),
     })?;
 
     Ok(HttpResponse::Ok().json(Success {

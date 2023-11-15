@@ -12,12 +12,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use minerva::change::GenericChange;
+use minerva::changes::trend_store::{AddTrendStore, AddTrendStorePart, AddTrends};
 use minerva::interval::parse_interval;
-use minerva::changes::trend_store::{AddTrends, AddTrendStore, AddTrendStorePart};
-use minerva::trend_store::{
-    load_trend_store, GeneratedTrend, Trend,
-    TrendStore, TrendStorePart,
-};
+use minerva::trend_store::{load_trend_store, GeneratedTrend, Trend, TrendStore, TrendStorePart};
 
 use super::error::Error;
 use super::serviceerror::{ServiceError, ServiceErrorKind};

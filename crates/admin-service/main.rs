@@ -43,7 +43,7 @@ mod kpi;
 use kpi::{delete_kpi, get_kpi, get_kpis, post_kpi, update_kpi, KpiImplementedData, KpiRawData};
 
 mod trigger;
-use trigger::{get_triggers, change_thresholds, TriggerData, TriggerBasicData};
+use trigger::{change_thresholds, get_triggers, TriggerBasicData, TriggerData};
 
 mod error;
 mod serviceerror;

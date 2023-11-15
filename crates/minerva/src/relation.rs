@@ -78,18 +78,20 @@ impl Change for AddRelation {
             "CREATE TABLE relation.\"{}\"(source_id integer, target_id integer)",
             self.relation.name
         );
-        client.query(&query, &[]).await.map_err(|e| {
-            DatabaseError::from_msg(format!("Error creating relation table: {e}"))
-        })?;
+        client
+            .query(&query, &[])
+            .await
+            .map_err(|e| DatabaseError::from_msg(format!("Error creating relation table: {e}")))?;
 
         let query = format!(
             "CREATE VIEW relation_def.\"{}\" AS {}",
             self.relation.name, self.relation.query
         );
 
-        client.query(&query, &[]).await.map_err(|e| {
-            DatabaseError::from_msg(format!("Error creating relation view: {e}"))
-        })?;
+        client
+            .query(&query, &[])
+            .await
+            .map_err(|e| DatabaseError::from_msg(format!("Error creating relation view: {e}")))?;
 
         let query = format!(
             "CREATE UNIQUE INDEX ON relation.\"{}\"(source_id, target_id)",
@@ -109,13 +111,16 @@ impl Change for AddRelation {
             DatabaseError::from_msg(format!("Error creating index on relation table: {e}"))
         })?;
 
+        // Make the table available on each of the Citus nodes.
         let query = format!(
             "SELECT create_reference_table('relation.\"{}\"')",
             self.relation.name
         );
 
         client.query(&query, &[]).await.map_err(|e| {
-            DatabaseError::from_msg(format!("Error converting relation table to reference table: {e}"))
+            DatabaseError::from_msg(format!(
+                "Error converting relation table to reference table: {e}"
+            ))
         })?;
 
         let query = "SELECT relation_directory.register_type($1)";

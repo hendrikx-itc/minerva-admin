@@ -3,9 +3,11 @@ use std::fmt;
 use rust_decimal::prelude::*;
 
 use lazy_static::lazy_static;
-use postgres_types::{Type, to_sql_checked};
-use tokio_postgres::types::ToSql;
+use postgres_types::{to_sql_checked, Type};
 use serde::{Deserialize, Serialize};
+use tokio_postgres::types::ToSql;
+
+use crate::error::Error;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum DataType {
@@ -52,9 +54,9 @@ impl ToSql for DataType {
     }
 
     fn accepts(ty: &Type) -> bool
-        where
-            Self: Sized {
-
+    where
+        Self: Sized,
+    {
         ty == &Type::TEXT
     }
 
@@ -89,7 +91,7 @@ impl From<&str> for DataType {
             "text" => DataType::Text,
             "text[]" => DataType::TextArray,
             "timestamptz" => DataType::Timestamp,
-            &_ => DataType::Text
+            &_ => DataType::Text,
         }
     }
 }
@@ -107,138 +109,128 @@ pub enum MeasValue {
     Numeric(Option<Decimal>),
 }
 
+pub fn map_int2(value: &Option<i16>, target_data_type: DataType) -> Result<MeasValue, Error> {
+    match target_data_type {
+        DataType::Int2 => Ok(MeasValue::Int2(*value)),
+        DataType::Integer => Ok(MeasValue::Integer(value.map(|x| x as i32))),
+        DataType::Int8 => Ok(MeasValue::Int8(value.map(|x| x as i64))),
+        DataType::Numeric => Ok(MeasValue::Numeric(
+            value.map(|x| Decimal::from_i16(x)).flatten(),
+        )),
+        DataType::Double => Ok(MeasValue::Double(value.map(|x| f64::from_i16(x)).flatten())),
+        DataType::Real => Ok(MeasValue::Real(value.map(|x| f32::from_i16(x)).flatten())),
+        _ => Err(Error::Runtime(crate::error::RuntimeError {
+            msg: format!("No mapping defined for {:?} -> {}", value, target_data_type),
+        })),
+    }
+}
+
+pub fn map_int4(value: &Option<i32>, target_data_type: DataType) -> Result<MeasValue, Error> {
+    match target_data_type {
+        DataType::Integer => Ok(MeasValue::Integer(*value)),
+        DataType::Int8 => Ok(MeasValue::Int8(value.map(|x| x as i64))),
+        DataType::Numeric => Ok(MeasValue::Numeric(
+            value.map(|x| Decimal::from_i32(x)).flatten(),
+        )),
+        DataType::Double => Ok(MeasValue::Double(value.map(|x| f64::from_i32(x)).flatten())),
+        DataType::Real => Ok(MeasValue::Real(value.map(|x| f32::from_i32(x)).flatten())),
+        _ => Err(Error::Runtime(crate::error::RuntimeError {
+            msg: format!("No mapping defined for {:?} -> {}", value, target_data_type),
+        })),
+    }
+}
+
+pub fn map_int8(value: &Option<i64>, target_data_type: DataType) -> Result<MeasValue, Error> {
+    match target_data_type {
+        DataType::Integer => Ok(MeasValue::Integer(value.map(|x| x as i32))),
+        DataType::Int8 => Ok(MeasValue::Int8(*value)),
+        DataType::Numeric => Ok(MeasValue::Numeric(
+            value.map(|x| Decimal::from_i64(x)).flatten(),
+        )),
+        DataType::Double => Ok(MeasValue::Double(value.map(|x| f64::from_i64(x)).flatten())),
+        DataType::Real => Ok(MeasValue::Real(value.map(|x| f32::from_i64(x)).flatten())),
+        _ => Err(Error::Runtime(crate::error::RuntimeError {
+            msg: format!("No mapping defined for {:?} -> {}", value, target_data_type),
+        })),
+    }
+}
+
+pub fn map_real(value: &Option<f32>, target_data_type: DataType) -> Result<MeasValue, Error> {
+    match target_data_type {
+        DataType::Numeric => Ok(MeasValue::Numeric(
+            value.map(|x| Decimal::from_f32(x)).flatten(),
+        )),
+        DataType::Real => Ok(MeasValue::Real(*value)),
+        DataType::Double => Ok(MeasValue::Double(value.map(|x| f64::from_f32(x)).flatten())),
+        DataType::Int8 => Ok(MeasValue::Int8(value.map(|x| i64::from_f32(x)).flatten())),
+        DataType::Integer => Ok(MeasValue::Integer(
+            value.map(|x| i32::from_f32(x)).flatten(),
+        )),
+        _ => Err(Error::Runtime(crate::error::RuntimeError {
+            msg: format!("No mapping defined for {:?} -> {}", value, target_data_type),
+        })),
+    }
+}
+
+pub fn map_double(value: &Option<f64>, target_data_type: DataType) -> Result<MeasValue, Error> {
+    match target_data_type {
+        DataType::Numeric => Ok(MeasValue::Numeric(
+            value.map(|x| Decimal::from_f64(x)).flatten(),
+        )),
+        DataType::Double => Ok(MeasValue::Double(*value)),
+        DataType::Int8 => Ok(MeasValue::Int8(value.map(|x| i64::from_f64(x)).flatten())),
+        DataType::Integer => Ok(MeasValue::Integer(
+            value.map(|x| i32::from_f64(x)).flatten(),
+        )),
+        _ => Err(Error::Runtime(crate::error::RuntimeError {
+            msg: format!("No mapping defined for {:?} -> {}", value, target_data_type),
+        })),
+    }
+}
+
+pub fn map_numeric(
+    value: &Option<Decimal>,
+    target_data_type: DataType,
+) -> Result<MeasValue, Error> {
+    match target_data_type {
+        DataType::Integer => Ok(MeasValue::Integer(value.map(|x| x.to_i32()).flatten())),
+        DataType::Int8 => Ok(MeasValue::Int8(value.map(|x| x.to_i64()).flatten())),
+        DataType::Real => Ok(MeasValue::Real(value.map(|x| x.to_f32()).flatten())),
+        DataType::Double => Ok(MeasValue::Double(value.map(|x| x.to_f64()).flatten())),
+        DataType::Numeric => Ok(MeasValue::Numeric(*value)),
+        _ => Err(Error::Runtime(crate::error::RuntimeError {
+            msg: format!("No mapping defined for {:?} -> {}", value, target_data_type),
+        })),
+    }
+}
+
 impl MeasValue {
-    pub fn to_value_of(&self, data_type: DataType) -> MeasValue {
+    pub fn to_value_of(&self, data_type: DataType) -> Result<MeasValue, Error> {
         match self {
-            MeasValue::Int2(v) => {
-                match data_type {
-                    DataType::Int2 => {
-                        MeasValue::Int2(*v)
-                    }
-                    DataType::Integer => {
-                        MeasValue::Integer(v.map(|x| x as i32))
-                    },
-                    DataType::Int8 => {
-                        MeasValue::Int8(v.map(|x| x as i64))
-                    },
-                    DataType::Numeric => {
-                        MeasValue::Numeric(v.map(|x| Decimal::from_i16(x)).flatten())
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
+            MeasValue::Int2(v) => map_int2(v, data_type),
+            MeasValue::Integer(v) => map_int4(v, data_type),
+            MeasValue::Int8(v) => map_int8(v, data_type),
+            MeasValue::Real(v) => map_real(v, data_type),
+            MeasValue::Double(v) => map_double(v, data_type),
+            MeasValue::Text(v) => match data_type {
+                DataType::Text => Ok(MeasValue::Text(v.to_string())),
+                _ => Err(Error::Runtime(crate::error::RuntimeError {
+                    msg: format!("No mapping defined for {:?} -> {}", v, data_type),
+                })),
             },
-            MeasValue::Integer(v) => {
-                match data_type {
-                    DataType::Integer => {
-                        MeasValue::Integer(*v)
-                    },
-                    DataType::Int8 => {
-                        MeasValue::Int8(v.map(|x| x as i64))
-                    },
-                    DataType::Numeric => {
-                        MeasValue::Numeric(v.map(|x| Decimal::from_i32(x)).flatten())
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
+            MeasValue::TextArray(v) => match data_type {
+                DataType::Text => Ok(MeasValue::Text(v.join(","))),
+                _ => Err(Error::Runtime(crate::error::RuntimeError {
+                    msg: format!("No mapping defined for {:?} -> {}", v, data_type),
+                })),
             },
-            MeasValue::Int8(v) => {
-                match data_type {
-                    DataType::Integer => {
-                        MeasValue::Integer(v.map(|x| x as i32))
-                    },
-                    DataType::Int8 => {
-                        MeasValue::Int8(*v)
-                    },
-                    DataType::Numeric => {
-                        MeasValue::Numeric(v.map(|x| Decimal::from_i64(x)).flatten())
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
+            MeasValue::Timestamp(v) => match data_type {
+                DataType::Timestamp => Ok(MeasValue::Timestamp(v.clone())),
+                _ => Err(Error::Runtime(crate::error::RuntimeError {
+                    msg: format!("No mapping defined for {:?} -> {}", v, data_type),
+                })),
             },
-            MeasValue::Real(v) => {
-                match data_type {
-                    DataType::Numeric => {
-                        MeasValue::Numeric(v.map(|x| Decimal::from_f32(x)).flatten())
-                    },
-                    DataType::Real => {
-                        MeasValue::Real(*v)
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
-            },
-            MeasValue::Double(v) => {
-                match data_type {
-                    DataType::Numeric => {
-                        MeasValue::Numeric(v.map(|x| Decimal::from_f64(x)).flatten())
-                    },
-                    DataType::Double => {
-                        MeasValue::Double(*v)
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
-            },
-            MeasValue::Text(v) => {
-                match data_type {
-                    DataType::Text => {
-                        MeasValue::Text(v.to_string())
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
-            },
-            MeasValue::TextArray(v) => {
-                match data_type {
-                    DataType::Text => {
-                        MeasValue::Text(v.join(","))
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
-            },
-            MeasValue::Timestamp(v) => {
-                match data_type {
-                    DataType::Timestamp => {
-                        MeasValue::Timestamp(v.clone())
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
-            },
-            MeasValue::Numeric(v) => {
-                match data_type {
-                    DataType::Integer => {
-                        MeasValue::Integer(v.map(|x| x.to_i32()).flatten())
-                    },
-                    DataType::Int8 => {
-                        MeasValue::Int8(v.map(|x| x.to_i64()).flatten())
-                    },
-                    DataType::Real => {
-                        MeasValue::Real(v.map(|x| x.to_f32()).flatten())
-                    },
-                    DataType::Double => {
-                        MeasValue::Double(v.map(|x| x.to_f64()).flatten())
-                    },
-                    DataType::Numeric => {
-                        MeasValue::Numeric(*v)
-                    },
-                    _ => {
-                        MeasValue::Text("".to_string())
-                    }
-                }
-            }
+            MeasValue::Numeric(v) => map_numeric(v, data_type),
         }
     }
 }

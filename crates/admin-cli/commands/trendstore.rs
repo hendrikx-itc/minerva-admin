@@ -17,8 +17,8 @@ use term_table::{
 };
 
 use minerva::change::Change;
-use minerva::error::{Error, RuntimeError};
 use minerva::changes::trend_store::AddTrendStore;
+use minerva::error::{Error, RuntimeError};
 use minerva::trend_store::{
     analyze_trend_store_part, create_partitions, create_partitions_for_timestamp,
     delete_trend_store, list_trend_stores, load_trend_store, load_trend_store_from_file,
@@ -171,9 +171,7 @@ pub struct TrendStorePartitionCreate {
 
 #[derive(Debug, StructOpt)]
 pub struct TrendStorePartitionRemove {
-    #[structopt(
-        help="do not really remove the partitions", short, long
-    )]
+    #[structopt(help = "do not really remove the partitions", short, long)]
     pretend: bool,
 }
 
@@ -199,7 +197,11 @@ impl Cmd for TrendStorePartitionRemove {
 
         let rows = client.query(old_partitions_query, &[]).await?;
 
-        println!("Found {} of {} partitions to be removed", rows.len(), total_partition_count);
+        println!(
+            "Found {} of {} partitions to be removed",
+            rows.len(),
+            total_partition_count
+        );
 
         for row in rows {
             let partition_id: i32 = row.try_get(0)?;
@@ -208,15 +210,21 @@ impl Cmd for TrendStorePartitionRemove {
             let data_to: DateTime<Utc> = row.try_get(3)?;
 
             if self.pretend {
-                println!("Would have removed partition '{}' ({} - {})", partition_name, data_from, data_to);
+                println!(
+                    "Would have removed partition '{}' ({} - {})",
+                    partition_name, data_from, data_to
+                );
             } else {
                 let drop_query = format!("DROP TABLE trend_partition.\"{}\"", partition_name);
                 client.execute(&drop_query, &[]).await?;
 
                 let remove_entry_query = "DELETE FROM trend_directory.partition WHERE id = $1";
                 client.execute(remove_entry_query, &[&partition_id]).await?;
-                
-                println!("Removed partition '{}' ({} - {})", partition_name, data_from, data_to);
+
+                println!(
+                    "Removed partition '{}' ({} - {})",
+                    partition_name, data_from, data_to
+                );
             }
         }
 
@@ -262,7 +270,7 @@ impl Cmd for TrendStoreRenameTrend {
             "WHERE tsp.id = trend_store_part_id AND tsp.name = $1 AND table_trend.name = $2"
         );
 
-        let update_count = transaction 
+        let update_count = transaction
             .execute(query, &[&self.trend_store_part, &self.from, &self.to])
             .await
             .map_err(|e| {
@@ -270,19 +278,25 @@ impl Cmd for TrendStoreRenameTrend {
                     msg: format!(
                         "Error renaming trend '{}' of trend store part '{}': {e}",
                         &self.from, &self.trend_store_part
-                    )
+                    ),
                 })
             })?;
 
         if update_count == 0 {
             return Err(Error::Runtime(RuntimeError {
-                msg: format!("No trend found matching trend store part name '{}' and name '{}'", &self.trend_store_part, &self.from)
+                msg: format!(
+                    "No trend found matching trend store part name '{}' and name '{}'",
+                    &self.trend_store_part, &self.from
+                ),
             }));
         }
 
         transaction.commit().await?;
 
-        println!("Renamed {}.{} -> {}.{}", self.trend_store_part, self.from, self.trend_store_part, self.to);
+        println!(
+            "Renamed {}.{} -> {}.{}",
+            self.trend_store_part, self.from, self.trend_store_part, self.to
+        );
 
         Ok(())
     }
@@ -374,8 +388,8 @@ impl Cmd for TrendStoreList {
 #[derive(Debug, StructOpt)]
 pub struct TrendStoreDeleteTimestamp {
     #[structopt(
-        help="granularity for which to delete all data",
-        long="--granularity",
+        help = "granularity for which to delete all data",
+        long = "--granularity"
     )]
     granularity: String,
     #[structopt(
@@ -437,7 +451,7 @@ impl TrendStoreOpt {
             TrendStoreOpt::Partition(partition) => match partition {
                 TrendStorePartition::Create(create) => {
                     run_trend_store_partition_create_cmd(create).await
-                },
+                }
                 TrendStorePartition::Remove(remove) => remove.run().await,
             },
             TrendStoreOpt::Check(check) => run_trend_store_check_cmd(check),

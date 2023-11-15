@@ -13,7 +13,7 @@ use crate::job::{end_job, start_job};
 use crate::trend_store::get_trend_store_id;
 use crate::trend_store::{
     create_partitions_for_trend_store_and_timestamp, load_trend_store, RawMeasurementStore,
-    TrendStore
+    TrendStore,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -58,22 +58,38 @@ pub async fn load_data<P: AsRef<Path>>(
         TrendsFrom::Header(from_header) => {
             let trends = match csv_reader.headers() {
                 Ok(headers) => headers.iter().map(String::from).collect(),
-                Err(_) => Vec::new()
+                Err(_) => Vec::new(),
             };
 
-            (trends, from_header.entity_column.clone(), from_header.timestamp_column.clone())
-        },
-        TrendsFrom::List(list) => (list.clone(), String::from("entity"), String::from("timestamp"))
+            (
+                trends,
+                from_header.entity_column.clone(),
+                from_header.timestamp_column.clone(),
+            )
+        }
+        TrendsFrom::List(list) => (
+            list.clone(),
+            String::from("entity"),
+            String::from("timestamp"),
+        ),
     };
 
     let entity_column_index = match trends.iter().position(|t| t.eq(&entity_column)) {
         Some(index) => index,
-        None => return Err(Error::Runtime(RuntimeError::from_msg(format!("No column matching entity column '{entity_column}'")))),
+        None => {
+            return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                "No column matching entity column '{entity_column}'"
+            ))))
+        }
     };
 
     let timestamp_column_index = match trends.iter().position(|t| t.eq(&timestamp_column)) {
         Some(index) => index,
-        None => return Err(Error::Runtime(RuntimeError::from_msg(format!("No column matching timestamp column '{timestamp_column}'")))),
+        None => {
+            return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                "No column matching timestamp column '{timestamp_column}'"
+            ))))
+        }
     };
 
     let job_id = start_job(client, &description).await?;
@@ -117,7 +133,13 @@ pub async fn load_data<P: AsRef<Path>>(
     }
 
     trend_store
-        .store_raw(client, job_id, &trends, &raw_data_package, parser_config.null_value.clone())
+        .store_raw(
+            client,
+            job_id,
+            &trends,
+            &raw_data_package,
+            parser_config.null_value.clone(),
+        )
         .await?;
 
     println!("Job ID: {job_id}");

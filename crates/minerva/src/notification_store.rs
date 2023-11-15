@@ -272,11 +272,9 @@ pub async fn notification_store_exists<T: GenericClient + Sync + Send>(
     match result.len() {
         0 => Ok(false),
         1 => Ok(true),
-        _ => Err(Error::Database(DatabaseError::from_msg(
-            format!(
-                "Unexpected number of notification store matches: {}",
-                result.len()
-            ),
-        ))),
+        _ => Err(Error::Database(DatabaseError::from_msg(format!(
+            "Unexpected number of notification store matches: {}",
+            result.len()
+        )))),
     }
 }

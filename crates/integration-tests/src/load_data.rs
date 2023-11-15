@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use std::env;
     use assert_cmd::prelude::*;
     use predicates::prelude::*;
+    use std::env;
     use std::io::Write;
     use std::path::PathBuf;
     use std::process::Command;
@@ -12,8 +12,8 @@ mod tests {
     use minerva::change::Change;
     use minerva::database::{connect_to_db, create_database, drop_database, get_db_config};
 
-    use minerva::schema::create_schema;
     use minerva::changes::trend_store::AddTrendStore;
+    use minerva::schema::create_schema;
     use minerva::trend_store::{create_partitions_for_timestamp, TrendStore};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
@@ -61,7 +61,9 @@ hillside15,2023-03-25T14:00:00Z,55.9,200.0
     #[cfg(test)]
     #[tokio::test]
     async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
-        let keep_database = env::var("DROP_DATABASE").unwrap_or(String::from("1")).eq("0");
+        let keep_database = env::var("DROP_DATABASE")
+            .unwrap_or(String::from("1"))
+            .eq("0");
         let data_source_name = "hub";
         let database_name = generate_name();
         let db_config = get_db_config()?;
@@ -119,7 +121,9 @@ hillside15,2023-03-25T14:00:00Z,55.9,200.0
     #[cfg(test)]
     #[tokio::test]
     async fn load_data_twice() -> Result<(), Box<dyn std::error::Error>> {
-        let keep_database = env::var("DROP_DATABASE").unwrap_or(String::from("1")).eq("0");
+        let keep_database = env::var("DROP_DATABASE")
+            .unwrap_or(String::from("1"))
+            .eq("0");
         let data_source_name = "hub";
         let database_name = generate_name();
         let db_config = get_db_config()?;
@@ -162,7 +166,9 @@ hillside15,2023-03-25T14:00:00Z,55.9,200.0
         cmd.env("PGDATABASE", &database_name);
 
         let mut csv_file = tempfile::NamedTempFile::new().unwrap();
-        csv_file.write_all(TEST_CSV_DATA_UPDATE_PARTIAL.as_bytes()).unwrap();
+        csv_file
+            .write_all(TEST_CSV_DATA_UPDATE_PARTIAL.as_bytes())
+            .unwrap();
 
         cmd.arg("load-data")
             .arg("--data-source")
@@ -186,14 +192,18 @@ hillside15,2023-03-25T14:00:00Z,55.9,200.0
                 "WHERE e.name = $1 AND t.timestamp = $2::text::timestamptz"
             );
 
-            let row = client.query_one(query, &[&"hillside14", &"2023-03-25T14:00:00Z"]).await?;
+            let row = client
+                .query_one(query, &[&"hillside14", &"2023-03-25T14:00:00Z"])
+                .await?;
 
             let expected_value: Decimal = dec!(212.4);
             let value: Decimal = row.get(0);
 
             assert_eq!(value, expected_value);
 
-            let row = client.query_one(query, &[&"hillside15", &"2023-03-25T14:00:00Z"]).await?;
+            let row = client
+                .query_one(query, &[&"hillside15", &"2023-03-25T14:00:00Z"])
+                .await?;
 
             let expected_value: Decimal = dec!(200.0);
             let value: Decimal = row.get(0);
