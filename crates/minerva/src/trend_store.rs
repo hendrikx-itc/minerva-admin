@@ -533,11 +533,11 @@ async fn create_entity(
 
 struct ValueMapper<'a> {
     index: Option<usize>,
-    target_trend: &'a Trend
+    data_type: &'a DataType
 }
 
 impl<'a> ValueMapper<'a> {
-    fn map_value_from(&self, values: &'a Vec<MeasValue>) -> &'a MeasValue {
+    fn map_value_from(&self, values: &'a Vec<MeasValue>) -> &'a (dyn ToSql + Sync) {
         match self.index {
             Some(index) => {
                 match values.get(index) {
@@ -546,7 +546,7 @@ impl<'a> ValueMapper<'a> {
                     },
                     None => {
                         // This should not be possible
-                        match self.target_trend.data_type {
+                        match self.data_type {
                             DataType::Integer => &(*INTEGER_NONE_VALUE),
                             DataType::Int8 => &(*INT8_NONE_VALUE),
                             DataType::Numeric => &(*NUMERIC_NONE_VALUE),
@@ -556,7 +556,7 @@ impl<'a> ValueMapper<'a> {
                 }
             },
             None => {
-                match self.target_trend.data_type {
+                match self.data_type {
                     DataType::Integer => &(*INTEGER_NONE_VALUE),
                     DataType::Int8 => &(*INT8_NONE_VALUE),
                     DataType::Numeric => &(*NUMERIC_NONE_VALUE),
@@ -565,6 +565,15 @@ impl<'a> ValueMapper<'a> {
             }
         }
     }
+}
+
+pub trait DataPackageRow<'a> {
+    fn write(&self, writer: std::pin::Pin<&mut BinaryCopyInWriter>, values: &Vec<(usize, DataType)>);
+}
+
+pub trait DataPackage<'a, 'b, I, V> where I: IntoIterator<Item=V>, V: DataPackageRow<'b> {
+    fn trends(&self) -> &'a Vec<String>;
+    fn rows(&self) -> I;
 }
 
 impl TrendStorePart {
@@ -604,7 +613,7 @@ impl TrendStorePart {
         let index_trend_map: Vec<ValueMapper> = matched_trend_indexes
             .iter()
             .zip(matched_trends.iter())
-            .map(|(index, trend)| ValueMapper {index: *index, target_trend: trend})
+            .map(|(index, trend)| ValueMapper {index: *index, data_type: &trend.data_type})
             .collect();
 
         let tx = client.transaction().await?;
@@ -628,21 +637,108 @@ impl TrendStorePart {
         let created_timestamp = Utc::now();
 
         for (entity_id, timestamp, vals) in data_rows {
-            let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
-            values.push(entity_id);
-            values.push(timestamp);
-            values.push(&created_timestamp);
-            values.push(&job_id);
+            let mut values: Vec<&(dyn ToSql + Sync)> = vec![entity_id, timestamp, &created_timestamp, &job_id];
 
-            for value_mapper in index_trend_map.iter() {
-                values.push(value_mapper.map_value_from(vals));
-            }
+            values.extend(index_trend_map.iter().map(|value_mapper| value_mapper.map_value_from(vals)));
 
             binary_copy_writer
                 .as_mut()
                 .write(&values)
                 .await
                 .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error writing row: {e}"))))?;
+        }
+
+        binary_copy_writer
+            .finish()
+            .await
+            .map_err(|e| {
+                let kind = match e.code() {
+                    Some(code) => {
+                        match code {
+                            &SqlState::UNIQUE_VIOLATION => crate::error::DatabaseErrorKind::UniqueViolation,
+                            _ => crate::error::DatabaseErrorKind::Default
+                        }
+                    },
+                    None => crate::error::DatabaseErrorKind::Default
+                };
+
+                Error::Database(DatabaseError {
+                    msg: format!("Could not load data using COPY command: {e}"),
+                    kind, 
+                })
+            })?;
+
+        tx
+            .commit()
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could commit data load using COPY command: {e}"))))?;
+
+        Ok(())
+    }
+
+    pub async fn store_copy_from_package<'a, 'b, U, V, I>(
+        &self,
+        client: &mut Client,
+        job_id: i64,
+        data_package: &U
+    ) -> Result<(), Error> where U: DataPackage<'a, 'b, I, V>, I: IntoIterator<Item=V>, V: DataPackageRow<'b> {
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<usize> = Vec::new();
+
+        let mut matched_trends: Vec<&Trend> = Vec::new();
+
+        let mut value_types: Vec<Type> = vec![
+            Type::INT4,
+            Type::TIMESTAMPTZ,
+            Type::TIMESTAMPTZ,
+            Type::INT8,
+        ];
+
+        // Filter trends that match the trend store parts trends and add corresponding types
+        for t in self.trends.iter() {
+            let index = data_package.trends()
+                .iter()
+                .position(|trend_name| trend_name == &t.name);
+
+            if let Some(i) = index {
+                value_types.push(t.sql_type());
+                matched_trends.push(t);
+
+                matched_trend_indexes.push(i);
+            }
+        }
+
+        let index_trend_map: Vec<(usize, DataType)> = matched_trend_indexes
+            .iter()
+            .zip(matched_trends.iter())
+            .map(|(index, trend)| (*index, trend.data_type))
+            .collect();
+
+        let tx = client.transaction().await?;
+
+        if matched_trends.len() == 0 {
+            return Ok(());
+        }
+
+        let query = copy_from_query(self, &matched_trends);
+
+        let copy_in_sink = tx
+            .copy_in(&query)
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
+
+        let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
+        pin_mut!(binary_copy_writer);
+
+        // We cannot use the database now() function for COPY FROM queries, so the 'created'
+        // timestamp for the trend data records is generated here.
+        let created_timestamp = Utc::now();
+
+        for row in data_package.rows() {
+            row.write(binary_copy_writer.as_mut()).await;
+             //   .write(&values)
+            //jh    .await
+            //    .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error writing row: {e}"))))?;
         }
 
         binary_copy_writer
