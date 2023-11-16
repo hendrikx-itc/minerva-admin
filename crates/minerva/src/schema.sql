@@ -1580,6 +1580,10 @@ COMMENT ON COLUMN "trend_directory"."view_materialization"."id" IS 'The unique i
 
 CREATE UNIQUE INDEX "ix_view_materialization_uniqueness" ON "trend_directory"."view_materialization" USING btree (materialization_id);
 
+GRANT SELECT ON TABLE "trend_directory"."view_materialization" TO minerva;
+
+GRANT INSERT,UPDATE,DELETE ON TABLE "trend_directory"."view_materialization" TO minerva_writer;
+
 
 
 CREATE FUNCTION "trend_directory"."cleanup_for_view_materialization"()
@@ -1655,6 +1659,10 @@ The function must have the form of::
 COMMENT ON COLUMN "trend_directory"."function_materialization"."id" IS 'The unique identifier of this function materialization';
 
 CREATE UNIQUE INDEX "ix_function_materialization_uniqueness" ON "trend_directory"."function_materialization" USING btree (materialization_id);
+
+GRANT SELECT ON TABLE "trend_directory"."function_materialization" TO minerva;
+
+GRANT INSERT,UPDATE,DELETE ON TABLE "trend_directory"."function_materialization" TO minerva_writer;
 
 
 

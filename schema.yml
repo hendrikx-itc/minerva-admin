@@ -2757,6 +2757,11 @@ objects:
         columns:
         - id
       on_delete: cascade
+    privileges:
+    - role: minerva
+      privilege: SELECT
+    - role: minerva_writer
+      privilege: INSERT,UPDATE,DELETE
 
 - function:
     name: cleanup_for_view_materialization
@@ -2893,6 +2898,11 @@ objects:
         columns:
         - id
       on_delete: cascade
+    privileges:
+    - role: minerva
+      privilege: SELECT
+    - role: minerva_writer
+      privilege: INSERT,UPDATE,DELETE
 
 - function:
     name: define_function_materialization
