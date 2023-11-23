@@ -9,9 +9,9 @@ use async_trait::async_trait;
 
 type PostgresName = String;
 
-use crate::meas_value::DataType;
 use super::change::{Change, ChangeResult};
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
+use crate::meas_value::DataType;
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSql)]
 #[postgres(name = "attribute_descr")]
@@ -24,11 +24,7 @@ pub struct Attribute {
 
 impl fmt::Display for Attribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Attribute({}: {})",
-            &self.name, &self.data_type
-        )
+        write!(f, "Attribute({}: {})", &self.name, &self.data_type)
     }
 }
 
@@ -99,14 +95,12 @@ pub struct ChangeAttribute {
     pub attribute: Attribute,
 }
 
-
 impl fmt::Display for ChangeAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "ChangeAttribute({}, {})",
-            &self.attribute_store,
-            &self.attribute.name
+            &self.attribute_store, &self.attribute.name
         )
     }
 }
@@ -145,9 +139,7 @@ impl Change for ChangeAttribute {
                 ],
             )
             .await
-            .map_err(|e| {
-                DatabaseError::from_msg(format!("Error changing trend data type: {e}"))
-            })?;
+            .map_err(|e| DatabaseError::from_msg(format!("Error changing trend data type: {e}")))?;
 
         Ok(format!(
             "Changed type of attribute '{}' in store '{}'",
@@ -155,7 +147,6 @@ impl Change for ChangeAttribute {
         ))
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AttributeStore {

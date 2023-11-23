@@ -492,20 +492,6 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 SELECT create_distributed_function('action_count(text)');
 
-CREATE FUNCTION "public"."action_count"("sql" text[])
-    RETURNS integer
-AS $$
-DECLARE
-    row_count integer;
-    statement text;
-BEGIN
-    FOREACH statement IN ARRAY sql LOOP
-        EXECUTE statement;
-    END LOOP;
-
-    RETURN row_count;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
 
 CREATE FUNCTION "public"."action"(anyelement, "sql" text)
     RETURNS anyelement
@@ -995,7 +981,7 @@ SELECT ARRAY[
         ');',
         alias_directory.alias_schema(),
         $1.name, $1.name
-    )
+    ),
 ];
 $$ LANGUAGE sql STABLE;
 
@@ -1003,7 +989,7 @@ $$ LANGUAGE sql STABLE;
 CREATE FUNCTION "alias_directory"."update_alias"(alias_directory.alias_type)
     RETURNS bigint
 AS $$
-SELECT public.action_count(alias_directory.update_alias_sql($1));
+SELECT public.action($1, alias_directory.update_alias_sql($1));
 $$ LANGUAGE sql VOLATILE;
 
 
@@ -1594,6 +1580,10 @@ COMMENT ON COLUMN "trend_directory"."view_materialization"."id" IS 'The unique i
 
 CREATE UNIQUE INDEX "ix_view_materialization_uniqueness" ON "trend_directory"."view_materialization" USING btree (materialization_id);
 
+GRANT SELECT ON TABLE "trend_directory"."view_materialization" TO minerva;
+
+GRANT INSERT,UPDATE,DELETE ON TABLE "trend_directory"."view_materialization" TO minerva_writer;
+
 
 
 CREATE FUNCTION "trend_directory"."cleanup_for_view_materialization"()
@@ -1669,6 +1659,10 @@ The function must have the form of::
 COMMENT ON COLUMN "trend_directory"."function_materialization"."id" IS 'The unique identifier of this function materialization';
 
 CREATE UNIQUE INDEX "ix_function_materialization_uniqueness" ON "trend_directory"."function_materialization" USING btree (materialization_id);
+
+GRANT SELECT ON TABLE "trend_directory"."function_materialization" TO minerva;
+
+GRANT INSERT,UPDATE,DELETE ON TABLE "trend_directory"."function_materialization" TO minerva_writer;
 
 
 
@@ -5755,9 +5749,9 @@ DECLARE
     view_name name := attribute_directory.curr_ptr_view_name($1);
     row_count integer;
 BEGIN
-    IF attribute_directory.requires_compacting($1) THEN
-        PERFORM attribute_directory.compact($1);
-    END IF;
+    --IF attribute_directory.requires_compacting($1) THEN
+    --    PERFORM attribute_directory.compact($1);
+    --END IF;
 
     EXECUTE format('TRUNCATE attribute_history.%I', table_name);
     EXECUTE format(

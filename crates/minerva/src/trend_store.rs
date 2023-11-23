@@ -1,20 +1,20 @@
 use futures_util::pin_mut;
+use humantime::format_duration;
+use postgres_protocol::escape::escape_identifier;
 use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio_postgres::error::SqlState;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::convert::From;
 use std::fmt;
 use std::iter::zip;
 use std::path::PathBuf;
-use std::time::Duration;
 use std::sync::RwLock;
-use std::cell::RefCell;
+use std::time::Duration;
+use tokio_postgres::error::SqlState;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{binary_copy::BinaryCopyInWriter, Client, GenericClient, Row};
-use postgres_protocol::escape::escape_identifier;
-use humantime::format_duration;
 
 use lazy_static::lazy_static;
 
@@ -24,9 +24,13 @@ use rust_decimal::Decimal;
 
 use async_trait::async_trait;
 
-use crate::meas_value::{DataType, MeasValue, INTEGER_NONE_VALUE, INT8_NONE_VALUE, TEXT_NONE_VALUE, NUMERIC_NONE_VALUE};
+use crate::changes::trend_store::{
+    AddTrendStorePart, AddTrends, ModifyTrendDataType, ModifyTrendDataTypes, RemoveTrends,
+};
 use crate::error::DatabaseErrorKind;
-use crate::changes::trend_store::{RemoveTrends, AddTrends, ModifyTrendDataType, ModifyTrendDataTypes, AddTrendStorePart};
+use crate::meas_value::{
+    DataType, MeasValue, INT8_NONE_VALUE, INTEGER_NONE_VALUE, NUMERIC_NONE_VALUE, TEXT_NONE_VALUE,
+};
 
 use super::change::Change;
 use super::error::{ConfigurationError, DatabaseError, Error, RuntimeError};
@@ -59,7 +63,6 @@ pub trait MeasurementStore {
         trends: &Vec<String>,
         data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
     ) -> Result<(), Error>;
-
 
     async fn mark_modified<T: GenericClient + Send + Sync>(
         &self,
@@ -142,10 +145,12 @@ impl fmt::Display for Trend {
 impl Trend {
     pub fn sql_type(&self) -> Type {
         match self.data_type {
+            DataType::Int2 => Type::INT2,
             DataType::Integer => Type::INT4,
             DataType::Int8 => Type::INT8,
             DataType::Numeric => Type::NUMERIC,
-            DataType::Real => Type::FLOAT8,
+            DataType::Real => Type::FLOAT4,
+            DataType::Double => Type::FLOAT8,
             DataType::Timestamp => Type::TIMESTAMPTZ,
             _ => Type::TEXT,
         }
@@ -153,10 +158,12 @@ impl Trend {
 
     pub fn none_value(&self) -> MeasValue {
         match self.data_type {
+            DataType::Int2 => MeasValue::Int2(None),
             DataType::Integer => MeasValue::Integer(None),
             DataType::Numeric => MeasValue::Numeric(None),
             DataType::Int8 => MeasValue::Int8(None),
             DataType::Real => MeasValue::Real(None),
+            DataType::Double => MeasValue::Double(None),
             DataType::Timestamp => MeasValue::Timestamp(DateTime::default()),
             _ => MeasValue::Text("".to_string()),
         }
@@ -168,28 +175,59 @@ impl Trend {
                 if value == null_value {
                     Ok(MeasValue::Integer(None))
                 } else {
-                    Ok(MeasValue::Integer(Some(i32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse integer measurement value '{value}': {e}") }))?)))
+                    Ok(MeasValue::Integer(Some(i32::from_str(&value).map_err(
+                        |e| {
+                            Error::Runtime(RuntimeError {
+                                msg: format!(
+                                    "Could not parse integer measurement value '{value}': {e}"
+                                ),
+                            })
+                        },
+                    )?)))
                 }
-            },
+            }
             DataType::Numeric => {
                 if value == null_value {
                     Ok(MeasValue::Numeric(None))
                 } else {
-                    Ok(MeasValue::Numeric(Some(Decimal::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse numeric measurement value '{value}': {e}") }))?)))
+                    Ok(MeasValue::Numeric(Some(
+                        Decimal::from_str(&value).map_err(|e| {
+                            Error::Runtime(RuntimeError {
+                                msg: format!(
+                                    "Could not parse numeric measurement value '{value}': {e}"
+                                ),
+                            })
+                        })?,
+                    )))
                 }
-            },
+            }
             DataType::Int8 => {
                 if value == null_value {
                     Ok(MeasValue::Int8(None))
                 } else {
-                    Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse bigint measurement value '{value}': {e}") }))?)))
+                    Ok(MeasValue::Int8(Some(i64::from_str(&value).map_err(
+                        |e| {
+                            Error::Runtime(RuntimeError {
+                                msg: format!(
+                                    "Could not parse bigint measurement value '{value}': {e}"
+                                ),
+                            })
+                        },
+                    )?)))
                 }
-            },
+            }
             DataType::Real => {
                 if value == null_value {
                     Ok(MeasValue::Real(None))
                 } else {
-                    Ok(MeasValue::Real(Some(f64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
+                    Ok(MeasValue::Real(Some(f32::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
+                }
+            }
+            DataType::Double => {
+                if value == null_value {
+                    Ok(MeasValue::Double(None))
+                } else {
+                    Ok(MeasValue::Double(Some(f64::from_str(&value).map_err(|e| Error::Runtime(RuntimeError { msg: format!("Could not parse floating point measurement value '{value}': {e}") }))?)))
                 }
             }
             _ => Ok(MeasValue::Text("".to_string())),
@@ -232,7 +270,13 @@ fn default_generated_trends() -> Vec<GeneratedTrend> {
 fn insert_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> String {
     let update_part = trends
         .iter()
-        .map(|trend| format!("{} = excluded.{}", escape_identifier(&trend.name), escape_identifier(&trend.name)))
+        .map(|trend| {
+            format!(
+                "{} = excluded.{}",
+                escape_identifier(&trend.name),
+                escape_identifier(&trend.name)
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -242,11 +286,11 @@ fn insert_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> Stri
         .collect::<Vec<_>>()
         .join(", ");
 
-    let values_placeholders = (1..(trends.len() + 5)) 
+    let values_placeholders = (1..(trends.len() + 5))
         .map(|i| format!("${}", i))
         .collect::<Vec<_>>()
         .join(", ");
-    
+
     let insert_query = format!(
         "INSERT INTO trend.{}(entity_id, timestamp, created, job_id, {}) VALUES ({}) ON CONFLICT (entity_id, timestamp) DO UPDATE SET {}",
         escape_identifier(&trend_store_part.name),
@@ -267,7 +311,8 @@ fn copy_from_query(trend_store_part: &TrendStorePart, trends: &Vec<&Trend>) -> S
 
     let query = format!(
         "COPY trend.{}(entity_id, timestamp, created, job_id, {}) FROM STDIN BINARY",
-        escape_identifier(&trend_store_part.name), &trend_names_part
+        escape_identifier(&trend_store_part.name),
+        &trend_names_part
     );
 
     query
@@ -283,7 +328,10 @@ impl<'a> ValueExtractor<'a> {
         values
             .get(self.value_index)
             .map(|v| self.trend.meas_value_from_str(&v, null_value))
-            .ok_or(Error::Runtime(RuntimeError::from(format!("Could not find value at index {}", self.value_index))))?
+            .ok_or(Error::Runtime(RuntimeError::from(format!(
+                "Could not find value at index {}",
+                self.value_index
+            ))))?
     }
 }
 
@@ -305,15 +353,23 @@ impl<'a> SubPackageExtractor<'a> {
     }
 
     fn trend_names(&self) -> Vec<String> {
-        self.value_extractors.iter().map(|e| e.trend.name.clone()).collect()
+        self.value_extractors
+            .iter()
+            .map(|e| e.trend.name.clone())
+            .collect()
     }
 
-    fn extract_sub_package<'b>(&self, entity_ids: &Vec<i32>, data_package: &'b Vec<(String, DateTime<Utc>, Vec<String>)>) -> Result<(Vec<DataRow>, Vec<&'b DateTime<Utc>>), Error> {
+    fn extract_sub_package<'b>(
+        &self,
+        entity_ids: &Vec<i32>,
+        data_package: &'b Vec<(String, DateTime<Utc>, Vec<String>)>,
+    ) -> Result<(Vec<DataRow>, Vec<&'b DateTime<Utc>>), Error> {
         let mut sub_package = Vec::new();
         let mut timestamps: HashSet<&DateTime<Utc>> = HashSet::new();
 
         for (entity_id, (_entity, timestamp, values)) in zip(entity_ids, data_package) {
-            let meas_values: Result<Vec<MeasValue>, Error> = self.value_extractors
+            let meas_values: Result<Vec<MeasValue>, Error> = self
+                .value_extractors
                 .iter()
                 .map(|value_extractor| value_extractor.extract(values, &self.null_value))
                 .collect();
@@ -340,7 +396,10 @@ impl RawMeasurementStore for TrendStore {
         let entity_ids: Vec<i32> = names_to_entity_ids(
             client,
             &self.entity_type,
-            records.iter().map(|(entity_name, _timestamp, _values)| entity_name.clone()).collect(),
+            records
+                .iter()
+                .map(|(entity_name, _timestamp, _values)| entity_name.clone())
+                .collect(),
         )
         .await?;
 
@@ -350,29 +409,38 @@ impl RawMeasurementStore for TrendStore {
             for trend_store_part in &self.parts {
                 for trend in &trend_store_part.trends {
                     if trend.name == *trend_name {
-                        let extractor = extractors.entry(&trend_store_part.name).or_insert_with(|| SubPackageExtractor::new(trend_store_part, null_value.clone()));
-    
-                        extractor.value_extractors.push(ValueExtractor { trend, value_index });
+                        let extractor =
+                            extractors.entry(&trend_store_part.name).or_insert_with(|| {
+                                SubPackageExtractor::new(trend_store_part, null_value.clone())
+                            });
+
+                        extractor
+                            .value_extractors
+                            .push(ValueExtractor { trend, value_index });
                     }
                 }
             }
         }
 
         for extractor in extractors.values() {
-            let (sub_data_package, timestamps) = extractor.extract_sub_package(&entity_ids, records)?;
-    
-            extractor.trend_store_part
-                .store(
-                    client,
-                    job_id,
-                    &extractor.trend_names(),
-                    &sub_data_package
-                )
-                .await
-                .map_err(|e| Error::Runtime(RuntimeError::from(format!("Error storing data package: {e}"))))?;
+            let (sub_data_package, timestamps) =
+                extractor.extract_sub_package(&entity_ids, records)?;
 
-            for timestamp in timestamps { 
-                extractor.trend_store_part.mark_modified(client, timestamp).await?;
+            extractor
+                .trend_store_part
+                .store(client, job_id, &extractor.trend_names(), &sub_data_package)
+                .await
+                .map_err(|e| {
+                    Error::Runtime(RuntimeError::from(format!(
+                        "Error storing data package: {e}"
+                    )))
+                })?;
+
+            for timestamp in timestamps {
+                extractor
+                    .trend_store_part
+                    .mark_modified(client, timestamp)
+                    .await?;
             }
         }
 
@@ -390,24 +458,24 @@ impl MeasurementStore for TrendStorePart {
         data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
     ) -> Result<(), Error> {
         if trends.len() == 0 {
-            return Ok(())
+            return Ok(());
         };
 
-        match self.store_copy_from(client, job_id, trends, data_package).await {
+        match self
+            .store_copy_from(client, job_id, trends, data_package)
+            .await
+        {
             Ok(_) => Ok(()),
-            Err(e) => {
-                match e {
-                    Error::Database(dbe) => {
-                        match dbe.kind {
-                            DatabaseErrorKind::UniqueViolation => {
-                                self.store_insert(client, job_id, trends, data_package).await
-                            },
-                            _ => Err(Error::Database(dbe))
-                        }
-                    },
-                    _ => Err(e)
-                }
-            }
+            Err(e) => match e {
+                Error::Database(dbe) => match dbe.kind {
+                    DatabaseErrorKind::UniqueViolation => {
+                        self.store_insert(client, job_id, trends, data_package)
+                            .await
+                    }
+                    _ => Err(Error::Database(dbe)),
+                },
+                _ => Err(e),
+            },
         }
     }
 
@@ -425,14 +493,18 @@ impl MeasurementStore for TrendStorePart {
         client
             .execute(query, &[&self.name, &timestamp])
             .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error marking timestamp as modified: {e}"))))?;
+            .map_err(|e| {
+                Error::Database(DatabaseError::from_msg(format!(
+                    "Error marking timestamp as modified: {e}"
+                )))
+            })?;
 
         Ok(())
     }
 }
 
 type Data = HashMap<String, i32>;
-lazy_static!{
+lazy_static! {
     static ref ENTITY_CACHE: RwLock<Data> = RwLock::new(HashMap::new());
 }
 
@@ -444,8 +516,7 @@ pub async fn names_to_entity_ids(
     client: &mut Client,
     entity_type_table: &str,
     names: Vec<String>,
-) -> Result<Vec<i32>, Error>
-{
+) -> Result<Vec<i32>, Error> {
     let mut entity_ids: HashMap<String, i32> = HashMap::new();
 
     let query = format!(
@@ -461,7 +532,9 @@ pub async fn names_to_entity_ids(
         let mapping = m.borrow();
 
         for name in &names {
-            if let Some(entity_id) = mapping.get(&(entity_type_table.to_string(), String::from(name))) {
+            if let Some(entity_id) =
+                mapping.get(&(entity_type_table.to_string(), String::from(name)))
+            {
                 entity_ids.insert(name.clone(), *entity_id);
             } else {
                 names_list.push(name.as_ref());
@@ -494,7 +567,12 @@ pub async fn names_to_entity_ids(
     names
         .into_iter()
         .map(|name| -> Result<i32, Error> {
-            entity_ids.get(&name).map(|v| *v).ok_or(Error::Runtime(RuntimeError::from(format!("Could not find Id for entity name"))))
+            entity_ids
+                .get(&name)
+                .map(|v| *v)
+                .ok_or(Error::Runtime(RuntimeError::from(format!(
+                    "Could not find Id for entity name"
+                ))))
         })
         .collect()
 }
@@ -515,35 +593,77 @@ async fn create_entity(
         Some(row) => row
             .try_get(0)
             .map_err(|e| Error::from(RuntimeError::from(format!("Could not create entity: {e}")))),
-        None => Err(Error::from(RuntimeError::from("Could not insert entity".to_string()))),
+        None => Err(Error::from(RuntimeError::from(
+            "Could not insert entity".to_string(),
+        ))),
     }
 }
 
+struct ValueMapper<'a> {
+    index: Option<usize>,
+    data_type: &'a DataType,
+}
+
+impl<'a> ValueMapper<'a> {
+    fn map_value_from(&self, values: &'a Vec<MeasValue>) -> &'a (dyn ToSql + Sync) {
+        match self.index {
+            Some(index) => {
+                match values.get(index) {
+                    Some(v) => v,
+                    None => {
+                        // This should not be possible
+                        match self.data_type {
+                            DataType::Integer => &(*INTEGER_NONE_VALUE),
+                            DataType::Int8 => &(*INT8_NONE_VALUE),
+                            DataType::Numeric => &(*NUMERIC_NONE_VALUE),
+                            _ => &(*TEXT_NONE_VALUE),
+                        }
+                    }
+                }
+            }
+            None => match self.data_type {
+                DataType::Integer => &(*INTEGER_NONE_VALUE),
+                DataType::Int8 => &(*INT8_NONE_VALUE),
+                DataType::Numeric => &(*NUMERIC_NONE_VALUE),
+                _ => &(*TEXT_NONE_VALUE),
+            },
+        }
+    }
+}
+
+#[async_trait]
+pub trait DataPackage {
+    fn trends(&self) -> &Vec<String>;
+    async fn write(
+        &self,
+        writer: std::pin::Pin<&mut BinaryCopyInWriter>,
+        values: &Vec<(usize, DataType)>,
+        created_timestamp: &DateTime<chrono::Utc>,
+    ) -> Result<usize, Error>;
+}
+
 impl TrendStorePart {
-    pub async fn store_copy_from(
+    pub async fn store_copy_from<'a, I>(
         &self,
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
-    ) -> Result<(), Error> {
+        data_rows: I,
+    ) -> Result<(), Error>
+    where
+        I: IntoIterator<Item = &'a (i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
+    {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
 
         let mut matched_trends: Vec<&Trend> = Vec::new();
 
-        let mut value_types: Vec<Type> = vec![
-            Type::INT4,
-            Type::TIMESTAMPTZ,
-            Type::TIMESTAMPTZ,
-            Type::INT8,
-        ];
+        let mut value_types: Vec<Type> =
+            vec![Type::INT4, Type::TIMESTAMPTZ, Type::TIMESTAMPTZ, Type::INT8];
 
         // Filter trends that match the trend store parts trends and add corresponding types
         for t in self.trends.iter() {
-            let index = trends
-                .iter()
-                .position(|trend_name| trend_name == &t.name);
+            let index = trends.iter().position(|trend_name| trend_name == &t.name);
 
             if index.is_some() {
                 value_types.push(t.sql_type());
@@ -553,6 +673,15 @@ impl TrendStorePart {
             }
         }
 
+        let index_trend_map: Vec<ValueMapper> = matched_trend_indexes
+            .iter()
+            .zip(matched_trends.iter())
+            .map(|(index, trend)| ValueMapper {
+                index: *index,
+                data_type: &trend.data_type,
+            })
+            .collect();
+
         let tx = client.transaction().await?;
 
         if matched_trends.len() == 0 {
@@ -561,10 +690,12 @@ impl TrendStorePart {
 
         let query = copy_from_query(self, &matched_trends);
 
-        let copy_in_sink = tx
-            .copy_in(&query)
-            .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error starting COPY command: {}", e))))?;
+        let copy_in_sink = tx.copy_in(&query).await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Error starting COPY command: {}",
+                e
+            )))
+        })?;
 
         let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
         pin_mut!(binary_copy_writer);
@@ -573,67 +704,136 @@ impl TrendStorePart {
         // timestamp for the trend data records is generated here.
         let created_timestamp = Utc::now();
 
-        for (entity_id, timestamp, vals) in data_package {
-            let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
-            values.push(entity_id);
-            values.push(timestamp);
-            values.push(&created_timestamp);
-            values.push(&job_id);
+        for (entity_id, timestamp, vals) in data_rows {
+            let mut values: Vec<&(dyn ToSql + Sync)> =
+                vec![entity_id, timestamp, &created_timestamp, &job_id];
 
-            for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
-                match i {
-                    Some(index) => {
-                        match vals.get(*index) {
-                            Some(v) => {
-                                values.push(v)
-                            },
-                            None => {
-                                // This should not be possible
-                            },
-                        };
-                    },
-                    None => {
-                        match t.data_type {
-                            DataType::Integer => values.push(&(*INTEGER_NONE_VALUE)),
-                            DataType::Int8 => values.push(&(*INT8_NONE_VALUE)),
-                            DataType::Numeric => values.push(&(*NUMERIC_NONE_VALUE)),
-                            _ => values.push(&(*TEXT_NONE_VALUE)),
-                        }
-                    }
-                }
-            }
+            values.extend(
+                index_trend_map
+                    .iter()
+                    .map(|value_mapper| value_mapper.map_value_from(vals)),
+            );
 
             binary_copy_writer
                 .as_mut()
                 .write(&values)
                 .await
-                .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Error writing row: {e}"))))?;
+                .map_err(|e| {
+                    Error::Database(DatabaseError::from_msg(format!("Error writing row: {e}")))
+                })?;
         }
 
-        binary_copy_writer
-            .finish()
-            .await
-            .map_err(|e| {
-                let kind = match e.code() {
-                    Some(code) => {
-                        match code {
-                            &SqlState::UNIQUE_VIOLATION => crate::error::DatabaseErrorKind::UniqueViolation,
-                            _ => crate::error::DatabaseErrorKind::Default
-                        }
-                    },
-                    None => crate::error::DatabaseErrorKind::Default
-                };
+        binary_copy_writer.finish().await.map_err(|e| {
+            let kind = match e.code() {
+                Some(code) => match code {
+                    &SqlState::UNIQUE_VIOLATION => crate::error::DatabaseErrorKind::UniqueViolation,
+                    _ => crate::error::DatabaseErrorKind::Default,
+                },
+                None => crate::error::DatabaseErrorKind::Default,
+            };
 
-                Error::Database(DatabaseError {
-                    msg: format!("Could not load data using COPY command: {e}"),
-                    kind, 
-                })
-            })?;
+            Error::Database(DatabaseError {
+                msg: format!("Could not load data using COPY command: {e}"),
+                kind,
+            })
+        })?;
 
-        tx
-            .commit()
-            .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could commit data load using COPY command: {e}"))))?;
+        tx.commit().await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Could commit data load using COPY command: {e}"
+            )))
+        })?;
+
+        Ok(())
+    }
+
+    pub async fn store_copy_from_package<'a, 'b, U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage,
+    {
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<usize> = Vec::new();
+
+        let mut matched_trends: Vec<&Trend> = Vec::new();
+
+        let mut value_types: Vec<Type> =
+            vec![Type::INT4, Type::TIMESTAMPTZ, Type::TIMESTAMPTZ, Type::INT8];
+
+        // Filter trends that match the trend store parts trends and add corresponding types
+        for t in self.trends.iter() {
+            let index = data_package
+                .trends()
+                .iter()
+                .position(|trend_name| trend_name == &t.name);
+
+            if let Some(i) = index {
+                value_types.push(t.sql_type());
+                matched_trends.push(t);
+
+                matched_trend_indexes.push(i);
+            }
+        }
+
+        let index_trend_map: Vec<(usize, DataType)> = matched_trend_indexes
+            .iter()
+            .zip(matched_trends.iter())
+            .map(|(index, trend)| (*index, trend.data_type))
+            .collect();
+
+        let tx = client.transaction().await?;
+
+        if matched_trends.len() == 0 {
+            return Ok(());
+        }
+
+        let query = copy_from_query(self, &matched_trends);
+
+        let copy_in_sink = tx.copy_in(&query).await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Error starting COPY command: {}",
+                e
+            )))
+        })?;
+
+        let binary_copy_writer = BinaryCopyInWriter::new(copy_in_sink, &value_types);
+        pin_mut!(binary_copy_writer);
+
+        // We cannot use the database now() function for COPY FROM queries, so the 'created'
+        // timestamp for the trend data records is generated here.
+        let created_timestamp = Utc::now();
+
+        data_package
+            .write(
+                binary_copy_writer.as_mut(),
+                &index_trend_map,
+                &created_timestamp,
+            )
+            .await?;
+
+        binary_copy_writer.finish().await.map_err(|e| {
+            let kind = match e.code() {
+                Some(code) => match code {
+                    &SqlState::UNIQUE_VIOLATION => crate::error::DatabaseErrorKind::UniqueViolation,
+                    _ => crate::error::DatabaseErrorKind::Default,
+                },
+                None => crate::error::DatabaseErrorKind::Default,
+            };
+
+            Error::Database(DatabaseError {
+                msg: format!("Could not load data using COPY command: {e}"),
+                kind,
+            })
+        })?;
+
+        tx.commit().await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Could commit data load using COPY command: {e}"
+            )))
+        })?;
 
         Ok(())
     }
@@ -651,9 +851,7 @@ impl TrendStorePart {
 
         // Filter trends that match the trend store parts trends
         for t in self.trends.iter() {
-            let index = trends
-                .iter()
-                .position(|trend_name| trend_name == &t.name);
+            let index = trends.iter().position(|trend_name| trend_name == &t.name);
 
             if index.is_some() {
                 matched_trend_indexes.push(index);
@@ -676,15 +874,16 @@ impl TrendStorePart {
                 match i {
                     Some(index) => {
                         match vals.get(*index) {
-                            Some(v) => {
-                                values.push(v)
-                            },
+                            Some(v) => values.push(v),
                             None => {
                                 // This should not be possible
-                                return Err(Error::Runtime(RuntimeError::from_msg(format!("Expected value not found at index {}", index))));
-                            },
+                                return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                                    "Expected value not found at index {}",
+                                    index
+                                ))));
+                            }
                         };
-                    },
+                    }
                     None => {
                         match t.data_type {
                             DataType::Integer => values.push(&(*INTEGER_NONE_VALUE)),
@@ -699,10 +898,11 @@ impl TrendStorePart {
             tx.execute(&query, &values).await?;
         }
 
-        tx
-            .commit()
-            .await
-            .map_err(|e| Error::Database(DatabaseError::from_msg(format!("Could commit data load using COPY command: {e}"))))?;
+        tx.commit().await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Could commit data load using COPY command: {e}"
+            )))
+        })?;
 
         Ok(())
     }
@@ -787,7 +987,6 @@ impl SanityCheck for TrendStorePart {
         Ok(())
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrendStore {

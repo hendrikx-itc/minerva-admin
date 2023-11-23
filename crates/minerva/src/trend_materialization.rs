@@ -194,7 +194,10 @@ impl TrendViewMaterialization {
         Ok(())
     }
 
-    async fn drop_sources<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
+    async fn drop_sources<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<(), Error> {
         let query = format!(
             concat!(
         "DELETE FROM trend_directory.materialization_trend_store_link tsl ",
@@ -212,7 +215,10 @@ impl TrendViewMaterialization {
         }
     }
 
-    async fn connect_sources<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
+    async fn connect_sources<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<(), Error> {
         let query = concat!(
             "INSERT INTO trend_directory.materialization_trend_store_link(materialization_id, trend_store_part_id, timestamp_mapping_func) ",
             "SELECT m.id, ",
