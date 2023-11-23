@@ -19,6 +19,8 @@ use minerva::trend_store::{
     TrendStore, TrendStorePart,
 };
 
+use minerva::meas_value::DataType;
+
 use super::error::Error;
 use super::serviceerror::{ServiceError, ServiceErrorKind};
 
@@ -73,7 +75,7 @@ impl TrendData {
     fn as_minerva(&self) -> Trend {
         Trend {
             name: self.name.clone(),
-            data_type: serde_json::from_str(&self.data_type).unwrap(),
+            data_type: serde_json::from_str(&self.data_type).unwrap_or( DataType::Numeric ),
             description: self.description.clone(),
             time_aggregation: self.time_aggregation.clone(),
             entity_aggregation: self.entity_aggregation.clone(),
@@ -254,6 +256,12 @@ impl TrendStorePartCompleteData {
         &self,
         client: &mut T,
     ) -> Result<TrendStorePartFull, Error> {
+        // first ensure the data source exists
+        _ = client.execute(
+            "SELECT directory.name_to_data_source($1)",
+            &[&self.data_source]
+        );
+
         let trendstore = self
             .trend_store()
             .as_minerva(client)
