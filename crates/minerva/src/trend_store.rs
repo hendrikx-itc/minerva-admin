@@ -61,7 +61,7 @@ pub trait MeasurementStore {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
+        data_package: &Vec<ValueRow>,
     ) -> Result<(), Error>;
 
     async fn mark_modified<T: GenericClient + Send + Sync>(
@@ -341,8 +341,6 @@ struct SubPackageExtractor<'a> {
     pub value_extractors: Vec<ValueExtractor<'a>>,
 }
 
-type DataRow = (i32, DateTime<Utc>, Vec<MeasValue>);
-
 impl<'a> SubPackageExtractor<'a> {
     fn new(trend_store_part: &'a TrendStorePart, null_value: String) -> SubPackageExtractor<'a> {
         SubPackageExtractor {
@@ -363,7 +361,7 @@ impl<'a> SubPackageExtractor<'a> {
         &self,
         entity_ids: &Vec<i32>,
         data_package: &'b Vec<(String, DateTime<Utc>, Vec<String>)>,
-    ) -> Result<(Vec<DataRow>, Vec<&'b DateTime<Utc>>), Error> {
+    ) -> Result<(Vec<ValueRow>, Vec<&'b DateTime<Utc>>), Error> {
         let mut sub_package = Vec::new();
         let mut timestamps: HashSet<&DateTime<Utc>> = HashSet::new();
 
@@ -376,7 +374,7 @@ impl<'a> SubPackageExtractor<'a> {
 
             timestamps.insert(timestamp);
 
-            sub_package.push((*entity_id, timestamp.clone(), meas_values?));
+            sub_package.push(ValueRow { entity_id: *entity_id, timestamp: timestamp.clone(), values: meas_values?});
         }
 
         Ok((sub_package, timestamps.into_iter().collect()))
@@ -455,7 +453,7 @@ impl MeasurementStore for TrendStorePart {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
+        data_package: &Vec<ValueRow>,
     ) -> Result<(), Error> {
         if trends.len() == 0 {
             return Ok(());
@@ -642,6 +640,12 @@ pub trait DataPackage {
     ) -> Result<usize, Error>;
 }
 
+pub struct ValueRow {
+    pub entity_id: i32,
+    pub timestamp: DateTime<chrono::Utc>,
+    pub values: Vec<MeasValue>,
+}
+
 impl TrendStorePart {
     pub async fn store_copy_from<'a, I>(
         &self,
@@ -651,7 +655,7 @@ impl TrendStorePart {
         data_rows: I,
     ) -> Result<(), Error>
     where
-        I: IntoIterator<Item = &'a (i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
+        I: IntoIterator<Item = &'a ValueRow>,
     {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
@@ -704,14 +708,14 @@ impl TrendStorePart {
         // timestamp for the trend data records is generated here.
         let created_timestamp = Utc::now();
 
-        for (entity_id, timestamp, vals) in data_rows {
+        for value_row in data_rows {
             let mut values: Vec<&(dyn ToSql + Sync)> =
-                vec![entity_id, timestamp, &created_timestamp, &job_id];
+                vec![&value_row.entity_id, &value_row.timestamp, &created_timestamp, &job_id];
 
             values.extend(
                 index_trend_map
                     .iter()
-                    .map(|value_mapper| value_mapper.map_value_from(vals)),
+                    .map(|value_mapper| value_mapper.map_value_from(&value_row.values)),
             );
 
             binary_copy_writer
@@ -843,7 +847,7 @@ impl TrendStorePart {
         client: &mut Client,
         job_id: i64,
         trends: &Vec<String>,
-        data_package: &Vec<(i32, DateTime<chrono::Utc>, Vec<MeasValue>)>,
+        data_package: &Vec<ValueRow>,
     ) -> Result<(), Error> {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
@@ -859,21 +863,23 @@ impl TrendStorePart {
             }
         }
 
+        let created_timestamp = Utc::now();
+
         let tx = client.transaction().await?;
 
         let query = insert_query(self, &matched_trends);
 
-        for (entity_id, timestamp, vals) in data_package {
+        for value_row in data_package {
             let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
-            values.push(entity_id);
-            values.push(timestamp);
-            values.push(timestamp);
+            values.push(&value_row.entity_id);
+            values.push(&value_row.timestamp);
+            values.push(&created_timestamp);
             values.push(&job_id);
 
             for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
                 match i {
                     Some(index) => {
-                        match vals.get(*index) {
+                        match value_row.values.get(*index) {
                             Some(v) => values.push(v),
                             None => {
                                 // This should not be possible

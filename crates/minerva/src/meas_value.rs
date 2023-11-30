@@ -96,7 +96,7 @@ impl From<&str> for DataType {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum MeasValue {
     Int2(Option<i16>),
     Integer(Option<i32>),
@@ -205,6 +205,18 @@ pub fn map_numeric(
 }
 
 impl MeasValue {
+    pub fn null_value_of_type(data_type: DataType) -> MeasValue {
+        match data_type {
+            DataType::Int2 => MeasValue::Int2(None),
+            DataType::Integer => MeasValue::Integer(None),
+            DataType::Numeric => MeasValue::Numeric(None),
+            DataType::Int8 => MeasValue::Int8(None),
+            DataType::Real => MeasValue::Real(None),
+            DataType::Double => MeasValue::Double(None),
+            _ => MeasValue::Text("".to_string())
+        }
+    }
+
     pub fn to_value_of(&self, data_type: DataType) -> Result<MeasValue, Error> {
         match self {
             MeasValue::Int2(v) => map_int2(v, data_type),
