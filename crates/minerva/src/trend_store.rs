@@ -64,9 +64,9 @@ pub trait MeasurementStore {
         data_package: &Vec<ValueRow>,
     ) -> Result<(), Error>;
 
-    async fn mark_modified<T: GenericClient + Send + Sync>(
+    async fn mark_modified(
         &self,
-        client: &mut T,
+        client: &mut Client,
         timestamp: &DateTime<chrono::Utc>,
     ) -> Result<(), Error>;
 }
@@ -477,9 +477,9 @@ impl MeasurementStore for TrendStorePart {
         }
     }
 
-    async fn mark_modified<T: GenericClient + Send + Sync>(
+    async fn mark_modified(
         &self,
-        client: &mut T,
+        client: &mut Client,
         timestamp: &DateTime<chrono::Utc>,
     ) -> Result<(), Error> {
         let query = concat!(

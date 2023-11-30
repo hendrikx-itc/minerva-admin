@@ -493,6 +493,25 @@ $$ LANGUAGE plpgsql VOLATILE;
 SELECT create_distributed_function('action_count(text)');
 
 
+CREATE FUNCTION "public"."action_count"("sql" text[])
+    RETURNS integer
+AS $$
+DECLARE
+    row_count integer;
+    statement text;
+BEGIN
+    FOREACH statement IN ARRAY sql LOOP
+        EXECUTE statement;
+    END LOOP;
+
+    GET DIAGNOSTICS row_count = ROW_COUNT;
+
+    RETURN row_count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+SELECT create_distributed_function('action_count(text)');
+
+
 CREATE FUNCTION "public"."action"(anyelement, "sql" text)
     RETURNS anyelement
 AS $$
@@ -981,7 +1000,7 @@ SELECT ARRAY[
         ');',
         alias_directory.alias_schema(),
         $1.name, $1.name
-    ),
+    )
 ];
 $$ LANGUAGE sql STABLE;
 
@@ -989,7 +1008,7 @@ $$ LANGUAGE sql STABLE;
 CREATE FUNCTION "alias_directory"."update_alias"(alias_directory.alias_type)
     RETURNS bigint
 AS $$
-SELECT public.action($1, alias_directory.update_alias_sql($1));
+SELECT public.action_count(alias_directory.update_alias_sql($1));
 $$ LANGUAGE sql VOLATILE;
 
 

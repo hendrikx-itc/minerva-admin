@@ -1566,7 +1566,7 @@ objects:
               ');',
               alias_directory.alias_schema(),
               $1.name, $1.name
-          ),
+          )
       ];
 
 - function:
