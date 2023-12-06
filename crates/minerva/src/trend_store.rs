@@ -1345,8 +1345,6 @@ pub async fn create_partitions_for_trend_store(
     trend_store_id: i32,
     ahead_interval: Duration,
 ) -> Result<(), Error> {
-    println!("Creating partitions for trend store {}", &trend_store_id);
-
     let query = concat!(
         "WITH partition_indexes AS (",
         "SELECT trend_directory.timestamp_to_index(partition_size, t) AS i, p.id AS part_id, p.name AS part_name ",
@@ -1366,6 +1364,10 @@ pub async fn create_partitions_for_trend_store(
         .query(query, &[&trend_store_id, &ahead_interval_str])
         .await
         .map_err(|e| DatabaseError::from_msg(format!("Error loading trend store Ids: {e}")))?;
+
+    if !result.is_empty() {
+        println!("Creating {} partitions for trend store {}", result.len(), &trend_store_id);
+    }
 
     for row in result {
         let trend_store_part_id: i32 = row.get(0);
