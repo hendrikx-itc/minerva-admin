@@ -1372,14 +1372,19 @@ pub async fn create_partitions_for_trend_store(
         let part_name: String = row.get(1);
         let partition_index: i32 = row.get(2);
 
-        let partition_name =
-            create_partition_for_trend_store_part(client, trend_store_part_id, partition_index)
-                .await?;
-
-        println!(
-            "Created partition for '{}': '{}'",
-            &part_name, &partition_name
-        );
+        match create_partition_for_trend_store_part(client, trend_store_part_id, partition_index).await {
+            Ok(partition_name) => {
+                println!(
+                    "Created partition for '{}': '{}'",
+                    &part_name, &partition_name
+                );
+            },
+            Err(e) => {
+                println!(
+                    "Error creating partition '{part_name}': {e}"
+                );
+            }
+        }
     }
 
     Ok(())
