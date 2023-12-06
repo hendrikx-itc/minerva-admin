@@ -15,6 +15,7 @@ use crate::commands::trendmaterialization::TrendMaterializationOpt;
 use crate::commands::trendstore::TrendStoreOpt;
 use crate::commands::trigger::TriggerOpt;
 use crate::commands::update::UpdateOpt;
+use crate::commands::relation::RelationOpt;
 
 #[derive(Parser, Debug, PartialEq)]
 #[command(name = "minerva-admin")]
@@ -47,6 +48,8 @@ enum Commands {
     TrendMaterialization(TrendMaterializationOpt),
     #[command(about = "Load data into Minerva database")]
     LoadData(LoadDataOpt),
+    #[command(about = "Manage relations")]
+    Relation(RelationOpt),
 }
 
 fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -75,6 +78,7 @@ async fn main() {
         Some(Commands::AttributeStore(attribute_store)) => attribute_store.run().await,
         Some(Commands::TrendMaterialization(trend_materialization)) => trend_materialization.run().await,
         Some(Commands::LoadData(load_data)) => load_data.run().await,
+        Some(Commands::Relation(relation)) => relation.run().await,
         None => return
     };
 
