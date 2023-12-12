@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
 use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
@@ -13,9 +13,9 @@ use minerva::trend_materialization::{
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct TrendMaterializationCreate {
-    #[structopt(help = "trend materialization definition file")]
+    #[arg(help = "trend materialization definition file")]
     definition: PathBuf,
 }
 
@@ -47,9 +47,9 @@ impl Cmd for TrendMaterializationCreate {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct TrendMaterializationUpdate {
-    #[structopt(help = "trend materialization definition file")]
+    #[arg(help = "trend materialization definition file")]
     definition: PathBuf,
 }
 
@@ -80,9 +80,9 @@ impl Cmd for TrendMaterializationUpdate {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct TrendMaterializationResetSourceFingerprint {
-    #[structopt(help = "materialization ")]
+    #[arg(help = "materialization ")]
     materialization: String,
 }
 
@@ -106,13 +106,13 @@ impl Cmd for TrendMaterializationResetSourceFingerprint {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 pub enum TrendMaterializationOpt {
-    #[structopt(about = "create a trend materialization")]
+    #[command(about = "create a trend materialization")]
     Create(TrendMaterializationCreate),
-    #[structopt(about = "update a trend materialization")]
+    #[command(about = "update a trend materialization")]
     Update(TrendMaterializationUpdate),
-    #[structopt(about = "reset the source fingerprint of the materialization state")]
+    #[command(about = "reset the source fingerprint of the materialization state")]
     ResetSourceFingerprint(TrendMaterializationResetSourceFingerprint),
 }
 

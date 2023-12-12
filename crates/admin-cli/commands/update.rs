@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use dialoguer::Confirm;
-use structopt::StructOpt;
+use clap::Parser;
 
 use tokio_postgres::Client;
 
@@ -14,11 +14,11 @@ use minerva::instance::MinervaInstance;
 
 use super::common::{connect_db, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct UpdateOpt {
-    #[structopt(short, long)]
+    #[arg(short, long)]
     non_interactive: bool,
-    #[structopt(parse(from_os_str), help = "Minerva instance root directory")]
+    #[arg(help = "Minerva instance root directory")]
     instance_root: Option<PathBuf>,
 }
 

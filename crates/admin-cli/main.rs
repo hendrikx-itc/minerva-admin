@@ -1,8 +1,8 @@
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
 pub mod commands;
 
-use crate::commands::attributestore::AttributeStoreOpt;
+use crate::commands::attributestore::AttributeStoreOptCommands;
 use crate::commands::common::Cmd;
 use crate::commands::diff::DiffOpt;
 use crate::commands::schema::SchemaOpt;
@@ -14,45 +14,51 @@ use crate::commands::trendstore::TrendStoreOpt;
 use crate::commands::trigger::TriggerOpt;
 use crate::commands::update::UpdateOpt;
 
-#[derive(Debug, StructOpt)]
-enum Opt {
-    #[structopt(about = "Show the definition used for initializing a new Minerva database")]
+#[derive(Parser)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    #[command(about = "Show the definition used for initializing a new Minerva database")]
     Schema(SchemaOpt),
-    #[structopt(about = "Complete dump of a Minerva instance")]
+    #[command(about = "Complete dump of a Minerva instance")]
     Dump(DumpOpt),
-    #[structopt(about = "Create a diff between Minerva instance definitions")]
+    #[command(about = "Create a diff between Minerva instance definitions")]
     Diff(DiffOpt),
-    #[structopt(about = "Update a Minerva database from an instance definition")]
+    #[command(about = "Update a Minerva database from an instance definition")]
     Update(UpdateOpt),
-    #[structopt(about = "Initialize a complete Minerva instance")]
+    #[command(about = "Initialize a complete Minerva instance")]
     Initialize(InitializeOpt),
-    #[structopt(about = "Manage trend stores")]
+    #[command(about = "Manage trend stores")]
     TrendStore(TrendStoreOpt),
-    #[structopt(about = "Manage triggers")]
+    #[command(about = "Manage triggers")]
     Trigger(TriggerOpt),
-    #[structopt(about = "Manage attribute stores")]
-    AttributeStore(AttributeStoreOpt),
-    #[structopt(about = "Manage trend materrializations")]
+    #[command(about = "Manage attribute stores")]
+    AttributeStore(AttributeStoreOptCommands),
+    #[command(about = "Manage trend materrializations")]
     TrendMaterialization(TrendMaterializationOpt),
-    #[structopt(about = "Load data into Minerva database")]
+    #[command(about = "Load data into Minerva database")]
     LoadData(LoadDataOpt),
 }
 
 #[tokio::main]
 async fn main() {
-    let opt = Opt::from_args();
+    let cli = Cli::parse();
 
-    let result = match opt {
-        Opt::Schema(schema) => schema.run().await,
-        Opt::Dump(dump) => dump.run().await,
-        Opt::Diff(diff) => diff.run().await,
-        Opt::Update(update) => update.run().await,
-        Opt::Initialize(initialize) => initialize.run().await,
-        Opt::TrendStore(trend_store) => trend_store.run().await,
-        Opt::Trigger(trigger) => trigger.run().await,
-        Opt::AttributeStore(attribute_store) => attribute_store.run().await,
-        Opt::TrendMaterialization(trend_materialization) => trend_materialization.run().await,
-        Opt::LoadData(load_data) => load_data.run().await,
+    let result = match cli.command {
+        Commands::Schema(schema) => schema.run().await,
+        Commands::Dump(dump) => dump.run().await,
+        Commands::Diff(diff) => diff.run().await,
+        Commands::Update(update) => update.run().await,
+        Commands::Initialize(initialize) => initialize.run().await,
+        Commands::TrendStore(trend_store) => trend_store.run().await,
+        Commands::Trigger(trigger) => trigger.run().await,
+        Commands::AttributeStore(attribute_store) => attribute_store.run().await,
+        Commands::TrendMaterialization(trend_materialization) => trend_materialization.run().await,
+        Commands::LoadData(load_data) => load_data.run().await,
     };
 
     if let Err(e) = result {

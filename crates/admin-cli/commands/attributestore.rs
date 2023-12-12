@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
 use minerva::attribute_store::{
     load_attribute_store, load_attribute_store_from_file, AddAttributeStore, AttributeStore,
@@ -10,31 +10,37 @@ use minerva::error::{Error, RuntimeError};
 
 use super::common::{connect_db, CmdResult};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct AttributeStoreCreate {
-    #[structopt(help = "attribute store definition file")]
+    #[arg(help = "attribute store definition file")]
     definition: PathBuf,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct AttributeStoreUpdate {
-    #[structopt(help = "attribute store definition file")]
+    #[arg(help = "attribute store definition file")]
     definition: PathBuf,
 }
 
-#[derive(Debug, StructOpt)]
-pub enum AttributeStoreOpt {
-    #[structopt(about = "create an attribute store")]
+#[derive(Debug, Parser)]
+pub struct AttributeStoreOpt {
+    #[command(subcommand)]
+    command: AttributeStoreOptCommands
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AttributeStoreOptCommands {
+    #[command(about = "create an attribute store")]
     Create(AttributeStoreCreate),
-    #[structopt(about = "update an attribute store")]
+    #[command(about = "update an attribute store")]
     Update(AttributeStoreUpdate),
 }
 
-impl AttributeStoreOpt {
+impl AttributeStoreOptCommands {
     pub async fn run(&self) -> CmdResult {
         match self {
-            AttributeStoreOpt::Create(args) => run_attribute_store_create_cmd(args).await,
-            AttributeStoreOpt::Update(args) => run_attribute_store_update_cmd(args).await,
+            AttributeStoreOptCommands::Create(args) => run_attribute_store_create_cmd(args).await,
+            AttributeStoreOptCommands::Update(args) => run_attribute_store_update_cmd(args).await,
         }
     }
 }
