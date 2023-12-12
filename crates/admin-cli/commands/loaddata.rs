@@ -9,7 +9,7 @@ use super::common::{connect_db, Cmd, CmdResult};
 
 static NULL_VALUE: &str = "";
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct LoadDataOpt {
     #[arg(long, help = "Data source of data")]
     data_source: Option<String>,

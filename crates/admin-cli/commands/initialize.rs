@@ -16,16 +16,16 @@ use super::common::{
     connect_db, connect_to_db, get_db_config, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT,
 };
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct InitializeOpt {
-    #[arg(long = "--create-schema", help = "create Minerva schema")]
+    #[arg(long = "create-schema", help = "create Minerva schema")]
     create_schema: bool,
-    #[arg(long = "--create-database", help = "create Minerva database")]
+    #[arg(long = "create-database", help = "create Minerva database")]
     database_name: Option<String>,
-    #[arg(long = "--create-partitions", help = "create partitions")]
+    #[arg(long = "create-partitions", help = "create partitions")]
     create_partitions: bool,
     #[arg(
-        long = "--with-definition",
+        long = "with-definition",
         help = "Minerva instance definition root directory"
     )]
     instance_root: Option<PathBuf>,

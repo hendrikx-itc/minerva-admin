@@ -5,7 +5,7 @@ use minerva::schema::schema;
 
 use super::common::{Cmd, CmdResult};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct SchemaOpt {}
 
 #[async_trait]

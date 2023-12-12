@@ -27,12 +27,12 @@ use minerva::trend_store::{
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct DeleteOpt {
     id: i32,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreCreate {
     #[arg(help = "trend store definition file")]
     definition: PathBuf,
@@ -57,7 +57,7 @@ impl Cmd for TrendStoreCreate {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreDiff {
     #[arg(help = "trend store definition file")]
     definition: PathBuf,
@@ -101,7 +101,7 @@ impl Cmd for TrendStoreDiff {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreUpdate {
     #[arg(help = "trend store definition file")]
     definition: PathBuf,
@@ -154,23 +154,23 @@ impl Cmd for TrendStoreUpdate {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStorePartitionCreate {
     #[arg(
         help="period for which to create partitions",
-        long="--ahead-interval",
+        long="ahead-interval",
         value_parser=humantime::parse_duration
     )]
     ahead_interval: Option<Duration>,
     #[arg(
         help="timestamp for which to create partitions",
-        long="--for-timestamp",
+        long="for-timestamp",
         value_parser=DateTime::parse_from_rfc3339
     )]
     for_timestamp: Option<DateTime<FixedOffset>>,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStorePartitionRemove {
     #[arg(help = "do not really remove the partitions", short, long)]
     pretend: bool,
@@ -233,13 +233,13 @@ impl Cmd for TrendStorePartitionRemove {
     }
 }
 
-#[derive(Debug, Parser)]
-struct TrendStorePartition {
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendStorePartition {
     #[command(subcommand)]
     command: TrendStorePartitionCommands
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq)]
 pub enum TrendStorePartitionCommands {
     #[command(about = "create partitions")]
     Create(TrendStorePartitionCreate),
@@ -247,13 +247,13 @@ pub enum TrendStorePartitionCommands {
     Remove(TrendStorePartitionRemove),
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreCheck {
     #[arg(help = "trend store definition file")]
     definition: PathBuf,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreRenameTrend {
     #[arg(help = "name of trend store part")]
     trend_store_part: String,
@@ -309,7 +309,7 @@ impl Cmd for TrendStoreRenameTrend {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStorePartAnalyze {
     #[arg(help = "name of trend store part")]
     name: String,
@@ -356,19 +356,19 @@ impl Cmd for TrendStorePartAnalyze {
     }
 }
 
-#[derive(Debug, Parser)]
-struct TrendStorePartOpt {
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendStorePartOpt {
     #[command(subcommand)]
     command: TrendStorePartOptCommands
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq)]
 pub enum TrendStorePartOptCommands {
     #[command(about = "analyze range of values for trends in a trend store part")]
     Analyze(TrendStorePartAnalyze),
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreList {}
 
 #[async_trait]
@@ -398,11 +398,11 @@ impl Cmd for TrendStoreList {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreDeleteTimestamp {
     #[arg(
         help = "granularity for which to delete all data",
-        long = "--granularity"
+        long = "granularity"
     )]
     granularity: String,
     #[arg(
@@ -429,13 +429,13 @@ impl Cmd for TrendStoreDeleteTimestamp {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreOpt {
     #[command(subcommand)]
     command: TrendStoreOptCommands
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq)]
 pub enum TrendStoreOptCommands {
     #[command(about = "list existing trend stores")]
     List(TrendStoreList),

@@ -9,10 +9,10 @@ use minerva::instance::MinervaInstance;
 
 use super::common::{connect_to_db, get_db_config, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct DiffOpt {
     #[structopt(
-        long = "--with-dir",
+        long = "with-dir",
         help = "compare with other Minerva instance directory"
     )]
     with_dir: Option<PathBuf>,

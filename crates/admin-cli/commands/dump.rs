@@ -5,7 +5,7 @@ use minerva::instance::dump;
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct DumpOpt {}
 
 #[async_trait]

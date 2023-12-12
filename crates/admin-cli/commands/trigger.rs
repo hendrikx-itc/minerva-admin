@@ -16,7 +16,7 @@ use minerva::trigger::{
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerList {}
 
 #[async_trait]
@@ -54,7 +54,7 @@ impl Cmd for TriggerList {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerCreate {
     #[arg(
         short = 'v',
@@ -62,7 +62,7 @@ pub struct TriggerCreate {
         help = "run basic verification commands after creation"
     )]
     verify: bool,
-    #[arg(long = "--enable", help = "enable the trigger after creation")]
+    #[arg(long = "enable", help = "enable the trigger after creation")]
     enable: bool,
     #[arg(help = "trigger definition file")]
     definition: PathBuf,
@@ -91,7 +91,7 @@ impl Cmd for TriggerCreate {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerDelete {
     #[arg(help = "trigger name")]
     name: String,
@@ -114,7 +114,7 @@ impl Cmd for TriggerDelete {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerUpdate {
     #[arg(
         short = 'v',
@@ -146,7 +146,7 @@ impl Cmd for TriggerUpdate {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerRename {
     #[arg(
         short = 'v',
@@ -188,7 +188,7 @@ impl Cmd for TriggerRename {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerVerify {
     #[arg(help = "trigger name")]
     name: String,
@@ -211,7 +211,7 @@ impl Cmd for TriggerVerify {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerEnable {
     #[arg(help = "trigger name")]
     name: String,
@@ -234,7 +234,7 @@ impl Cmd for TriggerEnable {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerDisable {
     #[arg(help = "trigger name")]
     name: String,
@@ -257,7 +257,7 @@ impl Cmd for TriggerDisable {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerPreviewNotifications {
     #[arg(help = "trigger name")]
     name: String,
@@ -294,7 +294,7 @@ impl Cmd for TriggerPreviewNotifications {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerCreateNotifications {
     #[arg(long = "timestamp", help = "timestamp")]
     timestamp: Option<DateTime<Local>>,
@@ -320,7 +320,7 @@ impl Cmd for TriggerCreateNotifications {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerDump {
     #[arg(help = "trigger name")]
     name: String,
@@ -341,13 +341,13 @@ impl Cmd for TriggerDump {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerOpt {
     #[command(subcommand)]
     command: TriggerOptCommands
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq)]
 pub enum TriggerOptCommands {
     #[command(about = "list configured triggers")]
     List(TriggerList),

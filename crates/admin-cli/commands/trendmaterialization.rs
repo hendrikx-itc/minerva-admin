@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueHint};
 
 use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
@@ -13,9 +13,9 @@ use minerva::trend_materialization::{
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendMaterializationCreate {
-    #[arg(help = "trend materialization definition file")]
+    #[arg(help = "trend materialization definition file", value_hint = ValueHint::FilePath)]
     definition: PathBuf,
 }
 
@@ -47,7 +47,7 @@ impl Cmd for TrendMaterializationCreate {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendMaterializationUpdate {
     #[arg(help = "trend materialization definition file")]
     definition: PathBuf,
@@ -80,7 +80,7 @@ impl Cmd for TrendMaterializationUpdate {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendMaterializationResetSourceFingerprint {
     #[arg(help = "materialization ")]
     materialization: String,
@@ -106,8 +106,14 @@ impl Cmd for TrendMaterializationResetSourceFingerprint {
     }
 }
 
-#[derive(Debug, Subcommand)]
-pub enum TrendMaterializationOpt {
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendMaterializationOpt {
+    #[command(subcommand)]
+    command: Option<TrendMaterializationOptCommand>
+}
+
+#[derive(Debug, Subcommand, PartialEq)]
+pub enum TrendMaterializationOptCommand {
     #[command(about = "create a trend materialization")]
     Create(TrendMaterializationCreate),
     #[command(about = "update a trend materialization")]
@@ -118,16 +124,17 @@ pub enum TrendMaterializationOpt {
 
 impl TrendMaterializationOpt {
     pub async fn run(&self) -> CmdResult {
-        match self {
-            TrendMaterializationOpt::Create(trend_materialization_create) => {
+        match &self.command {
+            Some(TrendMaterializationOptCommand::Create(trend_materialization_create)) => {
                 trend_materialization_create.run().await
             }
-            TrendMaterializationOpt::Update(trend_materialization_update) => {
+            Some(TrendMaterializationOptCommand::Update(trend_materialization_update)) => {
                 trend_materialization_update.run().await
             }
-            TrendMaterializationOpt::ResetSourceFingerprint(reset_source_fingerprint) => {
+            Some(TrendMaterializationOptCommand::ResetSourceFingerprint(reset_source_fingerprint)) => {
                 reset_source_fingerprint.run().await
             }
+            None => Ok(())
         }
     }
 }

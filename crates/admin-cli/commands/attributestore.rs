@@ -10,25 +10,25 @@ use minerva::error::{Error, RuntimeError};
 
 use super::common::{connect_db, CmdResult};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct AttributeStoreCreate {
     #[arg(help = "attribute store definition file")]
     definition: PathBuf,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct AttributeStoreUpdate {
     #[arg(help = "attribute store definition file")]
     definition: PathBuf,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct AttributeStoreOpt {
     #[command(subcommand)]
     command: AttributeStoreOptCommands
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq)]
 pub enum AttributeStoreOptCommands {
     #[command(about = "create an attribute store")]
     Create(AttributeStoreCreate),
@@ -36,9 +36,9 @@ pub enum AttributeStoreOptCommands {
     Update(AttributeStoreUpdate),
 }
 
-impl AttributeStoreOptCommands {
+impl AttributeStoreOpt {
     pub async fn run(&self) -> CmdResult {
-        match self {
+        match &self.command {
             AttributeStoreOptCommands::Create(args) => run_attribute_store_create_cmd(args).await,
             AttributeStoreOptCommands::Update(args) => run_attribute_store_update_cmd(args).await,
         }

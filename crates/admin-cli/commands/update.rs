@@ -14,7 +14,7 @@ use minerva::instance::MinervaInstance;
 
 use super::common::{connect_db, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct UpdateOpt {
     #[arg(short, long)]
     non_interactive: bool,
