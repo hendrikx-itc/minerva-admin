@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
 use comfy_table::Table;
 
@@ -16,7 +16,7 @@ use minerva::trigger::{
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerList {}
 
 #[async_trait]
@@ -54,17 +54,17 @@ impl Cmd for TriggerList {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerCreate {
-    #[structopt(
-        short = "-v",
-        long = "--verify",
+    #[arg(
+        short = 'v',
+        long = "verify",
         help = "run basic verification commands after creation"
     )]
     verify: bool,
-    #[structopt(long = "--enable", help = "enable the trigger after creation")]
+    #[arg(long = "enable", help = "enable the trigger after creation")]
     enable: bool,
-    #[structopt(help = "trigger definition file")]
+    #[arg(help = "trigger definition file")]
     definition: PathBuf,
 }
 
@@ -91,9 +91,9 @@ impl Cmd for TriggerCreate {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerDelete {
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
 }
 
@@ -114,15 +114,15 @@ impl Cmd for TriggerDelete {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerUpdate {
-    #[structopt(
-        short = "-v",
-        long = "--verify",
+    #[arg(
+        short = 'v',
+        long = "verify",
         help = "run basic verification commands after update"
     )]
     verify: bool,
-    #[structopt(help = "trigger definition file")]
+    #[arg(help = "trigger definition file")]
     definition: PathBuf,
 }
 
@@ -146,17 +146,17 @@ impl Cmd for TriggerUpdate {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerRename {
-    #[structopt(
-        short = "-v",
-        long = "--verify",
+    #[arg(
+        short = 'v',
+        long = "verify",
         help = "run basic verification commands after rename"
     )]
     verify: bool,
-    #[structopt(help = "renamed trigger definition file")]
+    #[arg(help = "renamed trigger definition file")]
     definition: PathBuf,
-    #[structopt(help = "old trigger name")]
+    #[arg(help = "old trigger name")]
     old_name: String,
 }
 
@@ -188,9 +188,9 @@ impl Cmd for TriggerRename {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerVerify {
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
 }
 
@@ -211,9 +211,9 @@ impl Cmd for TriggerVerify {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerEnable {
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
 }
 
@@ -234,9 +234,9 @@ impl Cmd for TriggerEnable {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerDisable {
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
 }
 
@@ -257,11 +257,11 @@ impl Cmd for TriggerDisable {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerPreviewNotifications {
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
-    #[structopt(help = "timestamp")]
+    #[arg(help = "timestamp")]
     timestamp: DateTime<Local>,
 }
 
@@ -294,11 +294,11 @@ impl Cmd for TriggerPreviewNotifications {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerCreateNotifications {
-    #[structopt(long = "timestamp", help = "timestamp")]
+    #[arg(long = "timestamp", help = "timestamp")]
     timestamp: Option<DateTime<Local>>,
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
 }
 
@@ -320,9 +320,9 @@ impl Cmd for TriggerCreateNotifications {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TriggerDump {
-    #[structopt(help = "trigger name")]
+    #[arg(help = "trigger name")]
     name: String,
 }
 
@@ -341,48 +341,54 @@ impl Cmd for TriggerDump {
     }
 }
 
-#[derive(Debug, StructOpt)]
-pub enum TriggerOpt {
-    #[structopt(about = "list configured triggers")]
+#[derive(Debug, Parser, PartialEq)]
+pub struct TriggerOpt {
+    #[command(subcommand)]
+    command: TriggerOptCommands
+}
+
+#[derive(Debug, Subcommand, PartialEq)]
+pub enum TriggerOptCommands {
+    #[command(about = "list configured triggers")]
     List(TriggerList),
-    #[structopt(about = "create a trigger")]
+    #[command(about = "create a trigger")]
     Create(TriggerCreate),
-    #[structopt(about = "delete a trigger")]
+    #[command(about = "delete a trigger")]
     Delete(TriggerDelete),
-    #[structopt(about = "enable a trigger")]
+    #[command(about = "enable a trigger")]
     Enable(TriggerEnable),
-    #[structopt(about = "disable a trigger")]
+    #[command(about = "disable a trigger")]
     Disable(TriggerDisable),
-    #[structopt(about = "update a trigger")]
+    #[command(about = "update a trigger")]
     Update(TriggerUpdate),
-    #[structopt(about = "rename a trigger")]
+    #[command(about = "rename a trigger")]
     Rename(TriggerRename),
-    #[structopt(about = "dump a trigger definition")]
+    #[command(about = "dump a trigger definition")]
     Dump(TriggerDump),
-    #[structopt(about = "run basic verification on a trigger")]
+    #[command(about = "run basic verification on a trigger")]
     Verify(TriggerVerify),
-    #[structopt(about = "preview notifications of a trigger")]
+    #[command(about = "preview notifications of a trigger")]
     PreviewNotifications(TriggerPreviewNotifications),
-    #[structopt(about = "create notifications of a trigger")]
+    #[command(about = "create notifications of a trigger")]
     CreateNotifications(TriggerCreateNotifications),
 }
 
 impl TriggerOpt {
     pub async fn run(&self) -> CmdResult {
-        match self {
-            TriggerOpt::List(list) => list.run().await,
-            TriggerOpt::Create(create) => create.run().await,
-            TriggerOpt::Delete(delete) => delete.run().await,
-            TriggerOpt::Enable(enable) => enable.run().await,
-            TriggerOpt::Disable(disable) => disable.run().await,
-            TriggerOpt::Update(update) => update.run().await,
-            TriggerOpt::Rename(rename) => rename.run().await,
-            TriggerOpt::Dump(dump) => dump.run().await,
-            TriggerOpt::Verify(verify) => verify.run().await,
-            TriggerOpt::PreviewNotifications(preview_notifications) => {
+        match &self.command {
+            TriggerOptCommands::List(list) => list.run().await,
+            TriggerOptCommands::Create(create) => create.run().await,
+            TriggerOptCommands::Delete(delete) => delete.run().await,
+            TriggerOptCommands::Enable(enable) => enable.run().await,
+            TriggerOptCommands::Disable(disable) => disable.run().await,
+            TriggerOptCommands::Update(update) => update.run().await,
+            TriggerOptCommands::Rename(rename) => rename.run().await,
+            TriggerOptCommands::Dump(dump) => dump.run().await,
+            TriggerOptCommands::Verify(verify) => verify.run().await,
+            TriggerOptCommands::PreviewNotifications(preview_notifications) => {
                 preview_notifications.run().await
             }
-            TriggerOpt::CreateNotifications(create_notifications) => {
+            TriggerOptCommands::CreateNotifications(create_notifications) => {
                 create_notifications.run().await
             }
         }

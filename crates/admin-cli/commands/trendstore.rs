@@ -6,8 +6,9 @@ use chrono::FixedOffset;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use structopt::StructOpt;
+use clap::Parser;
 
+use clap::Subcommand;
 use comfy_table;
 
 use term_table::{
@@ -26,14 +27,14 @@ use minerva::trend_store::{
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct DeleteOpt {
     id: i32,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreCreate {
-    #[structopt(help = "trend store definition file")]
+    #[arg(help = "trend store definition file")]
     definition: PathBuf,
 }
 
@@ -56,9 +57,9 @@ impl Cmd for TrendStoreCreate {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreDiff {
-    #[structopt(help = "trend store definition file")]
+    #[arg(help = "trend store definition file")]
     definition: PathBuf,
 }
 
@@ -100,9 +101,9 @@ impl Cmd for TrendStoreDiff {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreUpdate {
-    #[structopt(help = "trend store definition file")]
+    #[arg(help = "trend store definition file")]
     definition: PathBuf,
 }
 
@@ -153,25 +154,25 @@ impl Cmd for TrendStoreUpdate {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStorePartitionCreate {
-    #[structopt(
+    #[arg(
         help="period for which to create partitions",
-        long="--ahead-interval",
-        parse(try_from_str = humantime::parse_duration)
+        long="ahead-interval",
+        value_parser=humantime::parse_duration
     )]
     ahead_interval: Option<Duration>,
-    #[structopt(
+    #[arg(
         help="timestamp for which to create partitions",
-        long="--for-timestamp",
-        parse(try_from_str = DateTime::parse_from_rfc3339)
+        long="for-timestamp",
+        value_parser=DateTime::parse_from_rfc3339
     )]
     for_timestamp: Option<DateTime<FixedOffset>>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStorePartitionRemove {
-    #[structopt(help = "do not really remove the partitions", short, long)]
+    #[arg(help = "do not really remove the partitions", short, long)]
     pretend: bool,
 }
 
@@ -232,27 +233,33 @@ impl Cmd for TrendStorePartitionRemove {
     }
 }
 
-#[derive(Debug, StructOpt)]
-pub enum TrendStorePartition {
-    #[structopt(about = "create partitions")]
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendStorePartition {
+    #[command(subcommand)]
+    command: TrendStorePartitionCommands
+}
+
+#[derive(Debug, Subcommand, PartialEq)]
+pub enum TrendStorePartitionCommands {
+    #[command(about = "create partitions")]
     Create(TrendStorePartitionCreate),
-    #[structopt(about = "remove partitions")]
+    #[command(about = "remove partitions")]
     Remove(TrendStorePartitionRemove),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreCheck {
-    #[structopt(help = "trend store definition file")]
+    #[arg(help = "trend store definition file")]
     definition: PathBuf,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreRenameTrend {
-    #[structopt(help = "name of trend store part")]
+    #[arg(help = "name of trend store part")]
     trend_store_part: String,
-    #[structopt(help = "current name")]
+    #[arg(help = "current name")]
     from: String,
-    #[structopt(help = "new name")]
+    #[arg(help = "new name")]
     to: String,
 }
 
@@ -302,9 +309,9 @@ impl Cmd for TrendStoreRenameTrend {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStorePartAnalyze {
-    #[structopt(help = "name of trend store part")]
+    #[arg(help = "name of trend store part")]
     name: String,
 }
 
@@ -349,13 +356,19 @@ impl Cmd for TrendStorePartAnalyze {
     }
 }
 
-#[derive(Debug, StructOpt)]
-pub enum TrendStorePartOpt {
-    #[structopt(about = "analyze range of values for trends in a trend store part")]
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendStorePartOpt {
+    #[command(subcommand)]
+    command: TrendStorePartOptCommands
+}
+
+#[derive(Debug, Subcommand, PartialEq)]
+pub enum TrendStorePartOptCommands {
+    #[command(about = "analyze range of values for trends in a trend store part")]
     Analyze(TrendStorePartAnalyze),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreList {}
 
 #[async_trait]
@@ -385,16 +398,16 @@ impl Cmd for TrendStoreList {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreDeleteTimestamp {
-    #[structopt(
+    #[arg(
         help = "granularity for which to delete all data",
-        long = "--granularity"
+        long = "granularity"
     )]
     granularity: String,
-    #[structopt(
+    #[arg(
         help="timestamp for which to delete all data",
-        parse(try_from_str = DateTime::parse_from_rfc3339)
+        value_parser=DateTime::parse_from_rfc3339
     )]
     timestamp: DateTime<FixedOffset>,
 }
@@ -416,50 +429,56 @@ impl Cmd for TrendStoreDeleteTimestamp {
     }
 }
 
-#[derive(Debug, StructOpt)]
-pub enum TrendStoreOpt {
-    #[structopt(about = "list existing trend stores")]
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendStoreOpt {
+    #[command(subcommand)]
+    command: TrendStoreOptCommands
+}
+
+#[derive(Debug, Subcommand, PartialEq)]
+pub enum TrendStoreOptCommands {
+    #[command(about = "list existing trend stores")]
     List(TrendStoreList),
-    #[structopt(about = "create a trend store")]
+    #[command(about = "create a trend store")]
     Create(TrendStoreCreate),
-    #[structopt(about = "show differences for a trend store")]
+    #[command(about = "show differences for a trend store")]
     Diff(TrendStoreDiff),
-    #[structopt(about = "update a trend store")]
+    #[command(about = "update a trend store")]
     Update(TrendStoreUpdate),
-    #[structopt(about = "delete a trend store")]
+    #[command(about = "delete a trend store")]
     Delete(DeleteOpt),
-    #[structopt(about = "partition management commands")]
+    #[command(about = "partition management commands")]
     Partition(TrendStorePartition),
-    #[structopt(about = "run sanity checks for trend store")]
+    #[command(about = "run sanity checks for trend store")]
     Check(TrendStoreCheck),
-    #[structopt(about = "part management commands")]
+    #[command(about = "part management commands")]
     Part(TrendStorePartOpt),
-    #[structopt(about = "rename a trend")]
+    #[command(about = "rename a trend")]
     RenameTrend(TrendStoreRenameTrend),
-    #[structopt(about = "delete all data for a specific timestamp")]
+    #[command(about = "delete all data for a specific timestamp")]
     DeleteTimestamp(TrendStoreDeleteTimestamp),
 }
 
 impl TrendStoreOpt {
     pub async fn run(&self) -> CmdResult {
-        match self {
-            TrendStoreOpt::List(list) => list.run().await,
-            TrendStoreOpt::Create(create) => create.run().await,
-            TrendStoreOpt::Diff(diff) => diff.run().await,
-            TrendStoreOpt::Update(update) => update.run().await,
-            TrendStoreOpt::Delete(delete) => run_trend_store_delete_cmd(delete).await,
-            TrendStoreOpt::Partition(partition) => match partition {
-                TrendStorePartition::Create(create) => {
+        match &self.command {
+            TrendStoreOptCommands::List(list) => list.run().await,
+            TrendStoreOptCommands::Create(create) => create.run().await,
+            TrendStoreOptCommands::Diff(diff) => diff.run().await,
+            TrendStoreOptCommands::Update(update) => update.run().await,
+            TrendStoreOptCommands::Delete(delete) => run_trend_store_delete_cmd(delete).await,
+            TrendStoreOptCommands::Partition(partition) => match &partition.command {
+                TrendStorePartitionCommands::Create(create) => {
                     run_trend_store_partition_create_cmd(create).await
                 }
-                TrendStorePartition::Remove(remove) => remove.run().await,
+                TrendStorePartitionCommands::Remove(remove) => remove.run().await,
             },
-            TrendStoreOpt::Check(check) => run_trend_store_check_cmd(check),
-            TrendStoreOpt::Part(part) => match part {
-                TrendStorePartOpt::Analyze(analyze) => analyze.run().await,
+            TrendStoreOptCommands::Check(check) => run_trend_store_check_cmd(check),
+            TrendStoreOptCommands::Part(part) => match &part.command {
+                TrendStorePartOptCommands::Analyze(analyze) => analyze.run().await,
             },
-            TrendStoreOpt::RenameTrend(rename_trend) => rename_trend.run().await,
-            TrendStoreOpt::DeleteTimestamp(delete_timestamp) => delete_timestamp.run().await,
+            TrendStoreOptCommands::RenameTrend(rename_trend) => rename_trend.run().await,
+            TrendStoreOptCommands::DeleteTimestamp(delete_timestamp) => delete_timestamp.run().await,
         }
     }
 }

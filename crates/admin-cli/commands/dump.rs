@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use structopt::StructOpt;
+use clap::Parser;
 
 use minerva::instance::dump;
 
 use super::common::{connect_db, Cmd, CmdResult};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct DumpOpt {}
 
 #[async_trait]

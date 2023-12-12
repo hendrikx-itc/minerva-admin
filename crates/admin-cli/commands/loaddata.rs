@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::path::PathBuf;
-use structopt::StructOpt;
+use clap::Parser;
 
 use minerva::error::ConfigurationError;
 use minerva::loading::{load_data, ParserConfig, TrendsFrom, TrendsFromHeader};
@@ -9,15 +9,15 @@ use super::common::{connect_db, Cmd, CmdResult};
 
 static NULL_VALUE: &str = "";
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct LoadDataOpt {
-    #[structopt(long, help = "Data source of data")]
+    #[arg(long, help = "Data source of data")]
     data_source: Option<String>,
-    #[structopt(long, parse(from_os_str), help = "File with parser configuration")]
+    #[arg(long, help = "File with parser configuration")]
     parser_config: Option<PathBuf>,
-    #[structopt(long, help = "Create partitions for timestamps in data")]
+    #[arg(long, help = "Create partitions for timestamps in data")]
     create_partitions: bool,
-    #[structopt(parse(from_os_str), help = "File to load")]
+    #[arg(help = "File to load")]
     file: PathBuf,
 }
 

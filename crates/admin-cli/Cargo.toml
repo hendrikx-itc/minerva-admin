@@ -11,8 +11,8 @@ path = "main.rs"
 name = "minerva-admin"
 
 [dependencies]
-clap = "4.0"
-structopt = "0.3"
+clap = { version = "4.4", features = ["derive"] }
+clap_complete = "4.4"
 minerva = { version = "0.2.0", path = "../minerva" }
 tokio = { version = "1.28", features = ["full"] }
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }

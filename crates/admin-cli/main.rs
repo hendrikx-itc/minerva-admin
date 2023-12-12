@@ -1,4 +1,6 @@
-use structopt::StructOpt;
+use std::io;
+use clap::{Parser, CommandFactory, Command, Subcommand};
+use clap_complete::{generate, Generator, Shell};
 
 pub mod commands;
 
@@ -14,45 +16,66 @@ use crate::commands::trendstore::TrendStoreOpt;
 use crate::commands::trigger::TriggerOpt;
 use crate::commands::update::UpdateOpt;
 
-#[derive(Debug, StructOpt)]
-enum Opt {
-    #[structopt(about = "Show the definition used for initializing a new Minerva database")]
+#[derive(Parser, Debug, PartialEq)]
+#[command(name = "minerva-admin")]
+struct Cli {
+    #[arg(long = "generate", value_enum)]
+    generator: Option<Shell>,
+    #[command(subcommand)]
+    command: Option<Commands>
+}
+
+#[derive(Debug, Subcommand, PartialEq)]
+enum Commands {
+    #[command(about = "Show the definition used for initializing a new Minerva database")]
     Schema(SchemaOpt),
-    #[structopt(about = "Complete dump of a Minerva instance")]
+    #[command(about = "Complete dump of a Minerva instance")]
     Dump(DumpOpt),
-    #[structopt(about = "Create a diff between Minerva instance definitions")]
+    #[command(about = "Create a diff between Minerva instance definitions")]
     Diff(DiffOpt),
-    #[structopt(about = "Update a Minerva database from an instance definition")]
+    #[command(about = "Update a Minerva database from an instance definition")]
     Update(UpdateOpt),
-    #[structopt(about = "Initialize a complete Minerva instance")]
+    #[command(about = "Initialize a complete Minerva instance")]
     Initialize(InitializeOpt),
-    #[structopt(about = "Manage trend stores")]
+    #[command(about = "Manage trend stores")]
     TrendStore(TrendStoreOpt),
-    #[structopt(about = "Manage triggers")]
+    #[command(about = "Manage triggers")]
     Trigger(TriggerOpt),
-    #[structopt(about = "Manage attribute stores")]
+    #[command(about = "Manage attribute stores")]
     AttributeStore(AttributeStoreOpt),
-    #[structopt(about = "Manage trend materrializations")]
+    #[command(about = "Manage trend materrializations")]
     TrendMaterialization(TrendMaterializationOpt),
-    #[structopt(about = "Load data into Minerva database")]
+    #[command(about = "Load data into Minerva database")]
     LoadData(LoadDataOpt),
+}
+
+fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
+    generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
 }
 
 #[tokio::main]
 async fn main() {
-    let opt = Opt::from_args();
+    let cli = Cli::parse();
 
-    let result = match opt {
-        Opt::Schema(schema) => schema.run().await,
-        Opt::Dump(dump) => dump.run().await,
-        Opt::Diff(diff) => diff.run().await,
-        Opt::Update(update) => update.run().await,
-        Opt::Initialize(initialize) => initialize.run().await,
-        Opt::TrendStore(trend_store) => trend_store.run().await,
-        Opt::Trigger(trigger) => trigger.run().await,
-        Opt::AttributeStore(attribute_store) => attribute_store.run().await,
-        Opt::TrendMaterialization(trend_materialization) => trend_materialization.run().await,
-        Opt::LoadData(load_data) => load_data.run().await,
+    if let Some(generator) = cli.generator {
+        let mut cmd = Cli::command();
+
+        print_completions(generator, &mut cmd)
+    }
+
+
+    let result = match cli.command {
+        Some(Commands::Schema(schema)) => schema.run().await,
+        Some(Commands::Dump(dump)) => dump.run().await,
+        Some(Commands::Diff(diff)) => diff.run().await,
+        Some(Commands::Update(update)) => update.run().await,
+        Some(Commands::Initialize(initialize)) => initialize.run().await,
+        Some(Commands::TrendStore(trend_store)) => trend_store.run().await,
+        Some(Commands::Trigger(trigger)) => trigger.run().await,
+        Some(Commands::AttributeStore(attribute_store)) => attribute_store.run().await,
+        Some(Commands::TrendMaterialization(trend_materialization)) => trend_materialization.run().await,
+        Some(Commands::LoadData(load_data)) => load_data.run().await,
+        None => return
     };
 
     if let Err(e) = result {

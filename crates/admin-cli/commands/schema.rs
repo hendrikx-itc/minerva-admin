@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use structopt::StructOpt;
+use clap::Parser;
 
 use minerva::schema::schema;
 
 use super::common::{Cmd, CmdResult};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct SchemaOpt {}
 
 #[async_trait]

@@ -4,7 +4,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use structopt::StructOpt;
+use clap::Parser;
 
 use minerva::database::{create_database, ClusterConfig};
 use minerva::error::{ConfigurationError, Error};
@@ -16,17 +16,16 @@ use super::common::{
     connect_db, connect_to_db, get_db_config, Cmd, CmdResult, ENV_MINERVA_INSTANCE_ROOT,
 };
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser, PartialEq)]
 pub struct InitializeOpt {
-    #[structopt(long = "--create-schema", help = "create Minerva schema")]
+    #[arg(long = "create-schema", help = "create Minerva schema")]
     create_schema: bool,
-    #[structopt(long = "--create-database", help = "create Minerva database")]
+    #[arg(long = "create-database", help = "create Minerva database")]
     database_name: Option<String>,
-    #[structopt(long = "--create-partitions", help = "create partitions")]
+    #[arg(long = "create-partitions", help = "create partitions")]
     create_partitions: bool,
-    #[structopt(
-        long = "--with-definition",
-        parse(from_os_str),
+    #[arg(
+        long = "with-definition",
         help = "Minerva instance definition root directory"
     )]
     instance_root: Option<PathBuf>,
