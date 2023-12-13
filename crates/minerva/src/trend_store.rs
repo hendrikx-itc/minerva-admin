@@ -70,7 +70,7 @@ pub trait MeasurementStore {
         data_package: &U,
     ) -> Result<(), Error>
     where
-        U: DataPackage;
+        U: DataPackage + std::marker::Sync;
 
     async fn mark_modified(
         &self,
@@ -491,7 +491,7 @@ impl MeasurementStore for TrendStorePart {
         data_package: &U,
     ) -> Result<(), Error>
     where
-        U: DataPackage {
+        U: DataPackage + std::marker::Sync {
 
         match self
             .store_copy_from_package(client, data_package)
@@ -669,6 +669,14 @@ pub trait DataPackage {
     async fn write(
         &self,
         writer: std::pin::Pin<&mut BinaryCopyInWriter>,
+        values: &Vec<(usize, DataType)>,
+        created_timestamp: &DateTime<chrono::Utc>,
+    ) -> Result<usize, Error>;
+
+    async fn insert<C: GenericClient + std::marker::Sync + std::marker::Send>(
+        &self,
+        client: &mut C,
+        query: &str,
         values: &Vec<(usize, DataType)>,
         created_timestamp: &DateTime<chrono::Utc>,
     ) -> Result<usize, Error>;
@@ -957,57 +965,26 @@ impl TrendStorePart {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
         let mut matched_trends: Vec<&Trend> = Vec::new();
+        let mut values: Vec<(usize, DataType)> = Vec::new();
 
         // Filter trends that match the trend store parts trends
         for t in self.trends.iter() {
-            let index = trends.iter().position(|trend_name| trend_name == &t.name);
+            let index = data_package.trends().iter().position(|trend_name| trend_name == &t.name);
 
             if index.is_some() {
                 matched_trend_indexes.push(index);
                 matched_trends.push(t);
+                values.push((index.unwrap(), t.data_type));
             }
         }
 
         let created_timestamp = Utc::now();
 
-        let tx = client.transaction().await?;
+        let mut tx = client.transaction().await?;
 
         let query = insert_query(self, &matched_trends);
 
-        for value_row in data_package {
-            let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
-            values.push(&value_row.entity_id);
-            values.push(&value_row.timestamp);
-            values.push(&created_timestamp);
-            values.push(&job_id);
-
-            for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
-                match i {
-                    Some(index) => {
-                        match value_row.values.get(*index) {
-                            Some(v) => values.push(v),
-                            None => {
-                                // This should not be possible
-                                return Err(Error::Runtime(RuntimeError::from_msg(format!(
-                                    "Expected value not found at index {}",
-                                    index
-                                ))));
-                            }
-                        };
-                    }
-                    None => {
-                        match t.data_type {
-                            DataType::Integer => values.push(&(*INTEGER_NONE_VALUE)),
-                            DataType::Int8 => values.push(&(*INT8_NONE_VALUE)),
-                            DataType::Numeric => values.push(&(*NUMERIC_NONE_VALUE)),
-                            _ => values.push(&(*TEXT_NONE_VALUE)),
-                        };
-                    }
-                }
-            }
-
-            tx.execute(&query, &values).await?;
-        }
+        data_package.insert(&mut tx, &query, &values, &created_timestamp).await?;
 
         tx.commit().await.map_err(|e| {
             Error::Database(DatabaseError::from_msg(format!(
