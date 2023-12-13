@@ -64,6 +64,14 @@ pub trait MeasurementStore {
         data_package: &Vec<ValueRow>,
     ) -> Result<(), Error>;
 
+    async fn store_package<U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage;
+
     async fn mark_modified(
         &self,
         client: &mut Client,
@@ -477,6 +485,32 @@ impl MeasurementStore for TrendStorePart {
         }
     }
 
+    async fn store_package<U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage {
+
+        match self
+            .store_copy_from_package(client, data_package)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => match e {
+                Error::Database(dbe) => match dbe.kind {
+                    DatabaseErrorKind::UniqueViolation => {
+                        self.store_insert_package(client, data_package)
+                            .await
+                    }
+                    _ => Err(Error::Database(dbe)),
+                },
+                _ => Err(e),
+            },
+        }
+    }
+
     async fn mark_modified(
         &self,
         client: &mut Client,
@@ -849,6 +883,77 @@ impl TrendStorePart {
         trends: &Vec<String>,
         data_package: &Vec<ValueRow>,
     ) -> Result<(), Error> {
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
+        let mut matched_trends: Vec<&Trend> = Vec::new();
+
+        // Filter trends that match the trend store parts trends
+        for t in self.trends.iter() {
+            let index = trends.iter().position(|trend_name| trend_name == &t.name);
+
+            if index.is_some() {
+                matched_trend_indexes.push(index);
+                matched_trends.push(t);
+            }
+        }
+
+        let created_timestamp = Utc::now();
+
+        let tx = client.transaction().await?;
+
+        let query = insert_query(self, &matched_trends);
+
+        for value_row in data_package {
+            let mut values: Vec<&(dyn ToSql + Sync)> = Vec::new();
+            values.push(&value_row.entity_id);
+            values.push(&value_row.timestamp);
+            values.push(&created_timestamp);
+            values.push(&job_id);
+
+            for (i, t) in matched_trend_indexes.iter().zip(matched_trends.iter()) {
+                match i {
+                    Some(index) => {
+                        match value_row.values.get(*index) {
+                            Some(v) => values.push(v),
+                            None => {
+                                // This should not be possible
+                                return Err(Error::Runtime(RuntimeError::from_msg(format!(
+                                    "Expected value not found at index {}",
+                                    index
+                                ))));
+                            }
+                        };
+                    }
+                    None => {
+                        match t.data_type {
+                            DataType::Integer => values.push(&(*INTEGER_NONE_VALUE)),
+                            DataType::Int8 => values.push(&(*INT8_NONE_VALUE)),
+                            DataType::Numeric => values.push(&(*NUMERIC_NONE_VALUE)),
+                            _ => values.push(&(*TEXT_NONE_VALUE)),
+                        };
+                    }
+                }
+            }
+
+            tx.execute(&query, &values).await?;
+        }
+
+        tx.commit().await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Could commit data load using COPY command: {e}"
+            )))
+        })?;
+
+        Ok(())
+    }
+
+    async fn store_insert_package<U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage, {
         // List of indexes of matched trends to extract corresponding values
         let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
         let mut matched_trends: Vec<&Trend> = Vec::new();
