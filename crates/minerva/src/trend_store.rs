@@ -64,6 +64,14 @@ pub trait MeasurementStore {
         data_package: &Vec<ValueRow>,
     ) -> Result<(), Error>;
 
+    async fn store_package<U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage + std::marker::Sync;
+
     async fn mark_modified(
         &self,
         client: &mut Client,
@@ -477,6 +485,32 @@ impl MeasurementStore for TrendStorePart {
         }
     }
 
+    async fn store_package<U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage + std::marker::Sync {
+
+        match self
+            .store_copy_from_package(client, data_package)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => match e {
+                Error::Database(dbe) => match dbe.kind {
+                    DatabaseErrorKind::UniqueViolation => {
+                        self.store_insert_package(client, data_package)
+                            .await
+                    }
+                    _ => Err(Error::Database(dbe)),
+                },
+                _ => Err(e),
+            },
+        }
+    }
+
     async fn mark_modified(
         &self,
         client: &mut Client,
@@ -635,6 +669,14 @@ pub trait DataPackage {
     async fn write(
         &self,
         writer: std::pin::Pin<&mut BinaryCopyInWriter>,
+        values: &Vec<(usize, DataType)>,
+        created_timestamp: &DateTime<chrono::Utc>,
+    ) -> Result<usize, Error>;
+
+    async fn insert<C: GenericClient + std::marker::Sync + std::marker::Send>(
+        &self,
+        client: &mut C,
+        query: &str,
         values: &Vec<(usize, DataType)>,
         created_timestamp: &DateTime<chrono::Utc>,
     ) -> Result<usize, Error>;
@@ -903,6 +945,46 @@ impl TrendStorePart {
 
             tx.execute(&query, &values).await?;
         }
+
+        tx.commit().await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Could commit data load using COPY command: {e}"
+            )))
+        })?;
+
+        Ok(())
+    }
+
+    async fn store_insert_package<U>(
+        &self,
+        client: &mut Client,
+        data_package: &U,
+    ) -> Result<(), Error>
+    where
+        U: DataPackage, {
+        // List of indexes of matched trends to extract corresponding values
+        let mut matched_trend_indexes: Vec<Option<usize>> = Vec::new();
+        let mut matched_trends: Vec<&Trend> = Vec::new();
+        let mut values: Vec<(usize, DataType)> = Vec::new();
+
+        // Filter trends that match the trend store parts trends
+        for t in self.trends.iter() {
+            let index = data_package.trends().iter().position(|trend_name| trend_name == &t.name);
+
+            if index.is_some() {
+                matched_trend_indexes.push(index);
+                matched_trends.push(t);
+                values.push((index.unwrap(), t.data_type));
+            }
+        }
+
+        let created_timestamp = Utc::now();
+
+        let mut tx = client.transaction().await?;
+
+        let query = insert_query(self, &matched_trends);
+
+        data_package.insert(&mut tx, &query, &values, &created_timestamp).await?;
 
         tx.commit().await.map_err(|e| {
             Error::Database(DatabaseError::from_msg(format!(
