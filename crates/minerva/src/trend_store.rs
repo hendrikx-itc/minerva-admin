@@ -508,7 +508,15 @@ impl MeasurementStore for TrendStorePart {
                 },
                 _ => Err(e),
             },
-        }
+        }?;
+
+        self.mark_modified(client, &data_package.timestamp()).await.map_err(|e| {
+            Error::Database(DatabaseError::from_msg(format!(
+                "Could not mark timestamp modified '{}' - '{}': {e}",
+                self.name,
+                data_package.timestamp(),
+            )))
+        })
     }
 
     async fn mark_modified(
@@ -665,7 +673,9 @@ impl<'a> ValueMapper<'a> {
 
 #[async_trait]
 pub trait DataPackage {
+    fn timestamp(&self) -> &DateTime<Utc>;
     fn trends(&self) -> &Vec<String>;
+
     async fn write(
         &self,
         writer: std::pin::Pin<&mut BinaryCopyInWriter>,

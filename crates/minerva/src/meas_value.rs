@@ -109,6 +109,46 @@ pub enum MeasValue {
     Numeric(Option<Decimal>),
 }
 
+pub fn parse_meas_value(data_type: DataType, value: &str) -> MeasValue {
+    match data_type {
+        DataType::Int2 => {
+            let value: Option<i16> = value.parse().ok();
+
+            MeasValue::Int2(value)
+        },
+        DataType::Integer => {
+            let value: Option<i32> = value.parse().ok();
+
+            MeasValue::Integer(value)
+        },
+        DataType::Numeric => {
+            let value: Option<Decimal> = value.parse().ok();
+
+            MeasValue::Numeric(value)
+        },
+        DataType::Int8 => {
+            let value: Option<i64> = value.parse().ok();
+
+            MeasValue::Int8(value)
+        },
+        DataType::Real => {
+            let value: Option<f32> = value.parse().ok();
+
+            MeasValue::Real(value)
+        },
+        DataType::Double => {
+            let value: Option<f64> = value.parse().ok();
+
+            MeasValue::Double(value)
+        },
+        _ => {
+            let value: String = value.to_string();
+
+            MeasValue::Text(value)
+        },
+    }
+}
+
 pub fn map_int2(value: &Option<i16>, target_data_type: DataType) -> Result<MeasValue, Error> {
     match target_data_type {
         DataType::Int2 => Ok(MeasValue::Int2(*value)),
@@ -243,6 +283,42 @@ impl MeasValue {
                 })),
             },
             MeasValue::Numeric(v) => map_numeric(v, data_type),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            MeasValue::Int2(v) => match v {
+                Some(i) => i.to_string(),
+                None => "NULL".to_string(),
+            },
+            MeasValue::Integer(v) => match v {
+                Some(i) => i.to_string(),
+                None => "NULL".to_string(),
+            },
+            MeasValue::Int8(v) => match v {
+                Some(i) => i.to_string(),
+                None => "NULL".to_string(),
+            },
+            MeasValue::Real(v) => match v {
+                Some(i) => i.to_string(),
+                None => "NULL".to_string(),
+            },
+            MeasValue::Double(v) => match v {
+                Some(d) => d.to_string(),
+                None => "NULL".to_string(),
+            },
+            MeasValue::Text(v) => v.clone(),
+            MeasValue::TextArray(_) => {
+                "ARRAY(text)".to_string()
+            },
+            MeasValue::Timestamp(v) => {
+                format!("{}", v)
+            },
+            MeasValue::Numeric(v) => match v {
+                Some(n) => n.to_string(),
+                None => "NULL".to_string(),
+            },
         }
     }
 }
