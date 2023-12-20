@@ -5,6 +5,7 @@ use chrono::DateTime;
 use chrono::FixedOffset;
 
 use async_trait::async_trait;
+use dialoguer::Confirm;
 use chrono::Utc;
 use clap::Parser;
 
@@ -130,14 +131,26 @@ impl Cmd for TrendStoreUpdate {
                     println!("Updating trend store");
 
                     for change in changes {
-                        let apply_result = change.apply(&mut client).await;
+                        println!("* {change}");
 
-                        match apply_result {
-                            Ok(_) => {
-                                println!("{}", &change);
-                            }
-                            Err(e) => {
-                                println!("Error applying update: {e}");
+                        if Confirm::new()
+                                .with_prompt("Apply change?")
+                                .interact()
+                                .map_err(|e| {
+                                    Error::Runtime(RuntimeError {
+                                        msg: format!("Could not process input: {e}"),
+                                    })
+                                })?
+                        {
+                            let apply_result = change.apply(&mut client).await;
+
+                            match apply_result {
+                                Ok(_) => {
+                                    println!("{}", &change);
+                                }
+                                Err(e) => {
+                                    println!("Error applying update: {e}");
+                                }
                             }
                         }
                     }
