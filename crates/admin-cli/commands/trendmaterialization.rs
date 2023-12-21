@@ -5,10 +5,10 @@ use clap::{Parser, Subcommand, ValueHint};
 
 use minerva::change::Change;
 use minerva::error::{Error, RuntimeError};
-use minerva::trend_materialization;
+use minerva::trend_materialization::{self, TrendMaterialization};
 use minerva::trend_materialization::{
     reset_source_fingerprint, trend_materialization_from_config, AddTrendMaterialization,
-    UpdateTrendMaterialization,
+    UpdateTrendMaterialization, load_materializations,
 };
 
 use super::common::{connect_db, Cmd, CmdResult};
@@ -107,6 +107,58 @@ impl Cmd for TrendMaterializationResetSourceFingerprint {
 }
 
 #[derive(Debug, Parser, PartialEq)]
+pub struct TrendMaterializationDump {
+    #[arg(help = "materialization ")]
+    materialization: String,
+}
+
+#[async_trait]
+impl Cmd for TrendMaterializationDump {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let materializations = load_materializations(&mut client).await?;
+
+        for materialization in materializations {
+            let materialization_name = materialization.name();
+            if materialization_name == self.materialization {
+                let definition = materialization.dump().unwrap();
+
+                println!("{}", definition);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendMaterializationList {
+}
+
+#[async_trait]
+impl Cmd for TrendMaterializationList {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let materializations = load_materializations(&mut client).await?;
+
+        for materialization in materializations {
+            match materialization {
+                TrendMaterialization::View(view_materialization) => {
+                    println!("{}", view_materialization.target_trend_store_part);
+                }
+                TrendMaterialization::Function(function_materialization) => {
+                    println!("{}", function_materialization.target_trend_store_part);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendMaterializationOpt {
     #[command(subcommand)]
     command: Option<TrendMaterializationOptCommand>
@@ -120,6 +172,10 @@ pub enum TrendMaterializationOptCommand {
     Update(TrendMaterializationUpdate),
     #[command(about = "reset the source fingerprint of the materialization state")]
     ResetSourceFingerprint(TrendMaterializationResetSourceFingerprint),
+    #[command(about = "dump the definition of a trend materialization")]
+    Dump(TrendMaterializationDump),
+    #[command(about = "list trend materializations")]
+    List(TrendMaterializationList),
 }
 
 impl TrendMaterializationOpt {
@@ -133,6 +189,12 @@ impl TrendMaterializationOpt {
             }
             Some(TrendMaterializationOptCommand::ResetSourceFingerprint(reset_source_fingerprint)) => {
                 reset_source_fingerprint.run().await
+            }
+            Some(TrendMaterializationOptCommand::Dump(dump)) => {
+                dump.run().await
+            }
+            Some(TrendMaterializationOptCommand::List(list)) => {
+                list.run().await
             }
             None => Ok(())
         }

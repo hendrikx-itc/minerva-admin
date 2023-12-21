@@ -708,6 +708,17 @@ impl TrendMaterialization {
         }
     }
 
+    pub fn dump(&self) -> Result<String, Error> {
+        match self {
+            TrendMaterialization::View(m) => {
+                serde_yaml::to_string(m).map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not dump view materialization: {e}"))))
+            },
+            TrendMaterialization::Function(m) => {
+                serde_yaml::to_string(m).map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not dump function materialization: {e}"))))
+            },
+        }
+    }
+
     pub async fn update<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
@@ -821,6 +832,11 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
         let src_view: Option<String> = row.get(7);
         let src_function: Option<String> = row.get(8);
 
+        let fingerprint_function_name = format!("{}_fingerprint", &target_trend_store_part);
+        let fingerprint_function_def = get_function_def(conn, &fingerprint_function_name)
+            .await
+            .unwrap_or("failed getting sources".into());
+
         if let Some(view) = src_view {
             let view_def = get_view_def(conn, &view).await.unwrap();
             let sources = load_sources(conn, materialization_id).await?;
@@ -828,7 +844,7 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
             let view_materialization = TrendViewMaterialization {
                 target_trend_store_part: target_trend_store_part.clone(),
                 enabled,
-                fingerprint_function: String::from(""),
+                fingerprint_function: fingerprint_function_def.clone(),
                 processing_delay: parse_interval(&processing_delay).unwrap(),
                 reprocessing_period: parse_interval(&reprocessing_period).unwrap(),
                 sources,
@@ -842,22 +858,26 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
             trend_materializations.push(trend_materialization);
         }
 
-        if let Some(function) = src_function {
-            let function_def = get_function_def(conn, &function)
+        if let Some(_) = src_function {
+            let function_def = get_function_def(conn, &target_trend_store_part)
                 .await
                 .unwrap_or("failed getting sources".into());
+            let return_type = get_function_return_type(conn, &target_trend_store_part)
+                .await
+                .unwrap_or("failed getting return type".into());
+
             let sources = load_sources(conn, materialization_id).await?;
 
             let function_materialization = TrendFunctionMaterialization {
                 target_trend_store_part: target_trend_store_part.clone(),
                 enabled,
-                fingerprint_function: String::from(""),
+                fingerprint_function: fingerprint_function_def.clone(),
                 processing_delay: parse_interval(&processing_delay).unwrap(),
                 reprocessing_period: parse_interval(&reprocessing_period).unwrap(),
                 sources,
                 stability_delay: parse_interval(&stability_delay).unwrap(),
                 function: TrendMaterializationFunction {
-                    return_type: "".into(),
+                    return_type: return_type,
                     src: function_def,
                     language: "plpgsql".into(),
                 },
@@ -929,6 +949,23 @@ pub async fn get_function_def<T: GenericClient + Send + Sync>(
         Ok(row) => row.get(0),
         Err(_) => None,
     }
+}
+
+pub async fn get_function_return_type<T: GenericClient + Send + Sync>(
+    client: &mut T,
+    function_name: &str,
+) -> Option<String> {
+    let query = "SELECT unnest(proargnames[2:]), format_type(unnest(proallargtypes[2:]), null) FROM pg_proc WHERE proname = $1";
+
+    let columns: Vec<(String, String)> = client.query(query, &[&function_name])
+        .await
+        .map(|rows| {
+            rows.iter().map(|row| (row.get(0), row.get(1))).collect()
+        }).unwrap();
+
+    let columns_part = columns.iter().map(|(name, data_type)| format!("    \"{name}\" {data_type}")).collect::<Vec<String>>().join(",\n".into());
+
+    Some(format!("TABLE (\n{}\n)\n", columns_part))
 }
 
 pub struct AddTrendMaterialization {
