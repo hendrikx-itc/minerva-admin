@@ -4,12 +4,6 @@ variables:
 
 image: "harbor.hendrikx-itc.nl/1optic/rust-ci:1.73.0-1"
 
-default:
-  cache:
-    paths:
-      - .cargo/
-      - target/
-
 stages:
   - test
   - build
