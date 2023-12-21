@@ -443,6 +443,34 @@ impl Cmd for TrendStoreDeleteTimestamp {
 }
 
 #[derive(Debug, Parser, PartialEq)]
+pub struct TrendStoreDump {
+    #[arg(help="data source of trend store to dump")]
+    data_source: String,
+    #[arg(help="entity type of trend store to dump")]
+    entity_type: String,
+    #[arg(
+        help="granularity of trend store to dump",
+        value_parser=humantime::parse_duration
+    )]
+    granularity: Duration,
+}
+
+#[async_trait]
+impl Cmd for TrendStoreDump {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let trend_store = load_trend_store(&mut client, &self.data_source, &self.entity_type, &self.granularity).await?;
+
+        let trend_store_definition = trend_store.dump()?;
+
+        println!("{}", trend_store_definition);
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Parser, PartialEq)]
 pub struct TrendStoreOpt {
     #[command(subcommand)]
     command: TrendStoreOptCommands
@@ -470,6 +498,8 @@ pub enum TrendStoreOptCommands {
     RenameTrend(TrendStoreRenameTrend),
     #[command(about = "delete all data for a specific timestamp")]
     DeleteTimestamp(TrendStoreDeleteTimestamp),
+    #[command(about = "dump the definition of a trend store")]
+    Dump(TrendStoreDump),
 }
 
 impl TrendStoreOpt {
@@ -492,6 +522,7 @@ impl TrendStoreOpt {
             },
             TrendStoreOptCommands::RenameTrend(rename_trend) => rename_trend.run().await,
             TrendStoreOptCommands::DeleteTimestamp(delete_timestamp) => delete_timestamp.run().await,
+            TrendStoreOptCommands::Dump(dump) => dump.run().await,
         }
     }
 }

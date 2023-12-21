@@ -1121,6 +1121,10 @@ impl TrendStore {
 
         changes
     }
+
+    pub fn dump(&self) -> Result<String, Error> {
+        serde_yaml::to_string(self).map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not serialize trend store to yaml: {e}"))))
+    }
 }
 
 impl fmt::Display for TrendStore {
