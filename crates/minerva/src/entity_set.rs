@@ -35,9 +35,9 @@ pub async fn load_entity_sets(
     conn: &mut Client,
 ) -> Result<Vec<EntitySet>, String> {
     let query = concat!(
-        "SELECT es.name, es.group, et.name, es.owner, es.description, ",
-        "entity_set.get_entity_set_members(es.owner, es.name), es.created, es.modified ",
-        "FROM directory.entity_set es JOIN directory.entity_type et ON es.entity_type_id = et.id"
+        "SELECT name, \"group\", source_entity_type, owner, description, ",
+        "relation_directory.get_entity_set_members(es), first_appearance, modified ",
+        "FROM attribute.minerva_entity_set es"
     );
 
     let rows = conn.query(query, &[])
@@ -67,9 +67,9 @@ pub async fn load_entity_set(
     name: &str
 ) -> Result<EntitySet, String> {
     let query = concat!(
-        "SELECT es.name, es.group, et.name, es.owner, es.description, ",
-        "entity_set.get_entity_set_members(es.owner, es.name), es.created, es.modified ",
-        "FROM directo&ry.entity_set es JOIN directory.entity_type et ON es.entity_type_id = et.id ",
+        "SELECT name, \"group\", source_entity_type, owner, description, ",
+        "entity_set.get_entity_set_members(es), first_appearance, modified ",
+        "FROM attribute.minerva_entity_set es ",
         "WHERE es.owner = $1 AND es.name = $2"
     );
 
@@ -108,8 +108,8 @@ impl GenericChange for ChangeEntitySet {
         let entitieslist = self.entities.join("', '");
         let query = format!(
             concat!(
-                "SELECT entity_set.change_set_entities_guarded(es, ARRAY['{}']) ",
-                "FROM directory.entity_set es WHERE es.owner = $1 AND es.name = $2"
+                "SELECT relation_directory.change_set_entities_guarded(es, ARRAY['{}']) ",
+                "FROM attribute.minerva_entity_set es WHERE es.owner = $1 AND es.name = $2"
             ),
             entitieslist
         );
@@ -157,7 +157,7 @@ impl fmt::Display for CreateEntitySet {
 impl GenericChange for CreateEntitySet {
     async fn generic_apply<T: GenericClient + Send + Sync>(&self, client: &mut T) -> ChangeResult {
         let query = format!(
-            "SELECT entity_set.entity_set_exists($1, $2)"
+            "SELECT relation_directory.entity_set_exists($1, $2)"
         );
 
         let row = client.query_one(
@@ -189,7 +189,7 @@ impl GenericChange for CreateEntitySet {
                 let entitieslist = self.entity_set.entities.join("', '");
                 let query = format!(
                     concat!(
-                        "SELECT entity_set.create_entity_set_guarded(",
+                        "SELECT relation_directory.create_entity_set_guarded(",
                         "$1, $2, $3, $4, $5, ARRAY['{}'])"
                     ),
                     entitieslist
