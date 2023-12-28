@@ -18,7 +18,7 @@ need a running Minerva database. You can start an empty Minerva database using
 Docker:
 
 ```
-docker run -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 hendrikxitc/minerva
+docker run -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 citusdata/citus
 ```
 
 # Load Test Instance
@@ -26,6 +26,6 @@ docker run -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 hendrikxitc/minerva
 To load a provided test instance into the empty Minerva database, use the following command:
 
 ```
-PGUSER=postgres PGHOST=127.0.0.1 PGDATABASE=minerva minerva-admin initialize examples/tiny_instance_v1
+PGSSLMODE=disable PGUSER=postgres PGHOST=127.0.0.1 cargo run --bin=minerva-admin -- initialize --create-schema --with-definition examples/tiny_instance_v1
 ```
 
