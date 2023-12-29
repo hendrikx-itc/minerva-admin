@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use clap::{Parser, Subcommand, ValueHint};
 
-use minerva::change::{Change, GenericChange};
+use minerva::change::GenericChange;
 use minerva::error::{Error, RuntimeError};
 use minerva::trend_materialization::{self, TrendMaterialization};
 use minerva::trend_materialization::{
@@ -65,11 +65,15 @@ impl Cmd for TrendMaterializationUpdate {
         println!("Loaded definition, updating trend materialization");
         let mut client = connect_db().await?;
 
+        let mut transaction = client.transaction().await?;
+
         let change = UpdateTrendMaterialization {
             trend_materialization,
         };
 
-        let result = change.apply(&mut client).await;
+        let result = change.generic_apply(&mut transaction).await;
+
+        transaction.commit().await?;
 
         match result {
             Ok(_) => {

@@ -110,6 +110,30 @@ impl TrendViewMaterialization {
         }
     }
 
+    pub async fn init_view_materialization<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<(), Error> {
+        let view_ident = format!("trend.{}", &escape_identifier(&self.view_name()));
+
+        let query = concat!(
+            "INSERT INTO trend_directory.view_materialization(materialization_id, src_view) ",
+            "SELECT m.id, $2::text::regclass ",
+            "FROM trend_directory.materialization m ",
+            "JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id ",
+            "WHERE dstp.name = $1"
+        );
+
+        client.execute(query, &[&self.target_trend_store_part, &view_ident])
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                "Error initializing view materialization: {e}"
+            ))))?;
+
+        Ok(())
+    }
+
     async fn create<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
         self.create_view(client).await?;
         self.define_materialization(client).await?;
@@ -181,38 +205,13 @@ impl TrendViewMaterialization {
     }
 
     async fn update<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
-        self.drop_fingerprint_function(client).await?;
-        self.drop_view(client).await?;
-        self.drop_sources(client).await?;
-
         self.create_view(client).await?;
+        self.init_view_materialization(client).await?;
         self.create_fingerprint_function(client).await?;
         self.connect_sources(client).await?;
-
         self.update_attributes(client).await?;
 
         Ok(())
-    }
-
-    async fn drop_sources<T: GenericClient + Send + Sync>(
-        &self,
-        client: &mut T,
-    ) -> Result<(), Error> {
-        let query = format!(
-            concat!(
-        "DELETE FROM trend_directory.materialization_trend_store_link tsl ",
-        "USING trend_directory.materialization m JOIN trend_directory.trend_store_part dstp ",
-        "ON m.dst_trend_store_part_id = dstp.id ",
-        "WHERE dstp.name = '{}' AND tsl.materialization_id = m.id"
-        ),
-            &self.target_trend_store_part
-        );
-        match client.query(&query, &[]).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error removing old sources: {e}"
-            )))),
-        }
     }
 
     async fn connect_sources<T: GenericClient + Send + Sync>(
@@ -432,12 +431,11 @@ impl TrendFunctionMaterialization {
     }
 
     async fn drop_function<T: GenericClient + Send + Sync>(
-        &self,
-        client: &mut T,
+        client: &mut T, name: &str
     ) -> Result<(), Error> {
         let query = format!(
             "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
-            &escape_identifier(&self.target_trend_store_part),
+            &escape_identifier(name),
         );
 
         match client.execute(query.as_str(), &[]).await {
@@ -466,6 +464,30 @@ impl TrendFunctionMaterialization {
                 "Error creating function: {e}"
             )))),
         }
+    }
+
+    async fn init_function_materialization<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<(), Error> {
+        let function_ident = format!("trend.{}", &escape_identifier(&self.target_trend_store_part));
+
+        let query = concat!(
+            "INSERT INTO trend_directory.function_materialization(materialization_id, src_function) ",
+            "SELECT m.id, $2::text::regproc ",
+            "FROM trend_directory.materialization m ",
+            "JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id ",
+            "WHERE dstp.name = $1"
+        );
+
+        client.execute(query, &[&self.target_trend_store_part, &function_ident])
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                "Error initializing function materialization: {e}"
+            ))))?;
+
+        Ok(())
     }
 
     async fn create<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
@@ -656,14 +678,11 @@ impl TrendFunctionMaterialization {
     }
 
     async fn update<T: GenericClient + Send + Sync>(&self, client: &mut T) -> Result<(), Error> {
-        self.drop_fingerprint_function(client).await?;
-        self.drop_function(client).await?;
-        self.drop_sources(client).await?;
-
-        self.update_attributes(client).await?;
         self.create_function(client).await?;
+        self.init_function_materialization(client).await?;
         self.create_fingerprint_function(client).await?;
         self.connect_sources(client).await?;
+        self.update_attributes(client).await?;
 
         Ok(())
     }
@@ -719,10 +738,93 @@ impl TrendMaterialization {
         }
     }
 
+    fn fingerprint_function_name(&self) -> String {
+        format!("{}_fingerprint", self.name())
+    }
+
+    pub async fn drop_sources<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<(), Error> {
+        let query = concat!(
+            "DELETE FROM trend_directory.materialization_trend_store_link tsl ",
+            "USING trend_directory.materialization m ",
+            "JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id ",
+            "WHERE tsl.materialization_id = m.id AND dstp.name = $1"
+        );
+
+        client.execute(query, &[&self.name()])
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                "Error removing materialization_trend_store_link records: {e}"
+            ))))?;
+
+        Ok(())
+    }
+
+    /// Tear down all implementation details of the materialization
+    ///
+    /// Keeps the materialization record and any attached materialization state, but removes all
+    /// implementation details such as materialization function or view, source trend store part
+    /// links. Looks for both function and view materialization implementation so this can be used
+    /// to switch between function and view materialization implementation.
+    pub async fn teardown<T: GenericClient + Send + Sync>(
+        &self,
+        client: &mut T,
+    ) -> Result<(), Error> {
+        let query = concat!(
+            "DELETE FROM trend_directory.view_materialization vm ",
+            "USING trend_directory.materialization m ",
+            "JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id ",
+            "WHERE m.id = vm.materialization_id AND dstp.name = $1"
+        );
+
+        client.execute(query, &[&self.name()])
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                "Error removing view_materialization record: {e}"
+            ))))?;
+
+        let query = concat!(
+            "DELETE FROM trend_directory.function_materialization fm ",
+            "USING trend_directory.materialization m ",
+            "JOIN trend_directory.trend_store_part dstp ",
+            "ON m.dst_trend_store_part_id = dstp.id ",
+            "WHERE m.id = fm.materialization_id AND dstp.name = $1"
+        );
+
+        client.execute(query, &[&self.name()])
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                "Error removing function_materialization record: {e}"
+            ))))?;
+
+        self.drop_sources(client).await?;
+
+        let fingerprint_function_name = self.fingerprint_function_name();
+
+        let query = format!(
+            "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
+            escape_identifier(&fingerprint_function_name)
+        );
+
+        client.execute(&query, &[])
+            .await
+            .map_err(|e| Error::Database(DatabaseError::from_msg(format!(
+                "Error dropping fingerprint function '{fingerprint_function_name}': {e}"
+            ))))?;
+
+        Ok(())
+    }
+
     pub async fn update<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
     ) -> Result<(), Error> {
+        self.teardown(client).await?;
+
         match self {
             TrendMaterialization::View(m) => m.update(client).await,
             TrendMaterialization::Function(m) => m.update(client).await,
