@@ -7,7 +7,7 @@ use minerva::change::GenericChange;
 use minerva::error::{Error, RuntimeError};
 use minerva::trend_materialization::{self, TrendMaterialization};
 use minerva::trend_materialization::{
-    reset_source_fingerprint, trend_materialization_from_config, AddTrendMaterialization,
+    reset_source_fingerprint, populate_source_fingerprint, trend_materialization_from_config, AddTrendMaterialization,
     UpdateTrendMaterialization, load_materializations,
 };
 
@@ -83,6 +83,32 @@ impl Cmd for TrendMaterializationUpdate {
             }
             Err(e) => Err(Error::Runtime(RuntimeError {
                 msg: format!("Error updating trend materialization: {e}"),
+            })),
+        }
+    }
+}
+
+#[derive(Debug, Parser, PartialEq)]
+pub struct TrendMaterializationPopulateSourceFingerprint {
+    #[arg(help = "materialization ")]
+    materialization: String,
+}
+
+#[async_trait]
+impl Cmd for TrendMaterializationPopulateSourceFingerprint {
+    async fn run(&self) -> CmdResult {
+        let mut client = connect_db().await?;
+
+        let result = populate_source_fingerprint(&mut client, &self.materialization).await;
+
+        match result {
+            Ok(_) => {
+                println!("Populated state for trend materialization '{}'", &self.materialization);
+
+                Ok(())
+            }
+            Err(e) => Err(Error::Runtime(RuntimeError {
+                msg: format!("Error populating state for trend materialization '{}': {e}", &self.materialization),
             })),
         }
     }
@@ -180,6 +206,8 @@ pub enum TrendMaterializationOptCommand {
     Update(TrendMaterializationUpdate),
     #[command(about = "reset the source fingerprint of the materialization state")]
     ResetSourceFingerprint(TrendMaterializationResetSourceFingerprint),
+    #[command(about = "populate the source fingerprint of the materialization state")]
+    PopulateSourceFingerprint(TrendMaterializationPopulateSourceFingerprint),
     #[command(about = "dump the definition of a trend materialization")]
     Dump(TrendMaterializationDump),
     #[command(about = "list trend materializations")]
@@ -194,6 +222,9 @@ impl TrendMaterializationOpt {
             }
             Some(TrendMaterializationOptCommand::Update(trend_materialization_update)) => {
                 trend_materialization_update.run().await
+            }
+            Some(TrendMaterializationOptCommand::PopulateSourceFingerprint(populate_source_fingerprint)) => {
+                populate_source_fingerprint.run().await
             }
             Some(TrendMaterializationOptCommand::ResetSourceFingerprint(reset_source_fingerprint)) => {
                 reset_source_fingerprint.run().await

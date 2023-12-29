@@ -1156,6 +1156,58 @@ impl Change for UpdateTrendMaterialization {
     }
 }
 
+pub async fn populate_source_fingerprint<T: GenericClient + Send + Sync>(
+    client: &mut T,
+    materialization: &str,
+) -> Result<(), String> {
+    let sources_query = concat!(
+        "SELECT mtsl.timestamp_mapping_func::regproc::text, tsp.name ",
+        "FROM trend_directory.materialization m ",
+        "JOIN trend_directory.materialization_trend_store_link mtsl ON mtsl.materialization_id = m.id ",
+        "JOIN trend_directory.trend_store_part tsp ON tsp.id = mtsl.trend_store_part_id ",
+        "WHERE m::text = $1"
+    );
+
+    let sources: Vec<(String, String)> = client
+        .query(sources_query, &[&materialization])
+        .await
+        .map_err(|e| format!("Error loading trend materializations: {e}"))?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+
+    let mut ctes: Vec<String> = Vec::new();
+    let mut query_parts: Vec<String> = Vec::new();
+
+    for (index, (mapping_func, source_name)) in sources.iter().enumerate() {
+        let query = format!(
+            "select {}(timestamp) AS timestamp from trend.{} group by timestamp",
+            mapping_func,
+            escape_identifier(&source_name),
+        );
+
+        let cte_name = format!("source_{}", index + 1);
+
+        let cte = format!("{} AS ({})", cte_name, query);
+
+        ctes.push(cte);
+
+        if index == 0 {
+            query_parts.push(format!("SELECT trend_directory.update_source_fingerprint(m.id, source_1.timestamp) FROM source_1"));
+        } else {
+            query_parts.push(format!("JOIN {cte_name} ON source_1.timestamp = {cte_name}.timestamp"));
+        }
+    }
+
+    let query = format!("WITH {} {}, trend_directory.materialization m WHERE m::text = $1", ctes.join(","), query_parts.join(" "));
+
+    client.execute(&query, &[&materialization])
+        .await
+        .map_err(|e| format!("Error loading trend materializations: {e}"))?;
+
+    Ok(())
+}
+
 pub async fn reset_source_fingerprint<T: GenericClient + Send + Sync>(
     client: &mut T,
     materialization: &str,
