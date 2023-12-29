@@ -900,7 +900,7 @@ async fn load_sources<T: GenericClient + Send + Sync>(
     let mut sources: Vec<TrendMaterializationSource> = Vec::new();
 
     let query = concat!(
-        "SELECT tsp.name, mtsl.timestamp_mapping_func::text ",
+        "SELECT tsp.name, mtsl.timestamp_mapping_func::regproc::text ",
         "FROM trend_directory.materialization_trend_store_link mtsl ",
         "JOIN trend_directory.trend_store_part tsp ON tsp.id = mtsl.trend_store_part_id ",
         "WHERE mtsl.materialization_id = $1"
