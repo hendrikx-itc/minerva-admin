@@ -118,7 +118,7 @@ impl TrendViewMaterialization {
 
         let query = concat!(
             "INSERT INTO trend_directory.view_materialization(materialization_id, src_view) ",
-            "SELECT m.id, $2::regclass ",
+            "SELECT m.id, $2::text::regclass ",
             "FROM trend_directory.materialization m ",
             "JOIN trend_directory.trend_store_part dstp ",
             "ON m.dst_trend_store_part_id = dstp.id ",
