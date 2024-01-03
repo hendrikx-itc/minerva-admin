@@ -11,6 +11,8 @@ use crate::error::Error;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum DataType {
+    #[serde(rename = "boolean")]
+    Boolean,
     #[serde(rename = "smallint")]
     Int2,
     #[serde(rename = "integer")]
@@ -29,6 +31,8 @@ pub enum DataType {
     Timestamp,
     #[serde(rename = "numeric")]
     Numeric,
+    #[serde(rename = "numeric[]")]
+    NumericArray,
 }
 
 impl ToSql for DataType {
@@ -41,6 +45,7 @@ impl ToSql for DataType {
         Self: Sized,
     {
         match self {
+            DataType::Boolean => "boolean".to_sql(ty, out),
             DataType::Int2 => "smallint".to_sql(ty, out),
             DataType::Integer => "integer".to_sql(ty, out),
             DataType::Int8 => "bigint".to_sql(ty, out),
@@ -50,6 +55,7 @@ impl ToSql for DataType {
             DataType::TextArray => "text[]".to_sql(ty, out),
             DataType::Timestamp => "timestamptz".to_sql(ty, out),
             DataType::Numeric => "numeric".to_sql(ty, out),
+            DataType::NumericArray => "numeric[]".to_sql(ty, out),
         }
     }
 
@@ -66,6 +72,7 @@ impl ToSql for DataType {
 impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            DataType::Boolean => write!(f, "boolean"),
             DataType::Int2 => write!(f, "smallint"),
             DataType::Integer => write!(f, "integer"),
             DataType::Int8 => write!(f, "bigint"),
@@ -75,6 +82,7 @@ impl fmt::Display for DataType {
             DataType::TextArray => write!(f, "text[]"),
             DataType::Timestamp => write!(f, "timestamp"),
             DataType::Numeric => write!(f, "numeric"),
+            DataType::NumericArray => write!(f, "numeric[]"),
         }
     }
 }
