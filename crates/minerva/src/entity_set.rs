@@ -30,13 +30,21 @@ impl fmt::Display for EntitySet {
     }
 }
 
+async fn get_entity_set_members(
+    conn: &mut Client,
+    id: i32,
+) -> Result<Vec<String>, String> {
+    let query = "SELECT relation_directory.get_entity_set_members($1)";
+    let row = conn.query_one(query, &[&id]).await.map_err(|e| format!("{e}"))?;
+    Ok(row.get(0))
+}
 
 pub async fn load_entity_sets(
     conn: &mut Client,
 ) -> Result<Vec<EntitySet>, String> {
     let query = concat!(
         "SELECT name, \"group\", source_entity_type, owner, description, ",
-        "relation_directory.get_entity_set_members(es), first_appearance, modified ",
+        "id, first_appearance, modified ",
         "FROM attribute.minerva_entity_set es"
     );
 
@@ -44,19 +52,26 @@ pub async fn load_entity_sets(
         .await
         .map_err(|e| format!("Error loading entity sets: {e}"))?;
 
-    let entity_sets = rows
-        .iter()
-        .map(|row| EntitySet {
-            name: row.get(0),
-            group: row.get(1),
-            entity_type: row.get(2),
-            owner: row.get(3),
-            description: row.try_get(4).unwrap_or("".into()),
-            entities: row.get(5),
-            created: row.get(6),
-            modified: row.get(7),
-        })
-        .collect();
+    let mut entity_sets: Vec<EntitySet> = vec!();
+
+    for row in rows {
+        let entities = get_entity_set_members(conn, row.get(5))
+            .await
+            .map_err(|e| format!("Error loading entity set content: {e}"))?;
+
+        entity_sets.push(
+            EntitySet {
+                name: row.get(0),
+                group: row.get(1),
+                entity_type: row.get(2),
+                owner: row.get(3),
+                description: row.try_get(4).unwrap_or("".into()),
+                entities: entities,
+                created: row.get(6),
+                modified: row.get(7),
+            }
+        )
+    };
      
     Ok(entity_sets)
 }
@@ -68,7 +83,7 @@ pub async fn load_entity_set(
 ) -> Result<EntitySet, String> {
     let query = concat!(
         "SELECT name, \"group\", source_entity_type, owner, description, ",
-        "entity_set.get_entity_set_members(es), first_appearance, modified ",
+        "entity_set.get_entity_set_members(es.id), first_appearance, modified ",
         "FROM attribute.minerva_entity_set es ",
         "WHERE es.owner = $1 AND es.name = $2"
     );
@@ -106,17 +121,30 @@ impl fmt::Display for ChangeEntitySet {
 impl GenericChange for ChangeEntitySet {
     async fn generic_apply<T: GenericClient + Send + Sync>(&self, client: &mut T) -> ChangeResult {
         let entitieslist = self.entities.join("', '");
+        let prequery = "SELECT id FROM attribute.minerva_entity_set es WHERE es.owner = $1 AND es.name = $2".to_string();
+        let prerow = client.query_one(
+            &prequery,
+            &[&self.entity_set.owner, &self.entity_set.name]
+        )
+        .await
+        .map_err(|e| {
+            DatabaseError::from_msg(format!(
+                "Error changing entity set '{}:{}': {}",
+                &self.entity_set.owner, &self.entity_set.name, e
+            ))
+        })?;
+        let id:i32 = prerow.get(0);
+
         let query = format!(
             concat!(
-                "SELECT relation_directory.change_set_entities_guarded(es, ARRAY['{}']) ",
-                "FROM attribute.minerva_entity_set es WHERE es.owner = $1 AND es.name = $2"
+                "SELECT relation_directory.change_set_entities_guarded({}, ARRAY['{}'])"
             ),
+            id.to_string(),
             entitieslist
         );
-
         let row = client.query_one(
             &query,
-            &[&self.entity_set.owner, &self.entity_set.name]
+            &[]
         )
         .await
         .map_err(|e| {
