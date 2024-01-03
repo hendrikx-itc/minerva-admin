@@ -110,7 +110,7 @@ mod tests {
 
         println!("Dropped database '{database_name}'");
 
-        assert_eq!(body, "[{\"id\":1,\"name\":\"node\",\"description\":\"\"}]");
+        assert_eq!(body, "[{\"id\":1,\"name\":\"entity_set\",\"description\":\"\"},{\"id\":2,\"name\":\"node\",\"description\":\"\"}]");
 
         Ok(())
     }
