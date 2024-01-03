@@ -1,8 +1,10 @@
 use std::time::Duration;
 
+use super::error::{Error, RuntimeError};
+
 use regex::Regex;
 
-pub fn parse_interval(interval_str: &str) -> Result<Duration, humantime::DurationError> {
+pub fn parse_interval(interval_str: &str) -> Result<Duration, Error> {
     let interval_re = Regex::new(r"^(\d{2}):(\d{2}):(\d{2})$").unwrap();
 
     let capture_result = interval_re.captures(interval_str);
@@ -18,6 +20,7 @@ pub fn parse_interval(interval_str: &str) -> Result<Duration, humantime::Duratio
     };
 
     humantime::parse_duration(&interval_str)
+        .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not parse {interval_str} as interval: {e}"))))
 }
 
 #[cfg(test)]

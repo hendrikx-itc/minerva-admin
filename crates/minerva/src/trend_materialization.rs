@@ -925,9 +925,9 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
 
     for row in result {
         let materialization_id: i32 = row.get(0);
-        let processing_delay: String = row.get(1);
-        let stability_delay: String = row.get(2);
-        let reprocessing_period: String = row.get(3);
+        let processing_delay_str: String = row.get(1);
+        let stability_delay_str: String = row.get(2);
+        let reprocessing_period_str: String = row.get(3);
         let enabled: bool = row.get(4);
         let description: Option<Value> = row.get(5);
         let target_trend_store_part: String = row.get(6);
@@ -947,10 +947,10 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
                 target_trend_store_part: target_trend_store_part.clone(),
                 enabled,
                 fingerprint_function: fingerprint_function_def.clone(),
-                processing_delay: parse_interval(&processing_delay).unwrap(),
-                reprocessing_period: parse_interval(&reprocessing_period).unwrap(),
+                processing_delay: parse_interval(&processing_delay_str)?,
+                reprocessing_period: parse_interval(&reprocessing_period_str)?,
                 sources,
-                stability_delay: parse_interval(&stability_delay).unwrap(),
+                stability_delay: parse_interval(&stability_delay_str)?,
                 view: view_def,
                 description: description.clone(),
             };
