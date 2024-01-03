@@ -8766,7 +8766,7 @@ CALL attribute_directory.create_attribute_store(
     ('source_entity_type', 'text', ''),
     ('owner', 'text', ''),
     ('description', 'text', ''),
-    ('last_update', 'date', '')
+    ('last_update', 'text', '')
   ]::attribute_directory.attribute_descr[]
 );
 
@@ -8774,12 +8774,21 @@ CALL attribute_directory.create_attribute_store(
 CREATE FUNCTION "relation_directory"."entity_set_exists"("owner" text, "name" text)
     RETURNS boolean
 AS $$
-SELECT CASE COUNT(*)
-  WHEN 0 THEN false
-  ELSE true
-END
-FROM attribute.minerva_entity_set WHERE owner = $1 AND name = $2;
-$$ LANGUAGE sql STABLE;
+DECLARE
+  row_count integer;
+BEGIN
+  SELECT action_count(format(
+    'SELECT * FROM attribute.minerva_entity_set '
+    'WHERE owner = ''%s'' AND name = ''%s'';',
+    $1,
+    $2
+  )) INTO row_count;
+  RETURN CASE row_count
+    WHEN 0 THEN false
+    ELSE true
+  END;
+END;
+$$ LANGUAGE plpgsql STABLE;
 
 
 CREATE FUNCTION "relation_directory"."create_entity_set"("name" text, "group" text, "entity_type_name" text, "owner" text, "description" text)
@@ -8808,7 +8817,7 @@ BEGIN
       entity_type_name,
       owner,
       description,
-      CURRENT_DATE
+      CURRENT_DATE::text
     );
   PERFORM attribute_directory.transfer_staged(attribute_directory.get_attribute_store('minerva', 'entity_set'));
   PERFORM attribute_directory.materialize_curr_ptr(attribute_directory.get_attribute_store('minerva', 'entity_set'));
@@ -8817,23 +8826,26 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
-CREATE FUNCTION "relation_directory"."update_entity_set_attributes"(attribute.minerva_entity_set)
+CREATE FUNCTION "relation_directory"."update_entity_set_attributes"("minerva_entity_set_id" integer)
     RETURNS void
 AS $$
-INSERT INTO attribute_staging.minerva_entity_set(
-  entity_id, timestamp, name, fullname, "group", source_entity_type, owner, description, last_update
-) VALUES (
-  $1.entity_id,
-  now(),
-  $1.name,
-  $1.fullname,
-  $1."group",
-  $1.source_entity_type,
-  $1.owner,
-  $1.description,
-  CURRENT_DATE
-);
-$$ LANGUAGE sql VOLATILE;
+BEGIN
+  INSERT INTO attribute_staging.minerva_entity_set(
+    entity_id, timestamp, name, fullname, "group", source_entity_type, owner, description, last_update
+  ) SELECT
+    t.entity_id,
+    now(),
+    t.name,
+    t.fullname,
+    t."group",
+    t.source_entity_type,
+    t.owner,
+    t.description,
+    CURRENT_DATE::text
+  FROM attribute.minerva_entity_set t
+  WHERE t.id = $1;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE FUNCTION "relation_directory"."get_entity_set_data"("name" text, "owner" text)
@@ -8843,77 +8855,94 @@ SELECT * FROM attribute.minerva_entity_set WHERE name = $1 AND owner = $2;
 $$ LANGUAGE sql STABLE;
 
 
-CREATE FUNCTION "relation_directory"."add_entity_to_set"(attribute.minerva_entity_set, "entity" text)
+CREATE FUNCTION "relation_directory"."add_entity_to_set"("minerva_entity_set_id" integer, "entity" text)
     RETURNS attribute.minerva_entity_set
 AS $$
-SELECT relation_directory.update_entity_set_attributes($1);
-SELECT action(FORMAT(
-  'INSERT INTO relation."%s->entity_set" (source_id, target_id) '
-  'SELECT source.id AS source_id, %s AS target '
-  'FROM entity.%I source '
-  'WHERE source.name = ''%s'''
-  'ON CONFLICT DO NOTHING;',
-  $1.source_entity_type,
-  $1.entity_id,
-  $1.source_entity_type,
-  $2
-));
-SELECT * FROM attribute.minerva_entity_set es WHERE es.entity_id = $1.entity_id;
-$$ LANGUAGE sql VOLATILE;
+DECLARE
+  set attribute.minerva_entity_set;
+BEGIN
+  SELECT * FROM attribute.minerva_entity_set WHERE id = $1 INTO set;
+  PERFORM relation_directory.update_entity_set_attributes($1);
+  PERFORM action(FORMAT(
+    'INSERT INTO relation."%s->entity_set" (source_id, target_id) '
+    'SELECT source.id AS source_id, %s AS target '
+    'FROM entity.%I source '
+    'WHERE source.name = ''%s'''
+    'ON CONFLICT DO NOTHING;',
+    set.source_entity_type,
+    set.entity_id,
+    set.source_entity_type,
+    $2
+  ));
+  RETURN set;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
-CREATE FUNCTION "relation_directory"."remove_entity_from_set"(attribute.minerva_entity_set, "entity" text)
+CREATE FUNCTION "relation_directory"."remove_entity_from_set"("minerva_entity_set_id" integer, "entity" text)
     RETURNS void
 AS $$
-SELECT relation_directory.update_entity_set_attributes($1);
-SELECT action(FORMAT(
-  'DELETE es FROM relation."%s->entity_set" es '
-  'JOIN entity.%I source ON es.source_id = source.id '
-  'WHERE source.name = ''%s'' AND target_id = %s;',
-  $1.source_entity_type,
-  $1.source_entity_type,
-  $2,
-  $1.entity_id
-));
-$$ LANGUAGE sql VOLATILE;
+DECLARE
+  set attribute.minerva_entity_set;
+BEGIN
+  SELECT * FROM attribute.minerva_entity_set WHERE id = $1 INTO set;
+  PERFORM relation_directory.update_entity_set_attributes($1);
+  PERFORM action(FORMAT(
+    'DELETE es FROM relation."%s->entity_set" es '
+    'JOIN entity.%I source ON es.source_id = source.id '
+    'WHERE source.name = ''%s'' AND target_id = %s;',
+    set.source_entity_type,
+    set.source_entity_type,
+    $2,
+    set.entity_id
+  ));
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
-CREATE FUNCTION "relation_directory"."add_entities_to_set"(attribute.minerva_entity_set, "entities" text[])
+CREATE FUNCTION "relation_directory"."add_entities_to_set"("minerva_entity_set_id" integer, "entities" text[])
     RETURNS void
 AS $$
 SELECT relation_directory.add_entity_to_set($1, e) FROM unnest($2) e;
 $$ LANGUAGE sql VOLATILE;
 
 
-CREATE FUNCTION "relation_directory"."change_set_entities"(attribute.minerva_entity_set, "entities" text[])
+CREATE FUNCTION "relation_directory"."change_set_entities"("minerva_entity_set_id" integer, "entities" text[])
     RETURNS void
 AS $$
-SELECT action(FORMAT(
-  'DELETE FROM relation."%s->entity_set" '
-  'WHERE target_id = %s;',
-  $1.source_entity_type,
-  $1.entity_id
-));
-SELECT relation_directory.add_entities_to_set($1, $2);
-$$ LANGUAGE sql VOLATILE;
+DECLARE
+  set attribute.minerva_entity_set;
+BEGIN
+  SELECT * FROM attribute.minerva_entity_set WHERE id = $1 INTO set;
+  PERFORM action(FORMAT(
+    'DELETE FROM relation."%s->entity_set" '
+    'WHERE target_id = %s;',
+    set.source_entity_type,
+    set.entity_id
+  ));
+  PERFORM relation_directory.add_entities_to_set($1, $2);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
-COMMENT ON FUNCTION "relation_directory"."change_set_entities"(attribute.minerva_entity_set, "entities" text[]) IS 'Set the entities in the set to exactly the specified entities';
+COMMENT ON FUNCTION "relation_directory"."change_set_entities"("minerva_entity_set_id" integer, "entities" text[]) IS 'Set the entities in the set to exactly the specified entities';
 
 
-CREATE FUNCTION "relation_directory"."change_set_entities_guarded"(attribute.minerva_entity_set, "entities" text[])
+CREATE FUNCTION "relation_directory"."change_set_entities_guarded"("minerva_entity_set_id" integer, "entities" text[])
     RETURNS text[]
 AS $$
 DECLARE
+  set attribute.minerva_entity_set;
   entity text;
   real_entity text;
   result text[];
   newresult text[];
 BEGIN
+  SELECT * FROM attribute.minerva_entity_set WHERE id = $1 INTO set;
   SELECT $2 INTO result;
   FOREACH entity IN ARRAY $2 LOOP
     EXECUTE FORMAT(
       'SELECT name FROM entity.%I WHERE name = ''%s'';',
-      $1.source_entity_type,
+      set.source_entity_type,
       entity
     ) INTO real_entity;
     SELECT array_remove(result, real_entity) INTO result;
@@ -8925,23 +8954,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
-COMMENT ON FUNCTION "relation_directory"."change_set_entities_guarded"(attribute.minerva_entity_set, "entities" text[]) IS 'Only sets the entities if all specified entities are actually valid.
+COMMENT ON FUNCTION "relation_directory"."change_set_entities_guarded"("minerva_entity_set_id" integer, "entities" text[]) IS 'Only sets the entities if all specified entities are actually valid.
 Returns those entities that were invalid.';
 
 
-CREATE FUNCTION "relation_directory"."get_entity_set_members"(attribute.minerva_entity_set)
+CREATE FUNCTION "relation_directory"."get_entity_set_members"("minerva_entity_set_id" integer)
     RETURNS text[]
 AS $$
 DECLARE
+  set attribute.minerva_entity_set;
   result text[];
 BEGIN
+  SELECT * FROM attribute.minerva_entity_set WHERE id = $1 INTO set;
   EXECUTE FORMAT(
     'SELECT array_agg(e.name) '
     'FROM relation."%s->entity_set" es JOIN entity.%I e ON es.source_id = e.id '
     'WHERE es.target_id = %s',
-    $1.source_entity_type,
-    $1.source_entity_type,
-    $1.entity_id
+    set.source_entity_type,
+    set.source_entity_type,
+    set.entity_id
   ) INTO result;
   RETURN result;
 END;
@@ -8969,9 +9000,7 @@ BEGIN
   END LOOP;
   IF ARRAY_LENGTH(result, 1) IS NULL THEN
     SELECT id FROM relation_directory.create_entity_set($1, $2, $3, $4, $5) INTO entityset;
-    PERFORM relation_directory.change_set_entities(t, $6)
-      FROM attribute.minerva_entity_set t
-      WHERE t.id = entityset;
+    PERFORM relation_directory.change_set_entities(entityset, $6);
   END IF;
   RETURN result;
 END;
@@ -8981,7 +9010,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE FUNCTION "relation_directory"."get_entity_set_members"("name" text, "owner" text)
     RETURNS text[]
 AS $$
-SELECT relation_directory.get_entity_set_members(es)
+SELECT relation_directory.get_entity_set_members(es.id)
   FROM attribute.minerva_entity_set es
   WHERE owner = $2 AND name = $1;
 $$ LANGUAGE sql STABLE;
