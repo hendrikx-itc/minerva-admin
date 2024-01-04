@@ -939,6 +939,15 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
             .await
             .unwrap_or("failed getting sources".into());
 
+        let processing_delay = parse_interval(&processing_delay_str)
+            .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not load materialization '{target_trend_store_part}' due to failure in parsing of processing_delay: {e}"))))?;
+
+        let reprocessing_period = parse_interval(&reprocessing_period_str)
+            .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not load materialization '{target_trend_store_part}' due to failure in parsing of reprocessing_period: {e}"))))?;
+
+        let stability_delay = parse_interval(&stability_delay_str)
+            .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not load materialization '{target_trend_store_part}' due to failure in parsing of stability_delay: {e}"))))?;
+
         if let Some(view) = src_view {
             let view_def = get_view_def(conn, &view).await.unwrap();
             let sources = load_sources(conn, materialization_id).await?;
@@ -947,10 +956,10 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
                 target_trend_store_part: target_trend_store_part.clone(),
                 enabled,
                 fingerprint_function: fingerprint_function_def.clone(),
-                processing_delay: parse_interval(&processing_delay_str)?,
-                reprocessing_period: parse_interval(&reprocessing_period_str)?,
+                processing_delay,
+                reprocessing_period,
                 sources,
-                stability_delay: parse_interval(&stability_delay_str)?,
+                stability_delay,
                 view: view_def,
                 description: description.clone(),
             };
@@ -974,12 +983,12 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
                 target_trend_store_part: target_trend_store_part.clone(),
                 enabled,
                 fingerprint_function: fingerprint_function_def.clone(),
-                processing_delay: parse_interval(&processing_delay).unwrap(),
-                reprocessing_period: parse_interval(&reprocessing_period).unwrap(),
+                processing_delay,
+                reprocessing_period,
                 sources,
-                stability_delay: parse_interval(&stability_delay).unwrap(),
+                stability_delay,
                 function: TrendMaterializationFunction {
-                    return_type: return_type,
+                    return_type,
                     src: function_def,
                     language: "plpgsql".into(),
                 },

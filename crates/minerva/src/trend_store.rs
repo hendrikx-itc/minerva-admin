@@ -1645,7 +1645,7 @@ mod tests {
     #[test]
     fn convert_integer_to_bigint_value() {
         let integer_value: MeasValue = MeasValue::Integer(Some(42));
-        let transformed_value: MeasValue = integer_value.to_value_of(DataType::Int8);
+        let transformed_value: MeasValue = integer_value.to_value_of(DataType::Int8).unwrap();
 
         match transformed_value {
             MeasValue::Int8(v) => assert_eq!(v.unwrap(), 42),
@@ -1656,7 +1656,7 @@ mod tests {
     #[test]
     fn convert_bigint_to_numeric_value() {
         let integer_value: MeasValue = MeasValue::Int8(Some(42));
-        let transformed_value: MeasValue = integer_value.to_value_of(DataType::Numeric);
+        let transformed_value: MeasValue = integer_value.to_value_of(DataType::Numeric).unwrap();
 
         match transformed_value {
             MeasValue::Numeric(v) => assert_eq!(v.unwrap(), Decimal::from_i32(42).unwrap()),
