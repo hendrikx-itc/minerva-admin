@@ -906,6 +906,28 @@ pub fn load_materializations_from(
         })
 }
 
+fn map_sql_to_plpgsql(src: String) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    lines.push("BEGIN\n".into());
+    lines.push("RETURN QUERY EXECUTE $query$\n".into());
+    lines.push(src);
+    lines.push("$query$ USING $1;\n".into());
+    lines.push("END;\n".into());
+
+    lines.join("")
+}
+
+/// Citus does not support the construct with parameterized queries in plain sql functions. The use
+/// of plpgsql functions is a work-around for this.
+fn coorce_to_plpgsql((lang, src): (String, String)) -> Result<(String, String), Error> {
+    match lang.as_str() {
+        "sql" => Ok(("plpgsql".into(), map_sql_to_plpgsql(src))),
+        "plpgsql" => Ok((lang, src)),
+        _ => Err(Error::Runtime(RuntimeError::from_msg(format!("Unexpected language '{lang}'"))))
+    }
+}
+
 pub async fn load_materializations<T: GenericClient + Send + Sync>(
     conn: &mut T,
 ) -> Result<Vec<TrendMaterialization>, Error> {
@@ -935,9 +957,9 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
         let src_function: Option<String> = row.get(8);
 
         let fingerprint_function_name = format!("{}_fingerprint", &target_trend_store_part);
-        let fingerprint_function_def = get_function_def(conn, &fingerprint_function_name)
+        let (fingerprint_function_lang, fingerprint_function_def) = get_function_def(conn, &fingerprint_function_name)
             .await
-            .unwrap_or("failed getting sources".into());
+            .unwrap_or(("failed getting language".into(), "failed getting sources".into()));
 
         let processing_delay = parse_interval(&processing_delay_str)
             .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not load materialization '{target_trend_store_part}' due to failure in parsing of processing_delay: {e}"))))?;
@@ -970,9 +992,11 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
         }
 
         if let Some(_) = src_function {
-            let function_def = get_function_def(conn, &target_trend_store_part)
-                .await
-                .unwrap_or("failed getting sources".into());
+            let (function_lang, function_def) = coorce_to_plpgsql(
+                get_function_def(conn, &target_trend_store_part)
+                    .await
+                    .unwrap_or(("failed getting language".into(), "failed getting sources".into()))
+            )?;
             let return_type = get_function_return_type(conn, &target_trend_store_part)
                 .await
                 .unwrap_or("failed getting return type".into());
@@ -990,7 +1014,7 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
                 function: TrendMaterializationFunction {
                     return_type,
                     src: function_def,
-                    language: "plpgsql".into(),
+                    language: function_lang,
                 },
                 description: description.clone(),
             };
@@ -1053,11 +1077,16 @@ pub async fn get_view_def<T: GenericClient + Send + Sync>(
 pub async fn get_function_def<T: GenericClient + Send + Sync>(
     client: &mut T,
     function: &str,
-) -> Option<String> {
-    let query = "SELECT prosrc FROM pg_proc WHERE proname = $1";
+) -> Option<(String, String)> {
+    let query = concat!(
+        "SELECT lanname, prosrc ",
+        "FROM pg_proc ",
+        "JOIN pg_language ON pg_language.oid = prolang ",
+        "WHERE proname = $1"
+    );
 
     match client.query_one(query, &[&function]).await {
-        Ok(row) => row.get(0),
+        Ok(row) => Some((row.get(0), row.get(1))),
         Err(_) => None,
     }
 }
