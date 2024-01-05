@@ -430,22 +430,6 @@ impl TrendFunctionMaterialization {
         }
     }
 
-    async fn drop_function<T: GenericClient + Send + Sync>(
-        client: &mut T, name: &str
-    ) -> Result<(), Error> {
-        let query = format!(
-            "DROP FUNCTION IF EXISTS trend.{}(timestamp with time zone)",
-            &escape_identifier(name),
-        );
-
-        match client.execute(query.as_str(), &[]).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Error::Database(DatabaseError::from_msg(format!(
-                "Error dropping function: {e}"
-            )))),
-        }
-    }
-
     async fn create_function<T: GenericClient + Send + Sync>(
         &self,
         client: &mut T,
@@ -906,7 +890,7 @@ pub fn load_materializations_from(
         })
 }
 
-fn map_sql_to_plpgsql(src: String) -> String {
+pub fn map_sql_to_plpgsql(src: String) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     lines.push("BEGIN\n".into());
@@ -957,7 +941,7 @@ pub async fn load_materializations<T: GenericClient + Send + Sync>(
         let src_function: Option<String> = row.get(8);
 
         let fingerprint_function_name = format!("{}_fingerprint", &target_trend_store_part);
-        let (fingerprint_function_lang, fingerprint_function_def) = get_function_def(conn, &fingerprint_function_name)
+        let (_fingerprint_function_lang, fingerprint_function_def) = get_function_def(conn, &fingerprint_function_name)
             .await
             .unwrap_or(("failed getting language".into(), "failed getting sources".into()));
 

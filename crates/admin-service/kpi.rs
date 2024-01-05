@@ -14,6 +14,7 @@ use serde_json::json;
 use tokio_postgres::{types::Type, GenericClient};
 
 use minerva::interval::parse_interval;
+use minerva::trend_materialization::map_sql_to_plpgsql;
 
 use crate::trendmaterialization::{
     TrendFunctionMaterializationData, TrendMaterializationFunctionData,
@@ -34,7 +35,7 @@ lazy_static! {
         "1w".to_string(),
         "1month".to_string()
     ];
-    static ref LANGUAGE: String = "SQL".to_string();
+    static ref LANGUAGE: String = "PLPGSQL".to_string();
     static ref TIME_AGGREGATION: String = "SUM".to_string();
     static ref ENTITY_AGGREGATION: String = "SUM".to_string();
     static ref MAPPING_FUNCTION: String = "trend.mapping_id".to_string();
@@ -381,10 +382,19 @@ impl KpiImplementedData {
             };
             counter += 1
         }
-        let srcdef = format!(
-            "SELECT t1.entity_id, $1 as timestamp, {} as \"{}\"\n FROM {}\nWHERE t1.timestamp = $1\nGROUP BY t1.entity_id",
-            self.definition, self.kpi_name, sourcestrings.join("\nJOIN ")
-        );
+
+        let mut src_lines: Vec<String> = Vec::new();
+
+        src_lines.push("SELECT\n".into());
+        src_lines.push("  t1.entity_id,\n".into());
+        src_lines.push("  $1 as timestamp,\n".into());
+        src_lines.push(format!("  {} AS \"{}\"\n", self.definition, self.kpi_name));
+        src_lines.push(format!("FROM {}\n", sourcestrings.join("\nJOIN ")));
+        src_lines.push("WHERE t1.timestamp = $1\n".into());
+        src_lines.push("GROUP BY t1.entity_id\n".into());
+
+        let function_src = map_sql_to_plpgsql(src_lines.join(""));
+
         let kpi = Kpi {
             trend_store_part: TrendStorePartCompleteData {
                 name: self.target_trend_store_part(granularity.clone()),
@@ -423,7 +433,7 @@ impl KpiImplementedData {
                         "TABLE (entity_id integer, \"timestamp\" timestamptz, \"{}\" {})",
                         self.kpi_name, self.data_type
                     ),
-                    src: srcdef,
+                    src: function_src,
                     language: LANGUAGE.clone(),
                 },
                 description: self.description.clone(),
@@ -666,6 +676,8 @@ pub(super) async fn post_kpi(pool: Data<Pool>, post: String) -> Result<HttpRespo
         code: 500,
         message: e.to_string(),
     })?;
+
+    transaction.execute("SET LOCAL citus.multi_shard_modify_mode TO 'sequential';", &[]).await?;
 
     data.create(&mut transaction).await?;
 
