@@ -906,7 +906,7 @@ pub fn load_materializations_from(
         })
 }
 
-fn map_sql_to_plpgsql(src: String) -> String {
+pub fn map_sql_to_plpgsql(src: String) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     lines.push("BEGIN\n".into());
