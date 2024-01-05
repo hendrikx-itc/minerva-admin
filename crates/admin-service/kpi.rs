@@ -677,6 +677,8 @@ pub(super) async fn post_kpi(pool: Data<Pool>, post: String) -> Result<HttpRespo
         message: e.to_string(),
     })?;
 
+    transaction.execute("SET LOCAL citus.multi_shard_modify_mode TO 'sequential';", &[]).await?;
+
     data.create(&mut transaction).await?;
 
     transaction.commit().await.map_err(|e| Error {
