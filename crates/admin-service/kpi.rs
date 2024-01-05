@@ -387,7 +387,7 @@ impl KpiImplementedData {
 
         src_lines.push("SELECT\n".into());
         src_lines.push("  t1.entity_id,\n".into());
-        src_lines.push("  $1 as timestamp,\n".into());
+        src_lines.push("  $1 AS timestamp,\n".into());
         src_lines.push(format!("  {} AS \"{}\"\n", self.definition, self.kpi_name));
         src_lines.push(format!("FROM {}\n", sourcestrings.join("\nJOIN ")));
         src_lines.push("WHERE t1.timestamp = $1\n".into());

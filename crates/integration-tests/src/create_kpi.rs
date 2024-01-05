@@ -59,6 +59,8 @@ mod tests {
     #[cfg(test)]
     #[tokio::test]
     async fn create_kpi() -> Result<(), Box<dyn std::error::Error>> {
+        use minerva::trend_materialization::get_function_def;
+
         let database_name = generate_name();
         let db_config = get_db_config()?;
         let mut client = connect_to_db(&db_config).await?;
@@ -122,8 +124,28 @@ mod tests {
   "data_type": "numeric",
   "enabled": true,
   "source_trends": ["inside_temp"],
-  "definition": "",
-  "description": {}
+  "definition": "inside_temp - outside_temp",
+  "description": {
+      "factors": [
+          [
+            {
+                "type": "trend",
+                "value": "inside_temp"
+            },
+            {
+                "type": "operator",
+                "value": "-"
+            },
+            {
+                "type": "trend",
+                "value": "outside_temp"
+            }
+          ]
+      ],
+      "numberdenominator": 1,
+      "numbernumerator": 1,
+      "type": "Sum"
+  }
 }"#;
 
         let response = client.post(url).body(request_body).send().await?;
@@ -135,13 +157,37 @@ mod tests {
             Ok(_) => println!("Stopped web service"),
         }
 
+        let (language, src): (String, String) = {
+            let mut client = connect_to_db(&db_config.clone().dbname(&database_name)).await?;
+
+            get_function_def(&mut client, "kpi-test-kpi_node_15m").await.unwrap()
+        };
+
+        assert_eq!(body, "{\"code\":200,\"message\":\"Successfully created KPI\"}");
+
+        assert_eq!(language, "plpgsql");
+
+        let expected_src = concat!(
+            "\nBEGIN\n",
+            "RETURN QUERY EXECUTE $query$\n",
+            "SELECT\n",
+            "  t1.entity_id,\n",
+            "  $1 AS timestamp,\n",
+            "  inside_temp - outside_temp AS \"test-kpi-name\"\n",
+            "FROM trend.\"hub_node_main_15m\" t1\n",
+            "WHERE t1.timestamp = $1\n",
+            "GROUP BY t1.entity_id\n",
+            "$query$ USING $1;\n",
+            "END;\n\n"
+        );
+
+        assert_eq!(src, expected_src);
+
         let mut client = connect_to_db(&db_config).await?;
 
         drop_database(&mut client, &database_name).await?;
 
         println!("Dropped database '{database_name}'");
-
-        assert_eq!(body, "{\"code\":200,\"message\":\"Successfully created KPI\"}");
 
         Ok(())
     }
