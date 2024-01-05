@@ -21,6 +21,14 @@ Docker:
 docker run -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 citusdata/citus
 ```
 
+# Run Integration Tests
+
+After a test database is started, run the following command:
+
+```
+PGSSLMODE=disable PGHOST=127.0.0.1 PGUSER=postgres cargo test -p integration-tests --lib
+```
+
 # Load Test Instance
 
 To load a provided test instance into the empty Minerva database, use the following command:
