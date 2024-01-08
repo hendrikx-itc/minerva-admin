@@ -229,7 +229,9 @@ impl KpiRawData {
     ) -> Result<Kpi, String> {
         let implementedkpi = self.get_implemented_data(client).await?;
 
-        Ok(implementedkpi.get_kpi(client, granularity).await.unwrap())
+        let kpi = implementedkpi.get_kpi(client, granularity).await.map_err(|e| format!("Could not define KPI: {e:?}"))?;
+        
+        kpi.ok_or("So such KPI found".into())
     }
 
     async fn create<T: GenericClient + Send + Sync>(
@@ -315,7 +317,7 @@ impl KpiImplementedData {
         &self,
         client: &mut T,
         granularity: String,
-    ) -> Option<Kpi> {
+    ) -> Result<Option<Kpi>, Error> {
         let mut sources: Vec<TrendMaterializationSourceData> = vec![];
         let mut query_sources: Vec<String> = Vec::new();
         let mut modifieds: Vec<String> = vec![];
@@ -330,8 +332,8 @@ impl KpiImplementedData {
                 .replace(&DEFAULT_GRANULARITY.to_string(), &granularity.to_string());
 
             // Check if the source exists
-            if !source_exists(client, &source_name).await.unwrap() {
-                return None;
+            if !source_exists(client, &source_name).await.map_err(|e| Error { code: 500, message: format!("Could not check source existence: {e}") } )? {
+                return Ok(None);
             }
 
             query_sources.push(source_name.clone());
@@ -342,8 +344,7 @@ impl KpiImplementedData {
                 .map_err(|e| Error {
                     code: 500,
                     message: format!("Could not map source: {e}"),
-                })
-                .unwrap();
+                })?;
 
             let actual_source_name = source_trend_store_parts[0].to_string();
 
@@ -395,12 +396,20 @@ impl KpiImplementedData {
 
         let function_src = map_sql_to_plpgsql(src_lines.join(""));
 
+        let granularity_interval = parse_interval(&granularity)
+            .map_err(|e| 
+                Error {
+                    code: 500,
+                    message: format!("Could not parse granularity '{granularity}': {e}"),
+                }
+            )?;
+
         let kpi = Kpi {
             trend_store_part: TrendStorePartCompleteData {
                 name: self.target_trend_store_part(granularity.clone()),
                 entity_type: self.entity_type.clone(),
                 data_source: DATASOURCE.to_string(),
-                granularity: parse_interval(&granularity).unwrap(),
+                granularity: granularity_interval,
                 partition_size: *PARTITION_SIZE.get(granularity.as_str()).unwrap(),
                 trends: vec![TrendData {
                     name: self.kpi_name.clone(),
@@ -441,7 +450,7 @@ impl KpiImplementedData {
             },
         };
 
-        Some(kpi)
+        Ok(Some(kpi))
     }
 
     async fn create<T: GenericClient + Send + Sync>(
@@ -449,7 +458,7 @@ impl KpiImplementedData {
         client: &mut T,
     ) -> Result<String, Error> {
         for granularity in GRANULARITIES.iter() {
-            if let Some(kpi) = self.get_kpi(client, granularity.to_string()).await {
+            if let Some(kpi) = self.get_kpi(client, granularity.to_string()).await? {
                 kpi.trend_store_part
                     .create(client)
                     .await
@@ -839,7 +848,7 @@ pub(super) async fn delete_kpi(
     for granularity in GRANULARITIES.iter() {
         let kpi_result = kpidata
             .get_kpi(&mut transaction, granularity.to_string())
-            .await;
+            .await?;
 
         if let Some(kpi) = kpi_result {
             kpi.materialization

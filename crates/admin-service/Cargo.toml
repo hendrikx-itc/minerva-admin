@@ -16,7 +16,7 @@ utoipa = "2.4"
 lazy_static = "1.4.0"
 clap = "4.4"
 structopt = "0.3"
-minerva = { version = "0.2.0", path = "../minerva" }
+minerva = { path = "../minerva" }
 tokio = { version = "1.35", features = ["full"] }
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
 rustls = "0.20"

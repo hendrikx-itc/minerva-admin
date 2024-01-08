@@ -5,7 +5,7 @@ use super::error::{Error, RuntimeError};
 use regex::Regex;
 
 pub fn parse_interval(interval_str: &str) -> Result<Duration, Error> {
-    let month_re = Regex::new("mon(s|ths)?").unwrap();
+    let month_re = Regex::new("mon(s|th|ths)?").unwrap();
     let interval_re = Regex::new(r"^(\d{2}):(\d{2}):(\d{2})$").unwrap();
 
     let capture_result = interval_re.captures(interval_str);
@@ -18,7 +18,7 @@ pub fn parse_interval(interval_str: &str) -> Result<Duration, Error> {
     };
 
     humantime::parse_duration(&interval_str)
-        .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not parse {interval_str} as interval: {e}"))))
+        .map_err(|e| Error::Runtime(RuntimeError::from_msg(format!("Could not parse '{interval_str}' as interval: {e}"))))
 }
 
 #[cfg(test)]
