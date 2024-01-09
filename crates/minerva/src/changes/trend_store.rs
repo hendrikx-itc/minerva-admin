@@ -1,4 +1,5 @@
 use std::fmt;
+use serde_json::Value;
 use tokio_postgres::{Client, GenericClient};
 
 use async_trait::async_trait;
@@ -295,6 +296,65 @@ impl GenericChange for ModifyTrendDataTypes {
 
 #[async_trait]
 impl Change for ModifyTrendDataTypes {
+    async fn apply(&self, client: &mut Client) -> ChangeResult {
+        self.generic_apply(client).await
+    }
+}
+
+pub struct ModifyTrendExtraData {
+    pub trend_name: String,
+    pub trend_store_part_name: String,
+    pub from_extra_data: Value,
+    pub to_extra_data: Value,
+}
+
+impl fmt::Display for ModifyTrendExtraData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Trend({}.{}, {}->{})",
+            &self.trend_store_part_name, &self.trend_name, &self.from_extra_data, &self.to_extra_data
+        )
+    }
+}
+
+#[async_trait]
+impl GenericChange for ModifyTrendExtraData {
+    async fn generic_apply<T: GenericClient + Sync + Send>(&self, client: &mut T) -> ChangeResult {
+        let query = concat!(
+            "UPDATE trend_directory.table_trend tt ",
+            "SET extra_data = $1 ",
+            "FROM trend_directory.trend_store_part tsp ",
+            "WHERE tsp.id = tt.trend_store_part_id AND tsp.name = $2 AND tt.name = $3"
+        );
+
+        let result = client
+            .execute(
+                query,
+                &[
+                    &self.to_extra_data,
+                    &self.trend_store_part_name,
+                    &self.trend_name,
+                ],
+            )
+            .await;
+
+        if let Err(e) = result {
+            return Err(
+                DatabaseError::from_msg(format!("Error changing extra_data: {e}")).into(),
+            );
+        }
+
+
+        Ok(format!(
+            "Altered trend data types for trend '{}'.'{}'",
+            &self.trend_store_part_name, &self.trend_name,
+        ))
+    }
+}
+
+#[async_trait]
+impl Change for ModifyTrendExtraData {
     async fn apply(&self, client: &mut Client) -> ChangeResult {
         self.generic_apply(client).await
     }

@@ -25,7 +25,7 @@ use rust_decimal::Decimal;
 use async_trait::async_trait;
 
 use crate::changes::trend_store::{
-    AddTrendStorePart, AddTrends, ModifyTrendDataType, ModifyTrendDataTypes, RemoveTrends,
+    AddTrendStorePart, AddTrends, ModifyTrendDataType, ModifyTrendExtraData, ModifyTrendDataTypes, RemoveTrends,
 };
 use crate::error::DatabaseErrorKind;
 use crate::meas_value::{
@@ -1026,6 +1026,15 @@ impl TrendStorePart {
                             from_type: my_trend.data_type.clone(),
                             to_type: other_trend.data_type.clone(),
                         });
+                    }
+
+                    if my_trend.extra_data != other_trend.extra_data {
+                        changes.push(Box::new(ModifyTrendExtraData {
+                            trend_store_part_name: self.name.clone(),
+                            trend_name: my_trend.name.clone(),
+                            from_extra_data: my_trend.extra_data.clone(),
+                            to_extra_data: other_trend.extra_data.clone(),
+                        }));
                     }
                 }
                 None => {
