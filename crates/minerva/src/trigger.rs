@@ -1333,7 +1333,7 @@ where
     let row = conn
         .query_one(&query, query_args.iter().as_slice())
         .await
-        .map_err(|e| DatabaseError::from_msg(format!("Error checking for rule existance: {e}")))?;
+        .map_err(|e| DatabaseError::from_msg(format!("Error creating notifications for trigger '{name}': {e}")))?;
 
     let notification_count: i32 = row.try_get(0)?;
 
