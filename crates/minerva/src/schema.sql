@@ -8397,8 +8397,13 @@ SELECT format(
 'CREATE OR REPLACE FUNCTION trigger_rule.%I(trigger_rule.%I)
     RETURNS json
 AS $function$
-SELECT (%s)
-$function$ LANGUAGE SQL IMMUTABLE',
+DECLARE
+  data json;
+BEGIN
+SELECT (%s) INTO data;
+RETURN data;
+END;
+$function$ LANGUAGE PLPGSQL STABLE',
     trigger.notification_data_fn_name($1),
     trigger.details_type_name($1),
     $2
