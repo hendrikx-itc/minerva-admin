@@ -67,7 +67,7 @@ jobs:
           use-cross: ${{ matrix.os == 'ubuntu-latest' }}
 
       - name: Release | Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
