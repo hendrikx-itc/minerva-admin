@@ -42,7 +42,7 @@ comfy-table = "7.1"
 
 [dev-dependencies]
 assert_cmd = "2.0"
-predicates = "3.0"
+predicates = "3.1"
 
 [package.metadata.deb]
 section = "admin"
